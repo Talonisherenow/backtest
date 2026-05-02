@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from backtest.core.contracts import CatalogRecord
@@ -68,10 +68,14 @@ class DataCatalog:
             for covered_start, covered_end in ranges:
                 if covered_end < cursor:
                     continue
-                if covered_start > cursor:
-                    missing.append((symbol, cursor, covered_start.fromordinal(covered_start.toordinal() - 1)))
-                if covered_end >= cursor:
-                    cursor = covered_end.fromordinal(covered_end.toordinal() + 1)
+                if covered_start > end_date:
+                    break
+                effective_start = max(covered_start, start_date)
+                effective_end = min(covered_end, end_date)
+                if effective_start > cursor:
+                    missing.append((symbol, cursor, effective_start - timedelta(days=1)))
+                if effective_end >= cursor:
+                    cursor = effective_end + timedelta(days=1)
                 if cursor > end_date:
                     break
             if cursor <= end_date:

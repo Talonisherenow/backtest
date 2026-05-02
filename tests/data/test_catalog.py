@@ -39,3 +39,85 @@ def test_catalog_records_coverage_and_missing_ranges(tmp_path: Path):
         ("000001.SZ", date(2025, 1, 11), date(2025, 1, 15)),
         ("600519.SH", date(2025, 1, 1), date(2025, 1, 15)),
     ]
+
+
+def test_catalog_missing_ranges_clamps_coverage_after_window(tmp_path: Path):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    catalog = DataCatalog(metadata)
+    catalog.upsert(
+        CatalogRecord(
+            symbol="000001.SZ",
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.QFQ,
+            start_date=date(2025, 3, 1),
+            end_date=date(2025, 3, 10),
+            rows=8,
+            source="fixture",
+            cache_path=tmp_path / "march.parquet",
+            updated_at=metadata.now(),
+        )
+    )
+
+    missing = catalog.missing_ranges(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        frequency=Frequency.DAILY,
+        adjust=AdjustMode.QFQ,
+    )
+
+    assert missing == [("000001.SZ", date(2025, 1, 1), date(2025, 1, 31))]
+
+
+def test_catalog_missing_ranges_handles_adjacent_and_overlapping_coverage(tmp_path: Path):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    catalog = DataCatalog(metadata)
+    catalog.upsert(
+        CatalogRecord(
+            symbol="000001.SZ",
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.QFQ,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 10),
+            rows=8,
+            source="fixture",
+            cache_path=tmp_path / "early.parquet",
+            updated_at=metadata.now(),
+        )
+    )
+    catalog.upsert(
+        CatalogRecord(
+            symbol="000001.SZ",
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.QFQ,
+            start_date=date(2025, 1, 10),
+            end_date=date(2025, 1, 20),
+            rows=9,
+            source="fixture",
+            cache_path=tmp_path / "middle.parquet",
+            updated_at=metadata.now(),
+        )
+    )
+    catalog.upsert(
+        CatalogRecord(
+            symbol="000001.SZ",
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.QFQ,
+            start_date=date(2025, 1, 21),
+            end_date=date(2025, 1, 31),
+            rows=9,
+            source="fixture",
+            cache_path=tmp_path / "late.parquet",
+            updated_at=metadata.now(),
+        )
+    )
+
+    missing = catalog.missing_ranges(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        frequency=Frequency.DAILY,
+        adjust=AdjustMode.QFQ,
+    )
+
+    assert missing == []
