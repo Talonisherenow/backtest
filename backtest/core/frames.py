@@ -20,6 +20,12 @@ BAR_COLUMNS = [
 SIGNAL_COLUMNS = ["date", "symbol", "target_weight"]
 
 
+def _reject_nulls(frame: pd.DataFrame, columns: Sequence[str], frame_name: str) -> None:
+    null_columns = [column for column in columns if frame[column].isna().any()]
+    if null_columns:
+        raise ValueError(f"{frame_name} contains null required values: {null_columns}")
+
+
 def validate_bar_frame(frame: pd.DataFrame) -> pd.DataFrame:
     missing = set(BAR_COLUMNS) - set(frame.columns)
     if missing:
@@ -37,10 +43,19 @@ def validate_bar_frame(frame: pd.DataFrame) -> pd.DataFrame:
     result["volume"] = pd.to_numeric(result["volume"], errors="raise")
     result["amount"] = pd.to_numeric(result["amount"], errors="raise")
 
+    _reject_nulls(result, ["date", *price_cols, "volume", "amount"], "BarFrame")
+
     if (result["high"] < result["low"]).any():
         raise ValueError("BarFrame contains high lower than low")
     if (result[price_cols] < 0).any().any():
         raise ValueError("BarFrame contains negative prices")
+    if (
+        (result["open"] > result["high"])
+        | (result["open"] < result["low"])
+        | (result["close"] > result["high"])
+        | (result["close"] < result["low"])
+    ).any():
+        raise ValueError("BarFrame contains invalid OHLC relationships")
 
     return result.sort_values(["symbol", "date"]).reset_index(drop=True)
 
@@ -56,6 +71,8 @@ def validate_signal_frame(
     result["date"] = pd.to_datetime(result["date"])
     result["symbol"] = result["symbol"].map(normalize_symbol)
     result["target_weight"] = pd.to_numeric(result["target_weight"], errors="raise")
+
+    _reject_nulls(result, ["date", "target_weight"], "SignalFrame")
 
     if result.duplicated(["date", "symbol"]).any():
         raise ValueError("SignalFrame contains duplicate date + symbol rows")
