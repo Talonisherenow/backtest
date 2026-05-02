@@ -1,0 +1,90 @@
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from backtest.config.loader import load_config
+
+
+def test_load_config_normalizes_stock_pool(tmp_path: Path):
+    config_path = tmp_path / "demo.yaml"
+    config_path.write_text(
+        """
+project:
+  name: demo
+data:
+  source: akshare
+  frequency: 1d
+  adjust: qfq
+  start_date: "2025-01-01"
+  end_date: "2025-01-31"
+  stock_pool:
+    symbols:
+      - "000001"
+signals:
+  type: file
+  path: signals/demo.csv
+execution:
+  timing: next_open
+  initial_cash: 1000000
+  commission_rate: 0.0003
+  min_commission: 5
+  stamp_tax_rate: 0.0005
+  slippage_rate: 0.0005
+  board_lot_size: 100
+metrics:
+  builtin:
+    - total_return
+report:
+  output_dir: runs
+  html: true
+  charts: true
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.project.name == "demo"
+    assert config.data.stock_pool.symbols == ["000001.SZ"]
+
+
+def test_load_config_rejects_end_before_start(tmp_path: Path):
+    config_path = tmp_path / "bad.yaml"
+    config_path.write_text(
+        """
+project:
+  name: bad
+data:
+  source: akshare
+  frequency: 1d
+  adjust: qfq
+  start_date: "2025-02-01"
+  end_date: "2025-01-31"
+  stock_pool:
+    symbols:
+      - "000001.SZ"
+signals:
+  type: file
+  path: signals/demo.csv
+execution:
+  timing: next_open
+  initial_cash: 1000000
+  commission_rate: 0.0003
+  min_commission: 5
+  stamp_tax_rate: 0.0005
+  slippage_rate: 0.0005
+  board_lot_size: 100
+metrics:
+  builtin:
+    - total_return
+report:
+  output_dir: runs
+  html: true
+  charts: true
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="end_date must be on or after start_date"):
+        load_config(config_path)
