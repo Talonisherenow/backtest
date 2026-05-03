@@ -36,8 +36,8 @@ class ParquetBarStore:
             if path.exists():
                 existing = pd.read_parquet(path)
                 group = pd.concat([existing, group], ignore_index=True)
-                group = group.drop_duplicates(["date", "symbol"], keep="last")
-                group = group.sort_values(["symbol", "date"]).reset_index(drop=True)
+            group = group.drop_duplicates(["date", "symbol"], keep="last")
+            group = group.sort_values(["symbol", "date"]).reset_index(drop=True)
             tmp_path = path.with_suffix(".tmp.parquet")
             group.to_parquet(tmp_path, index=False)
             tmp_path.replace(path)

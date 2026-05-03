@@ -35,3 +35,35 @@ def test_parquet_store_writes_partitioned_bars_and_reads_range(tmp_path: Path):
     assert written
     assert len(loaded) == 2
     assert loaded["close"].tolist() == [10.5, 10.8]
+
+
+def test_parquet_store_deduplicates_new_partition_writes_keeping_last(
+    tmp_path: Path,
+):
+    store = ParquetBarStore(tmp_path / "bars")
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02", "2025-01-02"]),
+            "symbol": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.5],
+            "high": [11.0, 11.5],
+            "low": [9.8, 10.1],
+            "close": [10.5, 11.0],
+            "volume": [1000, 1200],
+            "amount": [10500.0, 13200.0],
+            "frequency": ["1d", "1d"],
+            "adjust": ["qfq", "qfq"],
+        }
+    )
+
+    store.write_bars(bars)
+    loaded = store.read_bars(
+        symbols=["000001.SZ"],
+        start_date=pd.Timestamp("2025-01-02").date(),
+        end_date=pd.Timestamp("2025-01-02").date(),
+        frequency=Frequency.DAILY,
+        adjust=AdjustMode.QFQ,
+    )
+
+    assert len(loaded) == 1
+    assert loaded.loc[0, "close"] == 11.0
