@@ -234,11 +234,7 @@ class BrokerEngine:
         orders: list[dict],
         trades: list[dict],
     ) -> bool:
-        value = shares * price
-        cost = self.cost_model.calculate("buy", value)
-        affordable = int((account.cash - cost.total) / price)
-        affordable = (affordable // self.config.board_lot_size) * self.config.board_lot_size
-        filled_shares = min(shares, affordable)
+        filled_shares = self._max_affordable_buy_shares(account.cash, shares, price)
         if filled_shares <= 0:
             orders.append(self._rejected(trade_date, symbol, "buy", shares, "cash insufficient"))
             return False
@@ -261,6 +257,27 @@ class BrokerEngine:
         )
         trades.append({"date": trade_date, "symbol": symbol, "side": "buy", "shares": filled_shares, "price": price})
         return True
+
+    def _max_affordable_buy_shares(self, cash: float, requested_shares: int, price: float) -> int:
+        board_lot_size = self.config.board_lot_size
+        max_by_price = int(cash / price)
+        max_shares = min(requested_shares, (max_by_price // board_lot_size) * board_lot_size)
+        low = 0
+        high = max_shares // board_lot_size
+        best = 0
+
+        while low <= high:
+            midpoint = (low + high) // 2
+            candidate_shares = midpoint * board_lot_size
+            value = candidate_shares * price
+            cost = self.cost_model.calculate("buy", value)
+            if value + cost.total <= cash + 1e-9:
+                best = candidate_shares
+                low = midpoint + 1
+            else:
+                high = midpoint - 1
+
+        return best
 
     def _sell(
         self,

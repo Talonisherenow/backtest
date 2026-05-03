@@ -56,6 +56,51 @@ def test_broker_buys_in_board_lots_at_next_open():
     assert result.positions.iloc[-1]["shares"] == 1000
 
 
+def test_broker_cash_limited_buy_fills_affordable_board_lot_with_actual_fees():
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                [
+                    "2025-01-02",
+                    "2025-01-02",
+                    "2025-01-03",
+                    "2025-01-03",
+                    "2025-01-06",
+                    "2025-01-06",
+                ]
+            ),
+            "symbol": ["000001.SZ", "000002.SZ", "000001.SZ", "000002.SZ", "000001.SZ", "000002.SZ"],
+            "open": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+            "high": [10.5, 10.5, 10.5, 10.5, 10.5, 10.5],
+            "low": [9.5, 9.5, 9.5, 9.5, 9.5, 9.5],
+            "close": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+            "volume": [10000, 10000, 10000, 10000, 10000, 10000],
+            "amount": [100000, 100000, 100000, 100000, 100000, 100000],
+            "frequency": ["1d", "1d", "1d", "1d", "1d", "1d"],
+            "adjust": ["qfq", "qfq", "qfq", "qfq", "qfq", "qfq"],
+        }
+    )
+    signals = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02", "2025-01-03"]),
+            "symbol": ["000002.SZ", "000001.SZ"],
+            "target_weight": [0.91, 0.5],
+        }
+    )
+
+    result = BrokerEngine(make_execution_config(initial_cash=11010.11, stamp_tax_rate=0.0)).run(
+        bars=bars,
+        signals=signals,
+    )
+
+    cash_limited_buy = result.orders[
+        (result.orders["date"] == pd.Timestamp("2025-01-06")) & (result.orders["symbol"] == "000001.SZ")
+    ].iloc[0]
+    assert cash_limited_buy["status"] == "adjusted"
+    assert cash_limited_buy["filled_shares"] == 100
+    assert result.equity_curve.iloc[-1]["cash"] == pytest.approx(0.0)
+
+
 def test_broker_collapses_same_signal_day_targets_to_latest_target():
     bars = make_bars()
     signals = pd.DataFrame(
