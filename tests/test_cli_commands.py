@@ -62,6 +62,41 @@ def test_validate_config_cli_accepts_valid_config(tmp_path: Path):
     assert "Config is valid" in result.output
 
 
+def test_validate_signals_cli_accepts_path_option(tmp_path: Path):
+    signals_path = tmp_path / "signals.csv"
+    signals_path.write_text("date,symbol,target_weight\n2025-01-02,000001.SZ,0.1\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        ["validate", "signals", "--path", str(signals_path), "--symbol", "000001.SZ"],
+    )
+
+    assert result.exit_code == 0
+    assert "Signals are valid" in result.output
+
+
+def test_data_sync_cli_accepts_bars_root_option_for_non_akshare_config(tmp_path: Path):
+    config_path = _write_config(tmp_path)
+    config_path.write_text(config_path.read_text(encoding="utf-8").replace("source: akshare", "source: fixture"))
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "data",
+            "sync",
+            "--config",
+            str(config_path),
+            "--metadata",
+            str(tmp_path / "metadata.sqlite"),
+            "--bars-root",
+            str(tmp_path / "bars"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Only source=akshare is supported" in result.output
+
+
 def test_data_inventory_cli_handles_empty_metadata(tmp_path: Path):
     metadata_path = tmp_path / "metadata.sqlite"
 

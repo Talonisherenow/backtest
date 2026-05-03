@@ -33,7 +33,7 @@ def validate_config(
 def validate_signals(
     signals_path: Path = typer.Option(
         ...,
-        "--signals",
+        "--path",
         exists=True,
         dir_okay=False,
         readable=True,

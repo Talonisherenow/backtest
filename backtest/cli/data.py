@@ -32,9 +32,9 @@ def sync_data(
         "--metadata",
         help="Path to metadata SQLite database",
     ),
-    cache_root: Path = typer.Option(
-        Path("data/cache"),
-        "--cache-root",
+    bars_root: Path = typer.Option(
+        Path("data/bars"),
+        "--bars-root",
         help="Root directory for cached market data",
     ),
 ) -> None:
@@ -48,7 +48,7 @@ def sync_data(
     catalog = DataCatalog(metadata)
     service = DataSyncService(
         provider=AkShareProvider(),
-        store=ParquetBarStore(cache_root),
+        store=ParquetBarStore(bars_root),
         catalog=catalog,
         tasks=CrawlTaskManager(metadata),
     )
