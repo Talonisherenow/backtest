@@ -2,7 +2,9 @@ import json
 from pathlib import Path
 
 import pandas as pd
+from typer.testing import CliRunner
 
+from backtest.cli.app import app
 from backtest.config.loader import load_config
 from backtest.engine import BacktestEngine
 
@@ -105,3 +107,76 @@ def test_backtest_engine_slugifies_project_name_in_run_id(tmp_path: Path):
     assert run_dir.parent == config.report.output_dir
     assert run_dir.name.startswith("Task_11_Demo_Run_")
     assert "/" not in run_dir.name
+
+
+def test_backtest_engine_python_signal_context_dates_are_iso_strings(tmp_path: Path):
+    signals_path = tmp_path / "strategy.py"
+    output_dir = tmp_path / "runs"
+    config_path = tmp_path / "config.yaml"
+    signal_output_path = tmp_path / "context_dates.txt"
+    signals_path.write_text(
+        f"""
+from pathlib import Path
+
+import pandas as pd
+
+
+def generate_signals(context):
+    assert isinstance(context.start_date, str)
+    assert isinstance(context.end_date, str)
+    assert context.start_date == "2025-01-02"
+    assert context.end_date == "2025-01-06"
+    Path({str(signal_output_path)!r}).write_text(f"{{context.start_date}},{{context.end_date}}", encoding="utf-8")
+    return pd.DataFrame({{"date": ["2025-01-02"], "symbol": ["000001.SZ"], "target_weight": [0.20]}})
+""",
+        encoding="utf-8",
+    )
+    config_path.write_text(
+        f"""
+project:
+  name: python-context
+data:
+  source: fixture
+  frequency: 1d
+  adjust: qfq
+  start_date: 2025-01-02
+  end_date: 2025-01-06
+  stock_pool:
+    symbols:
+      - 000001.SZ
+signals:
+  type: python
+  path: "{signals_path}"
+  function: generate_signals
+execution:
+  timing: next_open
+  initial_cash: 100000
+  commission_rate: 0.0003
+  min_commission: 5
+  stamp_tax_rate: 0.0005
+  transfer_fee_rate: 0.00001
+  slippage_rate: 0.0
+  board_lot_size: 100
+metrics:
+  builtin:
+    - total_return
+report:
+  output_dir: "{output_dir}"
+  html: true
+  charts: false
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+    BacktestEngine(config, config_path=config_path, bars_override=_bars()).run()
+
+    assert signal_output_path.read_text(encoding="utf-8") == "2025-01-02,2025-01-06"
+
+
+def test_run_cli_accepts_config_option(tmp_path: Path):
+    config_path = _write_config(tmp_path)
+
+    result = CliRunner().invoke(app, ["backtest", "run", "--config", str(config_path)])
+
+    assert result.exit_code != 2

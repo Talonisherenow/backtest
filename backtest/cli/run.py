@@ -10,7 +10,14 @@ app = typer.Typer(help="Run backtests")
 
 @app.command("run")
 def run_backtest(
-    config_path: Path = typer.Argument(..., exists=True, dir_okay=False, help="Path to backtest config YAML"),
+    config_path: Path = typer.Option(
+        Path("configs/demo.yaml"),
+        "--config",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to backtest config YAML",
+    ),
 ) -> None:
     """Run a backtest from a config file."""
     config = load_config(config_path)

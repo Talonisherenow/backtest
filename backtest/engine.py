@@ -72,8 +72,8 @@ class BacktestEngine:
         context = StrategyContext(
             bars=bars,
             stock_pool=stock_pool,
-            start_date=self.config.data.start_date,
-            end_date=self.config.data.end_date,
+            start_date=self.config.data.start_date.isoformat(),
+            end_date=self.config.data.end_date.isoformat(),
             params={},
         )
         return PythonSignalProvider(self.config.signals.path, self.config.signals.function).load(context=context)
