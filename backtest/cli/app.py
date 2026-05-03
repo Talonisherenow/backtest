@@ -1,6 +1,9 @@
 import typer
 
+from backtest.cli import run
+
 app = typer.Typer(help="A Share backtest research CLI")
+app.add_typer(run.app, name="backtest")
 
 
 @app.callback()
