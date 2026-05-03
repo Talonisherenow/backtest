@@ -81,3 +81,32 @@ def test_broker_rejects_buy_when_next_open_is_limit_up():
     rejected = result.orders[result.orders["status"] == "rejected"].iloc[0]
     assert rejected["side"] == "buy"
     assert "limit up" in rejected["reason"]
+
+
+def test_broker_marks_equity_daily_after_first_execution_day():
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"]),
+            "symbol": ["000001.SZ", "000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.0, 12.0],
+            "high": [10.5, 10.5, 12.5],
+            "low": [9.5, 9.5, 11.5],
+            "close": [10.0, 10.0, 12.0],
+            "volume": [10000, 10000, 10000],
+            "amount": [100000, 100000, 120000],
+            "frequency": ["1d", "1d", "1d"],
+            "adjust": ["qfq", "qfq", "qfq"],
+        }
+    )
+    signals = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02"]),
+            "symbol": ["000001.SZ"],
+            "target_weight": [0.101],
+        }
+    )
+
+    result = BrokerEngine(make_execution_config()).run(bars=bars, signals=signals)
+
+    assert result.equity_curve["date"].tolist() == pd.to_datetime(["2025-01-03", "2025-01-06"]).tolist()
+    assert result.equity_curve.iloc[-1]["equity"] == 101995

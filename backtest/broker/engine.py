@@ -26,50 +26,59 @@ class BrokerEngine:
         trades: list[dict] = []
         positions: list[dict] = []
         equity_curve: list[dict] = []
+        scheduled_signals: dict[pd.Timestamp, list[pd.DataFrame]] = {}
 
         for signal_date, daily_signals in signals.groupby("date", sort=True):
             execution_date = self._next_date(dates, signal_date)
             if execution_date is None:
                 continue
-            day_bars = bars[bars["date"] == execution_date].set_index("symbol")
-            equity_before = self._mark_to_market(account, day_bars)
+            scheduled_signals.setdefault(execution_date, []).append(daily_signals)
 
-            for signal in daily_signals.itertuples(index=False):
-                symbol = signal.symbol
-                if symbol not in day_bars.index:
-                    orders.append(self._rejected(execution_date, symbol, "buy", 0, "missing execution bar"))
-                    continue
-                bar = day_bars.loc[symbol]
-                current_value = account.shares(symbol) * float(bar["open"])
-                target_value = equity_before * float(signal.target_weight)
-                delta_value = target_value - current_value
-                if abs(delta_value) < 1e-9:
-                    continue
-                side = "buy" if delta_value > 0 else "sell"
-                price = self.slippage_model.apply(side, float(bar["open"]))
-                requested_shares = int(abs(delta_value) / price)
-                requested_shares = (requested_shares // self.config.board_lot_size) * self.config.board_lot_size
-                if requested_shares <= 0:
-                    orders.append(self._rejected(execution_date, symbol, side, 0, "below board lot"))
-                    continue
-                rejection_reason = self._constraint_rejection(side, bar)
-                if rejection_reason:
-                    orders.append(self._rejected(execution_date, symbol, side, requested_shares, rejection_reason))
-                    continue
-                if side == "buy":
-                    filled = self._buy(account, execution_date, symbol, requested_shares, price, orders, trades)
-                else:
-                    filled = self._sell(account, execution_date, symbol, requested_shares, price, orders, trades)
-                if filled:
-                    positions.append({"date": execution_date, "symbol": symbol, "shares": account.shares(symbol)})
+        first_execution_date = min(scheduled_signals) if scheduled_signals else None
 
-            equity_curve.append(
-                {
-                    "date": execution_date,
-                    "equity": self._mark_to_market(account, day_bars),
-                    "cash": account.cash,
-                }
-            )
+        for trade_date in dates:
+            day_bars = bars[bars["date"] == trade_date].set_index("symbol")
+
+            for daily_signals in scheduled_signals.get(trade_date, []):
+                equity_before = self._mark_to_market(account, day_bars)
+
+                for signal in daily_signals.itertuples(index=False):
+                    symbol = signal.symbol
+                    if symbol not in day_bars.index:
+                        orders.append(self._rejected(trade_date, symbol, "buy", 0, "missing execution bar"))
+                        continue
+                    bar = day_bars.loc[symbol]
+                    current_value = account.shares(symbol) * float(bar["open"])
+                    target_value = equity_before * float(signal.target_weight)
+                    delta_value = target_value - current_value
+                    if abs(delta_value) < 1e-9:
+                        continue
+                    side = "buy" if delta_value > 0 else "sell"
+                    price = self.slippage_model.apply(side, float(bar["open"]))
+                    requested_shares = int(abs(delta_value) / price)
+                    requested_shares = (requested_shares // self.config.board_lot_size) * self.config.board_lot_size
+                    if requested_shares <= 0:
+                        orders.append(self._rejected(trade_date, symbol, side, 0, "below board lot"))
+                        continue
+                    rejection_reason = self._constraint_rejection(side, bar)
+                    if rejection_reason:
+                        orders.append(self._rejected(trade_date, symbol, side, requested_shares, rejection_reason))
+                        continue
+                    if side == "buy":
+                        filled = self._buy(account, trade_date, symbol, requested_shares, price, orders, trades)
+                    else:
+                        filled = self._sell(account, trade_date, symbol, requested_shares, price, orders, trades)
+                    if filled:
+                        positions.append({"date": trade_date, "symbol": symbol, "shares": account.shares(symbol)})
+
+            if first_execution_date is not None and trade_date >= first_execution_date:
+                equity_curve.append(
+                    {
+                        "date": trade_date,
+                        "equity": self._mark_to_market(account, day_bars),
+                        "cash": account.cash,
+                    }
+                )
 
         return BrokerResult(
             equity_curve=pd.DataFrame(equity_curve),
