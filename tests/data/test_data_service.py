@@ -53,6 +53,25 @@ class MultiYearFakeProvider:
         )
 
 
+class DateRangeFakeProvider:
+    def fetch_bars(self, request: BarRequest) -> pd.DataFrame:
+        dates = pd.date_range(request.start_date, request.end_date, freq="D")
+        return pd.DataFrame(
+            {
+                "date": dates,
+                "symbol": [request.symbols[0]] * len(dates),
+                "open": [10.0] * len(dates),
+                "high": [11.0] * len(dates),
+                "low": [9.8] * len(dates),
+                "close": [10.5] * len(dates),
+                "volume": [1000] * len(dates),
+                "amount": [10500.0] * len(dates),
+                "frequency": [request.frequency.value] * len(dates),
+                "adjust": [request.adjust.value] * len(dates),
+            }
+        )
+
+
 def test_data_sync_service_fetches_missing_range_and_updates_catalog(tmp_path: Path):
     metadata = MetadataStore(tmp_path / "metadata.sqlite")
     service = DataSyncService(
@@ -120,3 +139,33 @@ def test_data_sync_service_records_catalog_entries_per_written_partition(
             ),
         ),
     ]
+
+
+def test_data_sync_service_keeps_catalog_coverage_when_appending_same_partition(
+    tmp_path: Path,
+):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    service = DataSyncService(
+        provider=DateRangeFakeProvider(),
+        store=ParquetBarStore(tmp_path / "bars"),
+        catalog=DataCatalog(metadata),
+        tasks=CrawlTaskManager(metadata),
+    )
+
+    service.sync(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 2),
+    )
+    service.sync(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 4),
+    )
+
+    records = service.catalog.inventory()
+
+    assert len(records) == 1
+    assert records[0].start_date == date(2025, 1, 1)
+    assert records[0].end_date == date(2025, 1, 4)
+    assert records[0].rows == 4

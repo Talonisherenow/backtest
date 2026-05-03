@@ -64,21 +64,14 @@ class DataSyncService:
                     )
                 )
                 validated = validate_bar_frame(bars)
-                self.store.write_bars(validated)
-                if not validated.empty:
+                written = self.store.write_bars(validated)
+                for path in written:
+                    partition = validate_bar_frame(pd.read_parquet(path))
                     for (
                         partition_symbol,
                         partition_frequency,
                         partition_adjust,
-                        year,
-                    ), group in validated.groupby(
-                        [
-                            "symbol",
-                            "frequency",
-                            "adjust",
-                            validated["date"].dt.year,
-                        ]
-                    ):
+                    ), group in partition.groupby(["symbol", "frequency", "adjust"]):
                         partition_dates = pd.to_datetime(group["date"])
                         self.catalog.upsert(
                             CatalogRecord(
@@ -89,12 +82,7 @@ class DataSyncService:
                                 end_date=partition_dates.max().date(),
                                 rows=len(group),
                                 source=source,
-                                cache_path=self.store.partition_path(
-                                    partition_symbol,
-                                    Frequency(partition_frequency),
-                                    AdjustMode(partition_adjust),
-                                    int(year),
-                                ),
+                                cache_path=path,
                                 updated_at=self.catalog.metadata.now(),
                             )
                         )
