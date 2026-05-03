@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from typer.testing import CliRunner
 
 from backtest.cli.app import app
@@ -174,9 +175,52 @@ report:
     assert signal_output_path.read_text(encoding="utf-8") == "2025-01-02,2025-01-06"
 
 
-def test_run_cli_accepts_config_option(tmp_path: Path):
+def test_backtest_engine_writes_custom_metrics(tmp_path: Path):
+    metric_path = tmp_path / "custom_metric.py"
+    config_path = _write_config(tmp_path)
+    original_config = config_path.read_text(encoding="utf-8")
+    config_path.write_text(
+        original_config.replace(
+            "metrics:\n  builtin:\n    - total_return\n    - max_drawdown\n",
+            "metrics:\n  builtin:\n    - total_return\n  custom:\n    - path: custom_metric.py\n      class: MyMetric\n",
+        ),
+        encoding="utf-8",
+    )
+    metric_path.write_text(
+        """
+from backtest.core.contracts import MetricResult
+from backtest.core.enums import MetricResultKind
+
+
+class MyMetric:
+    name = "custom_score"
+
+    def calculate(self, context):
+        return MetricResult(name=self.name, kind=MetricResultKind.SCALAR, value=123)
+""",
+        encoding="utf-8",
+    )
+    config = load_config(config_path)
+
+    run_dir = BacktestEngine(config, config_path=config_path, bars_override=_bars()).run()
+
+    metrics = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["custom_score"]["value"] == 123
+
+
+def test_backtest_engine_rejects_empty_bars(tmp_path: Path):
+    config_path = _write_config(tmp_path)
+    config = load_config(config_path)
+    empty_bars = pd.DataFrame(columns=_bars().columns)
+
+    with pytest.raises(ValueError, match="No bar data"):
+        BacktestEngine(config, config_path=config_path, bars_override=empty_bars).run()
+
+
+def test_run_cli_accepts_config_option_without_parse_error(tmp_path: Path):
     config_path = _write_config(tmp_path)
 
-    result = CliRunner().invoke(app, ["backtest", "run", "--config", str(config_path)])
+    result = CliRunner().invoke(app, ["run", "--config", str(config_path)])
 
-    assert result.exit_code != 2
+    assert result.exit_code == 1
+    assert "cached bar loading" in result.output

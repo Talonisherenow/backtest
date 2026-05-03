@@ -47,6 +47,53 @@ report:
 
     assert config.project.name == "demo"
     assert config.data.stock_pool.symbols == ["000001.SZ"]
+    assert config.signals.path == tmp_path / "signals/demo.csv"
+    assert config.report.output_dir == tmp_path / "runs"
+
+
+def test_load_config_resolves_relative_custom_metric_paths(tmp_path: Path):
+    config_path = tmp_path / "demo.yaml"
+    config_path.write_text(
+        """
+project:
+  name: demo
+data:
+  source: akshare
+  frequency: 1d
+  adjust: qfq
+  start_date: "2025-01-01"
+  end_date: "2025-01-31"
+  stock_pool:
+    symbols:
+      - "000001.SZ"
+signals:
+  type: file
+  path: signals/demo.csv
+execution:
+  timing: next_open
+  initial_cash: 1000000
+  commission_rate: 0.0003
+  min_commission: 5
+  stamp_tax_rate: 0.0005
+  slippage_rate: 0.0005
+  board_lot_size: 100
+metrics:
+  builtin:
+    - total_return
+  custom:
+    - path: strategies/metrics.py
+      class: MyMetric
+report:
+  output_dir: runs
+  html: true
+  charts: true
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.metrics.custom[0]["path"] == str(tmp_path / "strategies/metrics.py")
 
 
 def test_load_config_rejects_end_before_start(tmp_path: Path):

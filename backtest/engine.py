@@ -10,6 +10,7 @@ from backtest.config.models import BacktestConfig
 from backtest.core.frames import validate_bar_frame
 from backtest.metrics.builtin import calculate_builtin_metrics
 from backtest.metrics.context import BacktestResultContext
+from backtest.metrics.registry import MetricRegistry
 from backtest.reports.manifest import build_manifest
 from backtest.reports.writer import FileReportWriter
 from backtest.signals.context import StrategyContext
@@ -37,9 +38,10 @@ class BacktestEngine:
             trades=broker_result.trades,
             orders=broker_result.orders,
             bars=bars,
-            config=self.config,
+            config=self.config.model_dump(mode="json"),
         )
         metrics = calculate_builtin_metrics(context, self.config.metrics.builtin)
+        metrics.update(self._calculate_custom_metrics(context))
         run_id = self._run_id()
         manifest = build_manifest(
             run_id=run_id,
@@ -62,7 +64,10 @@ class BacktestEngine:
     def _load_bars(self) -> pd.DataFrame:
         if self.bars_override is None:
             raise ValueError("BacktestEngine requires cached bar loading to be wired by CLI data task")
-        return validate_bar_frame(self.bars_override)
+        bars = validate_bar_frame(self.bars_override)
+        if bars.empty:
+            raise ValueError("No bar data available for backtest; sync cached data before running")
+        return bars
 
     def _load_signals(self, bars: pd.DataFrame) -> pd.DataFrame:
         stock_pool = self.config.data.stock_pool.symbols
@@ -84,6 +89,16 @@ class BacktestEngine:
             slug = "backtest"
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         return f"{slug}_{timestamp}"
+
+    def _calculate_custom_metrics(self, context: BacktestResultContext) -> dict:
+        registry = MetricRegistry()
+        for metric_config in self.config.metrics.custom:
+            path = metric_config.get("path")
+            class_name = metric_config.get("class") or metric_config.get("class_name")
+            if path is None or class_name is None:
+                raise ValueError("Custom metric config requires 'path' and 'class'")
+            registry.load_custom(path, class_name)
+        return registry.calculate(context)
 
     def _file_hash(self, path: Path) -> str:
         return hashlib.sha256(Path(path).read_bytes()).hexdigest()

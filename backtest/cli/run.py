@@ -21,5 +21,9 @@ def run_backtest(
 ) -> None:
     """Run a backtest from a config file."""
     config = load_config(config_path)
-    run_dir = BacktestEngine(config, config_path=config_path).run()
+    try:
+        run_dir = BacktestEngine(config, config_path=config_path).run()
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(str(run_dir))
