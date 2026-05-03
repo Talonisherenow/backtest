@@ -39,11 +39,12 @@ symbol, frequency, adjust, start_date, end_date, rows, source, cache_path,
 updated_at, quality_status
 ```
 
-The primary key is `symbol + frequency + adjust + start_date + end_date +
-cache_path`. A single Parquet partition can therefore have multiple catalog
-coverage rows when observed dates are sparse. Coverage checks can also filter by
-`source`, so data cached from one provider does not hide missing ranges for
-another provider.
+The primary key is `symbol + frequency + adjust + source + start_date +
+end_date + cache_path`. A single Parquet partition can therefore have multiple
+catalog coverage rows when observed dates are sparse or when multiple providers
+write the same symbol/frequency/adjust partition. Coverage checks can also
+filter by `source`, so data cached from one provider does not hide missing
+ranges for another provider.
 
 `crawl_tasks` rows track:
 

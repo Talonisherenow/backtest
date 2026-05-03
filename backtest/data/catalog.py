@@ -68,14 +68,22 @@ class DataCatalog:
         frequency: Frequency,
         adjust: AdjustMode,
         cache_path: Path,
+        source: str | None = None,
     ) -> None:
+        params = [symbol, frequency.value, adjust.value, str(cache_path)]
+        source_filter = ""
+        if source is not None:
+            source_filter = " AND source = ?"
+            params.append(source)
+
         with self.metadata.connect() as conn:
             conn.execute(
-                """
+                f"""
                 DELETE FROM catalog
                 WHERE symbol = ? AND frequency = ? AND adjust = ? AND cache_path = ?
+                {source_filter}
                 """,
-                (symbol, frequency.value, adjust.value, str(cache_path)),
+                params,
             )
 
     def missing_ranges(

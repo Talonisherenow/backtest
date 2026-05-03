@@ -162,6 +162,7 @@ class DataSyncService:
                         record_frequency,
                         record_adjust,
                         path,
+                        source=source,
                     )
                     for segment_start, segment_end, rows in self._coverage_segments(group):
                         self.catalog.upsert(

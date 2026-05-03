@@ -271,6 +271,41 @@ def test_data_sync_service_refetches_when_existing_coverage_is_from_other_source
     assert service.tasks.list_tasks()[0].source == "akshare"
 
 
+def test_data_sync_service_preserves_other_source_coverage_for_same_partition(
+    tmp_path: Path,
+):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    service = DataSyncService(
+        provider=FakeProvider(),
+        store=ParquetBarStore(tmp_path / "bars"),
+        catalog=DataCatalog(metadata),
+        tasks=CrawlTaskManager(metadata),
+    )
+
+    service.sync(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 2),
+        end_date=date(2025, 1, 2),
+        source="fixture",
+    )
+    service.sync(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 2),
+        end_date=date(2025, 1, 2),
+        source="akshare",
+    )
+
+    assert sorted(record.source for record in service.catalog.inventory()) == ["akshare", "fixture"]
+    assert service.catalog.missing_ranges(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 2),
+        end_date=date(2025, 1, 2),
+        frequency=Frequency.DAILY,
+        adjust=AdjustMode.QFQ,
+        source="fixture",
+    ) == []
+
+
 def test_data_sync_service_marks_empty_provider_results_failed(tmp_path: Path):
     metadata = MetadataStore(tmp_path / "metadata.sqlite")
     service = DataSyncService(

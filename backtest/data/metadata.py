@@ -46,6 +46,7 @@ class MetadataStore:
             "symbol",
             "frequency",
             "adjust",
+            "source",
             "start_date",
             "end_date",
             "cache_path",
@@ -93,7 +94,7 @@ class MetadataStore:
                 cache_path TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 quality_status TEXT NOT NULL,
-                PRIMARY KEY (symbol, frequency, adjust, start_date, end_date, cache_path)
+                PRIMARY KEY (symbol, frequency, adjust, source, start_date, end_date, cache_path)
             )
             """
         )
