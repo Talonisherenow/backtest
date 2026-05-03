@@ -37,17 +37,46 @@ class DataCatalog:
             rows = conn.execute("SELECT * FROM catalog ORDER BY symbol, start_date").fetchall()
         return [self._record_from_row(row) for row in rows]
 
-    def coverage(self, symbol: str, frequency: Frequency, adjust: AdjustMode) -> list[CatalogRecord]:
+    def coverage(
+        self,
+        symbol: str,
+        frequency: Frequency,
+        adjust: AdjustMode,
+        source: str | None = None,
+    ) -> list[CatalogRecord]:
+        params = [symbol, frequency.value, adjust.value]
+        source_filter = ""
+        if source is not None:
+            source_filter = " AND source = ?"
+            params.append(source)
+
         with self.metadata.connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT * FROM catalog
                 WHERE symbol = ? AND frequency = ? AND adjust = ?
+                {source_filter}
                 ORDER BY start_date
                 """,
-                (symbol, frequency.value, adjust.value),
+                params,
             ).fetchall()
         return [self._record_from_row(row) for row in rows]
+
+    def delete_cache_path(
+        self,
+        symbol: str,
+        frequency: Frequency,
+        adjust: AdjustMode,
+        cache_path: Path,
+    ) -> None:
+        with self.metadata.connect() as conn:
+            conn.execute(
+                """
+                DELETE FROM catalog
+                WHERE symbol = ? AND frequency = ? AND adjust = ? AND cache_path = ?
+                """,
+                (symbol, frequency.value, adjust.value, str(cache_path)),
+            )
 
     def missing_ranges(
         self,
@@ -56,10 +85,14 @@ class DataCatalog:
         end_date: date,
         frequency: Frequency,
         adjust: AdjustMode,
+        source: str | None = None,
     ) -> list[tuple[str, date, date]]:
         missing: list[tuple[str, date, date]] = []
         for symbol in symbols:
-            ranges = [(record.start_date, record.end_date) for record in self.coverage(symbol, frequency, adjust)]
+            ranges = [
+                (record.start_date, record.end_date)
+                for record in self.coverage(symbol, frequency, adjust, source)
+            ]
             if not ranges:
                 missing.append((symbol, start_date, end_date))
                 continue

@@ -49,6 +49,7 @@ class DataSyncService:
             end_date,
             frequency,
             adjust,
+            source=source,
         )
         for symbol, missing_start, missing_end in missing:
             task_id = self.tasks.create_task(
@@ -142,7 +143,11 @@ class DataSyncService:
                 )
             )
             validated = validate_bar_frame(bars)
+            if validated.empty:
+                raise ValueError(f"No bar data returned for {symbol} from {start_date} to {end_date}")
             written = self.store.write_bars(validated)
+            if not written:
+                raise ValueError(f"No bar data written for {symbol} from {start_date} to {end_date}")
             for path in written:
                 partition = validate_bar_frame(pd.read_parquet(path))
                 for (
@@ -150,21 +155,51 @@ class DataSyncService:
                     partition_frequency,
                     partition_adjust,
                 ), group in partition.groupby(["symbol", "frequency", "adjust"]):
-                    partition_dates = pd.to_datetime(group["date"])
-                    self.catalog.upsert(
-                        CatalogRecord(
-                            symbol=partition_symbol,
-                            frequency=Frequency(partition_frequency),
-                            adjust=AdjustMode(partition_adjust),
-                            start_date=partition_dates.min().date(),
-                            end_date=partition_dates.max().date(),
-                            rows=len(group),
-                            source=source,
-                            cache_path=path,
-                            updated_at=self.catalog.metadata.now(),
-                        )
+                    record_frequency = Frequency(partition_frequency)
+                    record_adjust = AdjustMode(partition_adjust)
+                    self.catalog.delete_cache_path(
+                        partition_symbol,
+                        record_frequency,
+                        record_adjust,
+                        path,
                     )
+                    for segment_start, segment_end, rows in self._coverage_segments(group):
+                        self.catalog.upsert(
+                            CatalogRecord(
+                                symbol=partition_symbol,
+                                frequency=record_frequency,
+                                adjust=record_adjust,
+                                start_date=segment_start,
+                                end_date=segment_end,
+                                rows=rows,
+                                source=source,
+                                cache_path=path,
+                                updated_at=self.catalog.metadata.now(),
+                            )
+                        )
             self.tasks.mark_success(task_id)
         except Exception as exc:
             self.tasks.mark_failed(task_id, str(exc))
             raise
+
+    def _coverage_segments(self, group: pd.DataFrame) -> list[tuple[date, date, int]]:
+        dates = pd.to_datetime(group["date"]).dt.normalize().drop_duplicates().sort_values().tolist()
+        if not dates:
+            return []
+
+        segments: list[tuple[date, date, int]] = []
+        segment_start = dates[0]
+        previous = dates[0]
+        rows = 1
+        for current in dates[1:]:
+            next_business_day = previous + pd.offsets.BDay(1)
+            if current <= next_business_day:
+                previous = current
+                rows += 1
+                continue
+            segments.append((segment_start.date(), previous.date(), rows))
+            segment_start = current
+            previous = current
+            rows = 1
+        segments.append((segment_start.date(), previous.date(), rows))
+        return segments

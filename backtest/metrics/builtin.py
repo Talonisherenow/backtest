@@ -12,12 +12,13 @@ def calculate_builtin_metrics(
     context: BacktestResultContext,
     names: Iterable[str],
 ) -> dict[str, float]:
+    initial_cash = _initial_cash(context.config)
     available: dict[str, Callable[[], float]] = {
-        "total_return": lambda: _total_return(context.equity_curve),
-        "annualized_return": lambda: _annualized_return(context.equity_curve),
-        "annualized_volatility": lambda: _annualized_volatility(context.equity_curve),
-        "max_drawdown": lambda: _max_drawdown(context.equity_curve),
-        "sharpe_ratio": lambda: _sharpe_ratio(context.equity_curve),
+        "total_return": lambda: _total_return(context.equity_curve, initial_cash),
+        "annualized_return": lambda: _annualized_return(context.equity_curve, initial_cash),
+        "annualized_volatility": lambda: _annualized_volatility(context.equity_curve, initial_cash),
+        "max_drawdown": lambda: _max_drawdown(context.equity_curve, initial_cash),
+        "sharpe_ratio": lambda: _sharpe_ratio(context.equity_curve, initial_cash),
         "trade_count": lambda: _trade_count(context.trades),
         "cash_ratio": lambda: _cash_ratio(context.equity_curve),
     }
@@ -29,7 +30,20 @@ def calculate_builtin_metrics(
     }
 
 
-def _equity_series(equity_curve: object) -> pd.Series:
+def _initial_cash(config: object) -> float | None:
+    if isinstance(config, dict):
+        execution = config.get("execution")
+        if isinstance(execution, dict) and "initial_cash" in execution:
+            return float(execution["initial_cash"])
+        return None
+
+    execution = getattr(config, "execution", None)
+    if execution is not None and hasattr(execution, "initial_cash"):
+        return float(execution.initial_cash)
+    return None
+
+
+def _equity_series(equity_curve: object, initial_cash: float | None = None) -> pd.Series:
     if equity_curve is None:
         return pd.Series(dtype="float64")
     if isinstance(equity_curve, pd.Series):
@@ -39,18 +53,21 @@ def _equity_series(equity_curve: object) -> pd.Series:
     else:
         return pd.Series(dtype="float64")
 
-    return pd.to_numeric(raw, errors="coerce").dropna().astype("float64")
+    result = pd.to_numeric(raw, errors="coerce").dropna().astype("float64").reset_index(drop=True)
+    if initial_cash is not None and not result.empty:
+        result = pd.concat([pd.Series([initial_cash], dtype="float64"), result], ignore_index=True)
+    return result
 
 
-def _returns(equity_curve: object) -> pd.Series:
-    equity = _equity_series(equity_curve)
+def _returns(equity_curve: object, initial_cash: float | None = None) -> pd.Series:
+    equity = _equity_series(equity_curve, initial_cash)
     if len(equity) < 2:
         return pd.Series(dtype="float64")
     return equity.pct_change().replace([math.inf, -math.inf], math.nan).dropna()
 
 
-def _total_return(equity_curve: object) -> float:
-    equity = _equity_series(equity_curve)
+def _total_return(equity_curve: object, initial_cash: float | None = None) -> float:
+    equity = _equity_series(equity_curve, initial_cash)
     if len(equity) < 2:
         return 0.0
     first = float(equity.iloc[0])
@@ -59,8 +76,8 @@ def _total_return(equity_curve: object) -> float:
     return float(equity.iloc[-1] / first - 1.0)
 
 
-def _annualized_return(equity_curve: object) -> float:
-    equity = _equity_series(equity_curve)
+def _annualized_return(equity_curve: object, initial_cash: float | None = None) -> float:
+    equity = _equity_series(equity_curve, initial_cash)
     if len(equity) < 2:
         return 0.0
     first = float(equity.iloc[0])
@@ -73,15 +90,15 @@ def _annualized_return(equity_curve: object) -> float:
     return float((last / first) ** (1.0 / years) - 1.0)
 
 
-def _annualized_volatility(equity_curve: object) -> float:
-    returns = _returns(equity_curve)
+def _annualized_volatility(equity_curve: object, initial_cash: float | None = None) -> float:
+    returns = _returns(equity_curve, initial_cash)
     if len(returns) < 2:
         return 0.0
     return float(returns.std(ddof=1) * math.sqrt(TRADING_DAYS_PER_YEAR))
 
 
-def _max_drawdown(equity_curve: object) -> float:
-    equity = _equity_series(equity_curve)
+def _max_drawdown(equity_curve: object, initial_cash: float | None = None) -> float:
+    equity = _equity_series(equity_curve, initial_cash)
     if len(equity) < 2:
         return 0.0
     running_max = equity.cummax()
@@ -92,8 +109,8 @@ def _max_drawdown(equity_curve: object) -> float:
     return float(drawdown.min())
 
 
-def _sharpe_ratio(equity_curve: object) -> float:
-    returns = _returns(equity_curve)
+def _sharpe_ratio(equity_curve: object, initial_cash: float | None = None) -> float:
+    returns = _returns(equity_curve, initial_cash)
     if len(returns) < 2:
         return 0.0
     volatility = float(returns.std(ddof=1))

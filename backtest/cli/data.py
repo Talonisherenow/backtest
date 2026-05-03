@@ -114,6 +114,7 @@ def coverage(
         config.data.end_date,
         config.data.frequency,
         config.data.adjust,
+        source=config.data.source,
     )
     if not missing_ranges:
         typer.echo("Data coverage complete")

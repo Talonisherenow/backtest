@@ -78,3 +78,19 @@ def test_cash_ratio_uses_latest_row_without_mixing_stale_cash() -> None:
     metrics = calculate_builtin_metrics(context, ["cash_ratio"])
 
     assert metrics["cash_ratio"] == 0.0
+
+
+def test_return_metrics_use_config_initial_cash_as_baseline() -> None:
+    context = BacktestResultContext(
+        equity_curve=pd.DataFrame({"equity": [99995.0, 99995.0]}),
+        positions=pd.DataFrame(),
+        trades=pd.DataFrame(),
+        orders=pd.DataFrame(),
+        bars=pd.DataFrame(),
+        config={"execution": {"initial_cash": 100000.0}},
+    )
+
+    metrics = calculate_builtin_metrics(context, ["total_return", "max_drawdown"])
+
+    assert metrics["total_return"] == -0.00005
+    assert metrics["max_drawdown"] == -0.00005

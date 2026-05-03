@@ -39,8 +39,11 @@ symbol, frequency, adjust, start_date, end_date, rows, source, cache_path,
 updated_at, quality_status
 ```
 
-The primary key is `symbol + frequency + adjust + cache_path`, so each stored
-partition can have its own coverage record.
+The primary key is `symbol + frequency + adjust + start_date + end_date +
+cache_path`. A single Parquet partition can therefore have multiple catalog
+coverage rows when observed dates are sparse. Coverage checks can also filter by
+`source`, so data cached from one provider does not hide missing ranges for
+another provider.
 
 `crawl_tasks` rows track:
 
@@ -75,12 +78,12 @@ Sync flow:
 
 1. Normalize symbols from the config stock pool.
 2. Execute matching `retrying` tasks first.
-3. Ask `DataCatalog.missing_ranges()` for uncovered date ranges.
+3. Ask source-aware `DataCatalog.missing_ranges()` for uncovered date ranges.
 4. Create one crawl task per missing symbol/range.
 5. Fetch with the configured provider.
 6. Validate and write bars to Parquet.
-7. Upsert catalog records for written partitions.
-8. Mark task `success` or `failed`.
+7. Upsert catalog records for observed coverage segments in written partitions.
+8. Mark task `success` or `failed`; empty provider results fail the task.
 
 Use `backtest data retry --failed --metadata data/metadata.sqlite` to mark
 failed tasks for retry on the next matching sync.

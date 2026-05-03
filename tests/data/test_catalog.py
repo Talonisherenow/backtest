@@ -121,3 +121,32 @@ def test_catalog_missing_ranges_handles_adjacent_and_overlapping_coverage(tmp_pa
     )
 
     assert missing == []
+
+
+def test_catalog_missing_ranges_can_filter_by_source(tmp_path: Path):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    catalog = DataCatalog(metadata)
+    catalog.upsert(
+        CatalogRecord(
+            symbol="000001.SZ",
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.QFQ,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 31),
+            rows=20,
+            source="fixture",
+            cache_path=tmp_path / "fixture.parquet",
+            updated_at=metadata.now(),
+        )
+    )
+
+    missing = catalog.missing_ranges(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 31),
+        frequency=Frequency.DAILY,
+        adjust=AdjustMode.QFQ,
+        source="akshare",
+    )
+
+    assert missing == [("000001.SZ", date(2025, 1, 1), date(2025, 1, 31))]

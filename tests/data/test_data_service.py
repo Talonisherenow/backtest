@@ -2,9 +2,11 @@ from datetime import date
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
-from backtest.core.contracts import BarRequest
+from backtest.core.contracts import BarRequest, CatalogRecord
 from backtest.core.enums import AdjustMode, Frequency
+from backtest.core.frames import BAR_COLUMNS
 from backtest.data.catalog import DataCatalog
 from backtest.data.metadata import MetadataStore
 from backtest.data.service import DataSyncService
@@ -69,6 +71,29 @@ class DateRangeFakeProvider:
                 "amount": [10500.0] * len(dates),
                 "frequency": [request.frequency.value] * len(dates),
                 "adjust": [request.adjust.value] * len(dates),
+            }
+        )
+
+
+class EmptyProvider:
+    def fetch_bars(self, request: BarRequest) -> pd.DataFrame:
+        return pd.DataFrame(columns=BAR_COLUMNS)
+
+
+class SparseFakeProvider:
+    def fetch_bars(self, request: BarRequest) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "date": [request.start_date, request.end_date],
+                "symbol": [request.symbols[0], request.symbols[0]],
+                "open": [10.0, 10.0],
+                "high": [11.0, 11.0],
+                "low": [9.8, 9.8],
+                "close": [10.5, 10.5],
+                "volume": [1000, 1000],
+                "amount": [10500.0, 10500.0],
+                "frequency": [request.frequency.value, request.frequency.value],
+                "adjust": [request.adjust.value, request.adjust.value],
             }
         )
 
@@ -208,3 +233,97 @@ def test_data_sync_service_consumes_retrying_tasks_before_creating_missing_tasks
     assert records[0].attempts == 2
     assert records[0].last_error is None
     assert len(service.catalog.inventory()) == 1
+
+
+def test_data_sync_service_refetches_when_existing_coverage_is_from_other_source(
+    tmp_path: Path,
+):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    catalog = DataCatalog(metadata)
+    catalog.upsert(
+        CatalogRecord(
+            symbol="000001.SZ",
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.QFQ,
+            start_date=date(2025, 1, 2),
+            end_date=date(2025, 1, 2),
+            rows=1,
+            source="fixture",
+            cache_path=tmp_path / "fixture.parquet",
+            updated_at=metadata.now(),
+        )
+    )
+    service = DataSyncService(
+        provider=FakeProvider(),
+        store=ParquetBarStore(tmp_path / "bars"),
+        catalog=catalog,
+        tasks=CrawlTaskManager(metadata),
+    )
+
+    service.sync(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 2),
+        end_date=date(2025, 1, 2),
+        source="akshare",
+    )
+
+    assert sorted(record.source for record in service.catalog.inventory()) == ["akshare", "fixture"]
+    assert service.tasks.list_tasks()[0].source == "akshare"
+
+
+def test_data_sync_service_marks_empty_provider_results_failed(tmp_path: Path):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    service = DataSyncService(
+        provider=EmptyProvider(),
+        store=ParquetBarStore(tmp_path / "bars"),
+        catalog=DataCatalog(metadata),
+        tasks=CrawlTaskManager(metadata),
+    )
+
+    with pytest.raises(ValueError, match="No bar data returned"):
+        service.sync(
+            symbols=["000001.SZ"],
+            start_date=date(2025, 1, 2),
+            end_date=date(2025, 1, 2),
+            source="fixture",
+        )
+
+    assert service.catalog.inventory() == []
+    task = service.tasks.list_tasks()[0]
+    assert task.status == "failed"
+    assert "No bar data returned" in task.last_error
+
+
+def test_data_sync_service_catalogs_sparse_results_as_missing_inner_ranges(
+    tmp_path: Path,
+):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    service = DataSyncService(
+        provider=SparseFakeProvider(),
+        store=ParquetBarStore(tmp_path / "bars"),
+        catalog=DataCatalog(metadata),
+        tasks=CrawlTaskManager(metadata),
+    )
+
+    service.sync(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 4),
+        source="fixture",
+    )
+
+    assert [
+        (record.start_date, record.end_date, record.rows)
+        for record in service.catalog.inventory()
+    ] == [
+        (date(2025, 1, 1), date(2025, 1, 1), 1),
+        (date(2025, 1, 4), date(2025, 1, 4), 1),
+    ]
+    assert service.catalog.missing_ranges(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 4),
+        frequency=Frequency.DAILY,
+        adjust=AdjustMode.QFQ,
+        source="fixture",
+    ) == [("000001.SZ", date(2025, 1, 2), date(2025, 1, 3))]
