@@ -11,7 +11,12 @@ from backtest.core.enums import ExecutionTiming
 class BrokerEngine:
     def __init__(self, config: ExecutionConfig) -> None:
         self.config = config
-        self.cost_model = AShareCostModel(config.commission_rate, config.min_commission, config.stamp_tax_rate)
+        self.cost_model = AShareCostModel(
+            config.commission_rate,
+            config.min_commission,
+            config.stamp_tax_rate,
+            config.transfer_fee_rate,
+        )
         self.slippage_model = FixedRateSlippageModel(config.slippage_rate)
 
     def run(self, bars: pd.DataFrame, signals: pd.DataFrame) -> BrokerResult:
@@ -132,7 +137,19 @@ class BrokerEngine:
         cost = self.cost_model.calculate("buy", value)
         account.cash -= value + cost.total
         account.add_position(symbol, filled_shares, available_date=trade_date + pd.Timedelta(days=1))
-        orders.append(self._filled(trade_date, symbol, "buy", shares, filled_shares, price, cost.commission, cost.tax))
+        orders.append(
+            self._filled(
+                trade_date,
+                symbol,
+                "buy",
+                shares,
+                filled_shares,
+                price,
+                cost.commission,
+                cost.tax,
+                cost.transfer_fee,
+            )
+        )
         trades.append({"date": trade_date, "symbol": symbol, "side": "buy", "shares": filled_shares, "price": price})
         return True
 
@@ -155,7 +172,19 @@ class BrokerEngine:
         cost = self.cost_model.calculate("sell", value)
         account.cash += value - cost.total
         account.remove_available_shares(symbol, filled_shares, trade_date)
-        orders.append(self._filled(trade_date, symbol, "sell", shares, filled_shares, price, cost.commission, cost.tax))
+        orders.append(
+            self._filled(
+                trade_date,
+                symbol,
+                "sell",
+                shares,
+                filled_shares,
+                price,
+                cost.commission,
+                cost.tax,
+                cost.transfer_fee,
+            )
+        )
         trades.append({"date": trade_date, "symbol": symbol, "side": "sell", "shares": filled_shares, "price": price})
         return True
 
@@ -169,6 +198,7 @@ class BrokerEngine:
         price: float,
         commission: float,
         tax: float,
+        transfer_fee: float,
     ) -> dict:
         status = "filled" if requested == filled else "adjusted"
         return {
@@ -180,6 +210,7 @@ class BrokerEngine:
             "price": price,
             "commission": commission,
             "tax": tax,
+            "transfer_fee": transfer_fee,
             "slippage_cost": 0.0,
             "status": status,
             "reason": "",
@@ -195,6 +226,7 @@ class BrokerEngine:
             "price": 0.0,
             "commission": 0.0,
             "tax": 0.0,
+            "transfer_fee": 0.0,
             "slippage_cost": 0.0,
             "status": "rejected",
             "reason": reason,

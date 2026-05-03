@@ -50,6 +50,7 @@ class ExecutionConfig(BaseModel):
     commission_rate: float = Field(ge=0)
     min_commission: float = Field(ge=0)
     stamp_tax_rate: float = Field(ge=0)
+    transfer_fee_rate: float = Field(default=0.00001, ge=0)
     slippage_rate: float = Field(ge=0)
     board_lot_size: int = Field(default=100, gt=0)
 

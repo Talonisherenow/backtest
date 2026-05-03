@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from backtest.broker.engine import BrokerEngine
 from backtest.config.models import ExecutionConfig
@@ -11,6 +12,7 @@ def make_execution_config() -> ExecutionConfig:
         commission_rate=0.0003,
         min_commission=5,
         stamp_tax_rate=0.0005,
+        transfer_fee_rate=0.00001,
         slippage_rate=0.0,
         board_lot_size=100,
     )
@@ -47,6 +49,8 @@ def test_broker_buys_in_board_lots_at_next_open():
 
     filled = result.orders[result.orders["status"] == "filled"].iloc[0]
     assert filled["filled_shares"] == 1000
+    assert filled["transfer_fee"] == 0.1
+    assert result.equity_curve.iloc[0]["cash"] == pytest.approx(89994.9)
     assert result.positions.iloc[-1]["shares"] == 1000
 
 
@@ -80,6 +84,7 @@ def test_broker_rejects_buy_when_next_open_is_limit_up():
 
     rejected = result.orders[result.orders["status"] == "rejected"].iloc[0]
     assert rejected["side"] == "buy"
+    assert rejected["transfer_fee"] == 0.0
     assert "limit up" in rejected["reason"]
 
 
@@ -109,4 +114,4 @@ def test_broker_marks_equity_daily_after_first_execution_day():
     result = BrokerEngine(make_execution_config()).run(bars=bars, signals=signals)
 
     assert result.equity_curve["date"].tolist() == pd.to_datetime(["2025-01-03", "2025-01-06"]).tolist()
-    assert result.equity_curve.iloc[-1]["equity"] == 101995
+    assert result.equity_curve.iloc[-1]["equity"] == pytest.approx(101994.9)
