@@ -36,6 +36,9 @@ backtest run --config configs/demo.yaml
 Note: the current CLI entrypoint accepts `backtest run --config ...`. Older plan
 snippets that mention `backtest backtest run` are stale.
 
+Direct cached-bar loading for CLI backtest runs is still a wiring point in this
+MVP. Engine-level tests currently exercise backtests with explicit bar data.
+
 ## Current Scope
 
 - Daily A-share bars first, with frequency-aware contracts for future minute data.
