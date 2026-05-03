@@ -7,6 +7,10 @@ python -m pip install -e ".[dev]"
 backtest --help
 ```
 
+Examples use conventional paths such as `configs/demo.yaml` and
+`signals/demo.csv`. Create those files first or replace the paths with files in
+your workspace.
+
 Current command groups:
 
 ```text
@@ -19,15 +23,16 @@ Do not use old plan text that says `backtest backtest run`.
 
 ## Run
 
-Run a backtest from a YAML config:
+Command shape for running a backtest from a YAML config:
 
 ```bash
 backtest run --config configs/demo.yaml
 ```
 
-The command prints the created run directory on success. Current implementation
-accepts the command shape, but cached-bar loading for direct CLI runs is still a
-wiring point; engine tests currently run with an explicit `bars_override`.
+Current implementation accepts the command shape, but cached-bar loading for
+direct CLI runs is still a wiring point. Invoking the command directly exits
+with a cached-bar loading message until that wiring is implemented; engine tests
+currently run with an explicit `bars_override`.
 
 ## Data
 
@@ -116,3 +121,7 @@ report:
   html: true
   charts: true
 ```
+
+`report.html` is always written by the current `FileReportWriter`. The `html`
+and `charts` flags are part of the config shape, but chart artifact generation
+and disabling HTML output are not wired yet.

@@ -65,3 +65,7 @@ Parquet outputs are the canonical data source for charts and drilldowns:
 `report.html` is a lightweight human-readable report. Future GUI or notebook
 tools should not scrape it. Consume `manifest.json`, `metrics.json`, and Parquet
 files instead.
+
+The current `FileReportWriter` always writes `report.html`. Config flags such as
+`report.html` and `report.charts` are present in the config model, but disabling
+HTML output and emitting chart artifacts are not wired yet.

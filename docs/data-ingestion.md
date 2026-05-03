@@ -56,6 +56,9 @@ command or helper yet.
 
 ## Sync Behavior
 
+The command examples use `configs/demo.yaml` as a conventional path. Create that
+config first or replace it with your own config file.
+
 Run coverage first when you want to inspect missing ranges:
 
 ```bash

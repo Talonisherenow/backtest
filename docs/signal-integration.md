@@ -10,6 +10,7 @@ date, symbol, target_weight
 ## File Signals
 
 CSV and Parquet are supported by `FileSignalProvider`.
+Create the file first or replace `signals/demo.csv` with your own path.
 
 Config:
 

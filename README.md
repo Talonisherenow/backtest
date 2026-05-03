@@ -6,6 +6,10 @@ structured report outputs.
 
 ## Minimal Workflow
 
+The commands below use conventional paths. This repo does not ship
+`configs/demo.yaml` or `signals/demo.csv` yet, so create those files first or
+replace the paths with your own config and signal files.
+
 Install in editable mode:
 
 ```bash
@@ -27,7 +31,7 @@ backtest data sync --config configs/demo.yaml --metadata data/metadata.sqlite --
 backtest data inventory --metadata data/metadata.sqlite
 ```
 
-Run a backtest from a config:
+Run command shape:
 
 ```bash
 backtest run --config configs/demo.yaml
@@ -37,7 +41,8 @@ Note: the current CLI entrypoint accepts `backtest run --config ...`. Older plan
 snippets that mention `backtest backtest run` are stale.
 
 Direct cached-bar loading for CLI backtest runs is still a wiring point in this
-MVP. Engine-level tests currently exercise backtests with explicit bar data.
+MVP, so the command currently exits with a cached-bar loading message instead of
+running end to end. Engine-level tests exercise backtests with explicit bar data.
 
 ## Current Scope
 
