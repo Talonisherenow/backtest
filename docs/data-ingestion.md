@@ -49,8 +49,10 @@ task_id, symbol, frequency, adjust, start_date, end_date, source, status,
 attempts, last_error, created_at, updated_at, started_at, finished_at
 ```
 
-Task statuses currently include `pending`, `running`, `success`, `failed`,
-`cancelled`, and `retrying`.
+Task statuses used by the current task manager are `pending`, `running`,
+`success`, `failed`, and `retrying`. The design reserves `cancelled` as a
+future lifecycle state, but the current code does not expose a cancellation
+command or helper yet.
 
 ## Sync Behavior
 
