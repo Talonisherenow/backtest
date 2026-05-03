@@ -9,23 +9,40 @@ from backtest.broker.execution import BrokerResult
 from backtest.reports.html import render_html_report
 
 
-def _json_default(value: Any) -> Any:
+def _normalize_json(value: Any) -> Any:
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
+        return _normalize_json(value.model_dump(mode="python"))
     if hasattr(value, "item"):
-        return value.item()
+        return _normalize_json(value.item())
+    if isinstance(value, dict):
+        return {str(key): _normalize_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_json(item) for item in value]
+    return value
+
+
+def _json_default(value: Any) -> Any:
+    normalized = _normalize_json(value)
+    if normalized is not value:
+        return normalized
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default),
+        json.dumps(_normalize_json(payload), ensure_ascii=False, indent=2, default=_json_default),
         encoding="utf-8",
     )
+
+
+def _validate_run_id(run_id: str) -> None:
+    run_path = Path(run_id)
+    if run_path.is_absolute() or run_path.name != run_id or run_id in {"", ".", ".."}:
+        raise ValueError("run_id must be a single safe path segment")
 
 
 class FileReportWriter:
@@ -39,6 +56,7 @@ class FileReportWriter:
         metrics: dict[str, Any],
         manifest: dict[str, Any],
     ) -> Path:
+        _validate_run_id(run_id)
         run_dir = self.output_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
 
