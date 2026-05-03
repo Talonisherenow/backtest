@@ -66,6 +66,18 @@ class CrawlTaskManager:
                 (now, now, error, task_id),
             )
 
+    def mark_retrying(self, task_id: int | None) -> None:
+        now = self.metadata.now().isoformat()
+        with self.metadata.connect() as conn:
+            conn.execute(
+                """
+                UPDATE crawl_tasks
+                SET status = 'retrying', updated_at = ?, last_error = NULL
+                WHERE task_id = ?
+                """,
+                (now, task_id),
+            )
+
     def failed_tasks(self) -> list[CrawlTaskRecord]:
         with self.metadata.connect() as conn:
             rows = conn.execute("SELECT * FROM crawl_tasks WHERE status = 'failed' ORDER BY updated_at").fetchall()

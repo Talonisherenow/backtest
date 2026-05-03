@@ -1,9 +1,11 @@
 import typer
 
-from backtest.cli import run
+from backtest.cli import data, run, validate
 
 app = typer.Typer(help="A Share backtest research CLI")
 app.add_typer(run.app)
+app.add_typer(data.app, name="data")
+app.add_typer(validate.app, name="validate")
 
 
 @app.callback()
