@@ -4,6 +4,7 @@ import pandas as pd
 
 from backtest.core.contracts import BarRequest, CatalogRecord
 from backtest.core.enums import AdjustMode, Frequency
+from backtest.core.frames import validate_bar_frame
 from backtest.core.symbols import normalize_symbol
 from backtest.data.catalog import DataCatalog
 from backtest.data.provider import DataProvider
@@ -62,22 +63,41 @@ class DataSyncService:
                         source=source,
                     )
                 )
-                written = self.store.write_bars(bars)
-                if not bars.empty:
-                    dates = pd.to_datetime(bars["date"])
-                    self.catalog.upsert(
-                        CatalogRecord(
-                            symbol=symbol,
-                            frequency=frequency,
-                            adjust=adjust,
-                            start_date=dates.min().date(),
-                            end_date=dates.max().date(),
-                            rows=len(bars),
-                            source=source,
-                            cache_path=written[0],
-                            updated_at=self.catalog.metadata.now(),
+                validated = validate_bar_frame(bars)
+                self.store.write_bars(validated)
+                if not validated.empty:
+                    for (
+                        partition_symbol,
+                        partition_frequency,
+                        partition_adjust,
+                        year,
+                    ), group in validated.groupby(
+                        [
+                            "symbol",
+                            "frequency",
+                            "adjust",
+                            validated["date"].dt.year,
+                        ]
+                    ):
+                        partition_dates = pd.to_datetime(group["date"])
+                        self.catalog.upsert(
+                            CatalogRecord(
+                                symbol=partition_symbol,
+                                frequency=Frequency(partition_frequency),
+                                adjust=AdjustMode(partition_adjust),
+                                start_date=partition_dates.min().date(),
+                                end_date=partition_dates.max().date(),
+                                rows=len(group),
+                                source=source,
+                                cache_path=self.store.partition_path(
+                                    partition_symbol,
+                                    Frequency(partition_frequency),
+                                    AdjustMode(partition_adjust),
+                                    int(year),
+                                ),
+                                updated_at=self.catalog.metadata.now(),
+                            )
                         )
-                    )
                 self.tasks.mark_success(task_id)
             except Exception as exc:
                 self.tasks.mark_failed(task_id, str(exc))
