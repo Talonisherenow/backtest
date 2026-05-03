@@ -31,7 +31,8 @@ class BrokerEngine:
 
         account = Account(cash=self.config.initial_cash)
         bars = bars.sort_values(["date", "symbol"]).reset_index(drop=True)
-        signals = signals.sort_values(["date", "symbol"]).reset_index(drop=True)
+        signals = signals.assign(_sequence=range(len(signals)))
+        signals = signals.sort_values(["date", "_sequence"], kind="mergesort").reset_index(drop=True)
         dates = sorted(bars["date"].drop_duplicates())
         orders: list[dict] = []
         trades: list[dict] = []
@@ -44,7 +45,8 @@ class BrokerEngine:
             execution_date = self._next_date(dates, signal_date)
             if execution_date is None:
                 continue
-            scheduled_signals.setdefault(execution_date, []).append(daily_signals)
+            scheduled = daily_signals.assign(_signal_date=signal_date)
+            scheduled_signals.setdefault(execution_date, []).append(scheduled)
 
         first_execution_date = min(scheduled_signals) if scheduled_signals else None
 
@@ -54,6 +56,11 @@ class BrokerEngine:
             trade_date_signals = scheduled_signals.get(trade_date, [])
             if trade_date_signals:
                 daily_signals = pd.concat(trade_date_signals, ignore_index=True)
+                daily_signals = (
+                    daily_signals.sort_values(["_signal_date", "_sequence"], kind="mergesort")
+                    .drop_duplicates(subset=["symbol"], keep="last")
+                    .reset_index(drop=True)
+                )
                 intents = self._build_intents(account, day_bars, daily_signals, last_close_by_symbol)
 
                 sell_intents = [item for item in intents if item["side"] == "sell"]

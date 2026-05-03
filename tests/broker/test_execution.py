@@ -56,7 +56,7 @@ def test_broker_buys_in_board_lots_at_next_open():
     assert result.positions.iloc[-1]["shares"] == 1000
 
 
-def test_broker_blocks_same_day_sell_due_to_t_plus_one():
+def test_broker_collapses_same_signal_day_targets_to_latest_target():
     bars = make_bars()
     signals = pd.DataFrame(
         {
@@ -68,8 +68,9 @@ def test_broker_blocks_same_day_sell_due_to_t_plus_one():
 
     result = BrokerEngine(make_execution_config()).run(bars=bars, signals=signals)
 
-    rejected = result.orders[result.orders["status"] == "rejected"]
-    assert "T+1" in rejected.iloc[0]["reason"]
+    assert result.orders.empty
+    assert result.positions.empty
+    assert result.equity_curve.iloc[0]["cash"] == pytest.approx(100000.0)
 
 
 def test_broker_rejects_buy_when_next_open_is_limit_up():
@@ -258,6 +259,40 @@ def test_broker_executes_same_day_rebalance_sells_before_buys():
     buy_order = day_orders[day_orders["symbol"] == "000001.SZ"].iloc[0]
     assert buy_order["status"] == "filled"
     assert buy_order["filled_shares"] == 8000
+
+
+def test_broker_collapses_same_execution_date_signals_to_latest_target():
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-03", "2025-01-06"]),
+            "symbol": ["000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.0],
+            "high": [10.5, 10.5],
+            "low": [9.5, 9.5],
+            "close": [10.0, 10.0],
+            "volume": [10000, 10000],
+            "amount": [100000, 100000],
+            "frequency": ["1d", "1d"],
+            "adjust": ["qfq", "qfq"],
+        }
+    )
+    signals = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-04", "2025-01-05"]),
+            "symbol": ["000001.SZ", "000001.SZ"],
+            "target_weight": [0.5, 0.0],
+        }
+    )
+
+    result = BrokerEngine(
+        make_execution_config(commission_rate=0.0, min_commission=0.0, stamp_tax_rate=0.0, transfer_fee_rate=0.0)
+    ).run(bars=bars, signals=signals)
+
+    filled_buys = result.orders[(result.orders["side"] == "buy") & (result.orders["status"] == "filled")]
+    assert filled_buys.empty
+    assert result.positions.empty
+    assert result.equity_curve.iloc[0]["cash"] == pytest.approx(100000.0)
+    assert result.equity_curve.iloc[0]["equity"] == pytest.approx(100000.0)
 
 
 def test_broker_uses_last_close_when_position_bar_is_missing_from_equity_curve():
