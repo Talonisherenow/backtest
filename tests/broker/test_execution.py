@@ -88,6 +88,71 @@ def test_broker_rejects_buy_when_next_open_is_limit_up():
     assert "limit up" in rejected["reason"]
 
 
+def test_broker_rejects_buy_when_execution_bar_is_suspended():
+    bars = make_bars(is_suspended=[False, True])
+    signals = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02"]),
+            "symbol": ["000001.SZ"],
+            "target_weight": [0.2],
+        }
+    )
+
+    result = BrokerEngine(make_execution_config()).run(bars=bars, signals=signals)
+
+    rejected = result.orders[result.orders["status"] == "rejected"].iloc[0]
+    assert rejected["side"] == "buy"
+    assert "suspended" in rejected["reason"]
+
+
+def test_broker_rejects_signal_when_execution_bar_is_missing():
+    bars = make_bars(symbol=["000001.SZ", "000002.SZ"])
+    signals = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02"]),
+            "symbol": ["000001.SZ"],
+            "target_weight": [0.2],
+        }
+    )
+
+    result = BrokerEngine(make_execution_config()).run(bars=bars, signals=signals)
+
+    rejected = result.orders[result.orders["status"] == "rejected"].iloc[0]
+    assert rejected["symbol"] == "000001.SZ"
+    assert "missing execution bar" in rejected["reason"]
+
+
+def test_broker_rejects_sell_when_next_open_is_limit_down_after_t_plus_one():
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"]),
+            "symbol": ["000001.SZ", "000001.SZ", "000001.SZ", "000001.SZ"],
+            "open": [10.0, 10.0, 10.0, 9.0],
+            "high": [10.5, 10.5, 10.5, 9.5],
+            "low": [9.5, 9.5, 9.5, 8.5],
+            "close": [10.0, 10.0, 10.0, 9.0],
+            "volume": [10000, 10000, 10000, 10000],
+            "amount": [100000, 100000, 100000, 90000],
+            "frequency": ["1d", "1d", "1d", "1d"],
+            "adjust": ["qfq", "qfq", "qfq", "qfq"],
+            "limit_down": [8.9, 8.9, 8.9, 9.0],
+        }
+    )
+    signals = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-02", "2025-01-06"]),
+            "symbol": ["000001.SZ", "000001.SZ"],
+            "target_weight": [0.2, 0.0],
+        }
+    )
+
+    result = BrokerEngine(make_execution_config()).run(bars=bars, signals=signals)
+
+    rejected = result.orders[result.orders["status"] == "rejected"].iloc[0]
+    assert rejected["side"] == "sell"
+    assert "limit down" in rejected["reason"]
+
+
 def test_broker_marks_equity_daily_after_first_execution_day():
     bars = pd.DataFrame(
         {

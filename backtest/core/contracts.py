@@ -61,6 +61,7 @@ class OrderRecord(BaseModel):
     price: float
     commission: float = 0.0
     tax: float = 0.0
+    transfer_fee: float = 0.0
     slippage_cost: float = 0.0
     status: OrderStatus
     reason: str = ""
