@@ -66,7 +66,7 @@ class CrawlTaskManager:
                 (now, now, error, task_id),
             )
 
-    def mark_retrying(self, task_id: int | None) -> None:
+    def mark_retrying(self, task_id: int) -> None:
         now = self.metadata.now().isoformat()
         with self.metadata.connect() as conn:
             conn.execute(

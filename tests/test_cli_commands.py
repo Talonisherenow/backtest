@@ -1,3 +1,4 @@
+import inspect
 from datetime import date
 from pathlib import Path
 
@@ -64,11 +65,25 @@ def test_validate_config_cli_accepts_valid_config(tmp_path: Path):
 
 def test_validate_signals_cli_accepts_path_option(tmp_path: Path):
     signals_path = tmp_path / "signals.csv"
-    signals_path.write_text("date,symbol,target_weight\n2025-01-02,000001.SZ,0.1\n", encoding="utf-8")
+    signals_path.write_text(
+        "date,symbol,target_weight\n"
+        "2025-01-02,000001.SZ,0.1\n"
+        "2025-01-02,600519.SH,0.2\n",
+        encoding="utf-8",
+    )
 
     result = CliRunner().invoke(
         app,
-        ["validate", "signals", "--path", str(signals_path), "--symbol", "000001.SZ"],
+        [
+            "validate",
+            "signals",
+            "--path",
+            str(signals_path),
+            "--symbol",
+            "000001.SZ",
+            "--symbol",
+            "600519.SH",
+        ],
     )
 
     assert result.exit_code == 0
@@ -142,3 +157,9 @@ def test_data_retry_cli_marks_failed_tasks_retrying(tmp_path: Path):
     assert result.exit_code == 0
     assert f"Queued retry for task {task_id}" in result.output
     assert CrawlTaskManager(MetadataStore(metadata_path)).list_tasks()[0].status == "retrying"
+
+
+def test_crawl_task_manager_mark_retrying_accepts_integer_task_id():
+    signature = inspect.signature(CrawlTaskManager.mark_retrying)
+
+    assert signature.parameters["task_id"].annotation is int
