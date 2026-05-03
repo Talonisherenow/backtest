@@ -46,8 +46,8 @@ def validate_signals(
     ),
 ) -> None:
     """Validate a signal file."""
-    stock_pool = list(symbol) if symbol else _symbols_from_file(signals_path)
     try:
+        stock_pool = list(symbol) if symbol else _symbols_from_file(signals_path)
         FileSignalProvider(signals_path).load(stock_pool=stock_pool)
     except Exception as exc:
         typer.echo(str(exc), err=True)

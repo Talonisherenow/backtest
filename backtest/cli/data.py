@@ -39,27 +39,33 @@ def sync_data(
     ),
 ) -> None:
     """Sync missing market data for a config."""
-    config = load_config(config_path)
-    if config.data.source != "akshare":
-        typer.echo("Only source=akshare is supported", err=True)
-        raise typer.Exit(code=1)
+    try:
+        config = load_config(config_path)
+        if config.data.source != "akshare":
+            typer.echo("Only source=akshare is supported", err=True)
+            raise typer.Exit(code=1)
 
-    metadata = _metadata_store(metadata_path)
-    catalog = DataCatalog(metadata)
-    service = DataSyncService(
-        provider=AkShareProvider(),
-        store=ParquetBarStore(bars_root),
-        catalog=catalog,
-        tasks=CrawlTaskManager(metadata),
-    )
-    service.sync(
-        symbols=config.data.stock_pool.symbols,
-        start_date=config.data.start_date,
-        end_date=config.data.end_date,
-        frequency=config.data.frequency,
-        adjust=config.data.adjust,
-        source=config.data.source,
-    )
+        metadata = _metadata_store(metadata_path)
+        catalog = DataCatalog(metadata)
+        service = DataSyncService(
+            provider=AkShareProvider(),
+            store=ParquetBarStore(bars_root),
+            catalog=catalog,
+            tasks=CrawlTaskManager(metadata),
+        )
+        service.sync(
+            symbols=config.data.stock_pool.symbols,
+            start_date=config.data.start_date,
+            end_date=config.data.end_date,
+            frequency=config.data.frequency,
+            adjust=config.data.adjust,
+            source=config.data.source,
+        )
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo("Data sync complete")
 
 

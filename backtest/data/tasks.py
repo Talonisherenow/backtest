@@ -80,7 +80,16 @@ class CrawlTaskManager:
 
     def failed_tasks(self) -> list[CrawlTaskRecord]:
         with self.metadata.connect() as conn:
-            rows = conn.execute("SELECT * FROM crawl_tasks WHERE status = 'failed' ORDER BY updated_at").fetchall()
+            rows = conn.execute(
+                "SELECT * FROM crawl_tasks WHERE status = 'failed' ORDER BY updated_at"
+            ).fetchall()
+        return [self._record_from_row(row) for row in rows]
+
+    def retrying_tasks(self) -> list[CrawlTaskRecord]:
+        with self.metadata.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM crawl_tasks WHERE status = 'retrying' ORDER BY updated_at"
+            ).fetchall()
         return [self._record_from_row(row) for row in rows]
 
     def list_tasks(self) -> list[CrawlTaskRecord]:

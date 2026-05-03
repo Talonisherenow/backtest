@@ -4,6 +4,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from backtest.cli import data as data_cli
 from backtest.cli.app import app
 from backtest.core.enums import AdjustMode, Frequency
 from backtest.data.metadata import MetadataStore
@@ -90,6 +91,85 @@ def test_validate_signals_cli_accepts_path_option(tmp_path: Path):
     assert "Signals are valid" in result.output
 
 
+def test_validate_signals_cli_reports_malformed_signal_files(tmp_path: Path):
+    signals_path = tmp_path / "signals.csv"
+    signals_path.write_text("date,target_weight\n2025-01-02,0.1\n", encoding="utf-8")
+
+    result = CliRunner().invoke(app, ["validate", "signals", "--path", str(signals_path)])
+
+    assert result.exit_code == 1
+    assert "symbol" in result.output
+
+
+def test_data_sync_cli_passes_bars_root_to_store(tmp_path: Path, monkeypatch):
+    config_path = _write_config(tmp_path)
+    bars_root = tmp_path / "custom-bars"
+    captured = {}
+
+    class NoopSyncService:
+        def __init__(self, provider, store, catalog, tasks) -> None:
+            captured["provider"] = provider
+            captured["store_root"] = store.root
+
+        def sync(self, **kwargs) -> None:
+            captured["sync_kwargs"] = kwargs
+
+    provider = object()
+    monkeypatch.setattr(data_cli, "AkShareProvider", lambda: provider)
+    monkeypatch.setattr(data_cli, "DataSyncService", NoopSyncService)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "data",
+            "sync",
+            "--config",
+            str(config_path),
+            "--metadata",
+            str(tmp_path / "metadata.sqlite"),
+            "--bars-root",
+            str(bars_root),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Data sync complete" in result.output
+    assert captured["provider"] is provider
+    assert captured["store_root"] == bars_root
+    assert captured["sync_kwargs"]["symbols"] == ["000001.SZ"]
+
+
+def test_data_sync_cli_reports_sync_errors(tmp_path: Path, monkeypatch):
+    config_path = _write_config(tmp_path)
+
+    class FailingSyncService:
+        def __init__(self, provider, store, catalog, tasks) -> None:
+            pass
+
+        def sync(self, **kwargs) -> None:
+            raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(data_cli, "AkShareProvider", lambda: object())
+    monkeypatch.setattr(data_cli, "DataSyncService", FailingSyncService)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "data",
+            "sync",
+            "--config",
+            str(config_path),
+            "--metadata",
+            str(tmp_path / "metadata.sqlite"),
+            "--bars-root",
+            str(tmp_path / "bars"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "provider unavailable" in result.output
+
+
 def test_data_sync_cli_accepts_bars_root_option_for_non_akshare_config(tmp_path: Path):
     config_path = _write_config(tmp_path)
     config_path.write_text(config_path.read_text(encoding="utf-8").replace("source: akshare", "source: fixture"))
@@ -156,7 +236,10 @@ def test_data_retry_cli_marks_failed_tasks_retrying(tmp_path: Path):
 
     assert result.exit_code == 0
     assert f"Queued retry for task {task_id}" in result.output
-    assert CrawlTaskManager(MetadataStore(metadata_path)).list_tasks()[0].status == "retrying"
+    record = CrawlTaskManager(MetadataStore(metadata_path)).list_tasks()[0]
+    assert record.status == "retrying"
+    assert record.attempts == 1
+    assert record.last_error is None
 
 
 def test_crawl_task_manager_mark_retrying_accepts_integer_task_id():

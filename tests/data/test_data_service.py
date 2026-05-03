@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from backtest.core.contracts import BarRequest
+from backtest.core.enums import AdjustMode, Frequency
 from backtest.data.catalog import DataCatalog
 from backtest.data.metadata import MetadataStore
 from backtest.data.service import DataSyncService
@@ -169,3 +170,41 @@ def test_data_sync_service_keeps_catalog_coverage_when_appending_same_partition(
     assert records[0].start_date == date(2025, 1, 1)
     assert records[0].end_date == date(2025, 1, 4)
     assert records[0].rows == 4
+
+
+def test_data_sync_service_consumes_retrying_tasks_before_creating_missing_tasks(
+    tmp_path: Path,
+):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    tasks = CrawlTaskManager(metadata)
+    task_id = tasks.create_task(
+        symbol="000001.SZ",
+        frequency=Frequency.DAILY,
+        adjust=AdjustMode.QFQ,
+        start_date=date(2025, 1, 2),
+        end_date=date(2025, 1, 2),
+        source="fixture",
+    )
+    tasks.mark_running(task_id)
+    tasks.mark_failed(task_id, "timeout")
+    tasks.mark_retrying(task_id)
+    service = DataSyncService(
+        provider=FakeProvider(),
+        store=ParquetBarStore(tmp_path / "bars"),
+        catalog=DataCatalog(metadata),
+        tasks=tasks,
+    )
+
+    service.sync(
+        symbols=["000001.SZ"],
+        start_date=date(2025, 1, 2),
+        end_date=date(2025, 1, 2),
+        source="fixture",
+    )
+
+    records = tasks.list_tasks()
+    assert len(records) == 1
+    assert records[0].status == "success"
+    assert records[0].attempts == 2
+    assert records[0].last_error is None
+    assert len(service.catalog.inventory()) == 1
