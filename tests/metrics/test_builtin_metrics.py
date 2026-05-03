@@ -70,3 +70,11 @@ def test_cash_ratio_trade_count_sharpe_handle_missing_and_zero_volatility() -> N
         "trade_count": 2.0,
         "sharpe_ratio": 0.0,
     }
+
+
+def test_cash_ratio_uses_latest_row_without_mixing_stale_cash() -> None:
+    context = make_context(pd.DataFrame({"equity": [100.0, 200.0], "cash": [50.0, None]}))
+
+    metrics = calculate_builtin_metrics(context, ["cash_ratio"])
+
+    assert metrics["cash_ratio"] == 0.0

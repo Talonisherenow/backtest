@@ -117,15 +117,19 @@ def _cash_ratio(equity_curve: object) -> float:
     if "cash" not in equity_curve or "equity" not in equity_curve:
         return 0.0
 
-    cash = pd.to_numeric(equity_curve["cash"], errors="coerce").dropna()
-    equity = pd.to_numeric(equity_curve["equity"], errors="coerce").dropna()
-    if cash.empty or equity.empty:
+    if equity_curve.empty:
         return 0.0
 
-    last_equity = float(equity.iloc[-1])
+    latest = equity_curve.iloc[-1]
+    cash = pd.to_numeric(pd.Series([latest["cash"]]), errors="coerce").iloc[0]
+    equity = pd.to_numeric(pd.Series([latest["equity"]]), errors="coerce").iloc[0]
+    if pd.isna(cash) or pd.isna(equity):
+        return 0.0
+
+    last_equity = float(equity)
     if last_equity == 0.0:
         return 0.0
-    return float(cash.iloc[-1] / last_equity)
+    return float(cash / last_equity)
 
 
 def _normalized_float(value: float) -> float:

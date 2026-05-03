@@ -23,7 +23,12 @@ class MetricRegistry:
         self._metrics.append(metric)
 
     def load_custom(self, path: str | Path, class_name: str) -> None:
-        metric_class = getattr(_load_module(Path(path)), class_name)
+        module_path = Path(path)
+        module = _load_module(module_path)
+        try:
+            metric_class = getattr(module, class_name)
+        except AttributeError as exc:
+            raise ValueError(f"Custom metric class '{class_name}' was not found in {module_path}") from exc
         self.register(metric_class())
 
     def calculate(

@@ -1,6 +1,7 @@
 import textwrap
 
 import pandas as pd
+import pytest
 
 from backtest.core.enums import MetricResultKind
 from backtest.metrics import BacktestResultContext, MetricRegistry
@@ -70,3 +71,12 @@ def test_registry_registers_metric_object_and_keys_by_result_name() -> None:
 
     assert list(results) == ["result_name"]
     assert results["result_name"].value == 7
+
+
+def test_registry_reports_path_and_class_when_custom_metric_class_is_missing(tmp_path) -> None:
+    metric_file = tmp_path / "custom_metric.py"
+    metric_file.write_text("class ExistingMetric:\n    pass\n", encoding="utf-8")
+    registry = MetricRegistry()
+
+    with pytest.raises(ValueError, match=r"MissingMetric.*custom_metric\.py"):
+        registry.load_custom(metric_file, "MissingMetric")
