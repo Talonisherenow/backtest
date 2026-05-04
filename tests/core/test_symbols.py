@@ -12,6 +12,10 @@ from backtest.core.symbols import normalize_symbol
         ("600519", "600519.SH"),
         ("sh600519", "600519.SH"),
         ("600519.SH", "600519.SH"),
+        ("430017", "430017.BJ"),
+        ("bj430017", "430017.BJ"),
+        ("430017.bj", "430017.BJ"),
+        ("873693", "873693.BJ"),
     ],
 )
 def test_normalize_symbol_accepts_common_a_share_forms(raw, expected):

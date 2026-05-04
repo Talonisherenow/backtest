@@ -9,12 +9,64 @@ from backtest.data.metadata import MetadataStore
 from backtest.data.service import DataSyncService
 from backtest.data.store import ParquetBarStore
 from backtest.data.tasks import CrawlTaskManager
+from backtest.data.universe import AkShareUniverseProvider, sample_universe_symbols
 
 app = typer.Typer(help="Manage market data cache, catalog, and crawl tasks")
 
 
 def _metadata_store(path: Path) -> MetadataStore:
     return MetadataStore(path)
+
+
+@app.command("universe")
+def universe(
+    output_path: Path = typer.Option(
+        Path("data/universe/a_share_all.csv"),
+        "--output",
+        help="Output CSV path for the all-board A-share universe",
+    ),
+) -> None:
+    """Fetch and write the current all-board A-share stock universe."""
+    try:
+        frame = AkShareUniverseProvider().fetch_a_share_universe()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_csv(output_path, index=False)
+    except Exception as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Wrote {len(frame)} symbols to {output_path}")
+
+
+@app.command("sample-pool")
+def sample_pool(
+    universe_path: Path = typer.Option(
+        ...,
+        "--universe",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Universe CSV produced by `backtest data universe`",
+    ),
+    size: int = typer.Option(..., "--size", min=1, help="Number of symbols to sample"),
+    seed: int = typer.Option(42, "--seed", help="Random seed for repeatable sampling"),
+    output_path: Path = typer.Option(
+        ...,
+        "--output",
+        help="Output text file with one normalized symbol per line",
+    ),
+) -> None:
+    """Sample a repeatable random stock pool from a universe CSV."""
+    try:
+        import pandas as pd
+
+        universe_frame = pd.read_csv(universe_path, dtype={"symbol": str, "code": str})
+        symbols = sample_universe_symbols(universe_frame, size=size, seed=seed)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("\n".join(symbols) + "\n", encoding="utf-8")
+    except Exception as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Wrote {len(symbols)} sampled symbols to {output_path}")
 
 
 @app.command("sync")

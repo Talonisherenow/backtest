@@ -2,7 +2,7 @@ from datetime import date
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from backtest.core.enums import AdjustMode, ExecutionTiming, Frequency
 from backtest.core.symbols import normalize_symbol
@@ -13,14 +13,15 @@ class ProjectConfig(BaseModel):
 
 
 class StockPoolConfig(BaseModel):
-    symbols: list[str]
+    symbols: list[str] = Field(default_factory=list)
+    symbols_file: Path | None = None
 
-    @field_validator("symbols")
-    @classmethod
-    def normalize_symbols(cls, value: list[str]) -> list[str]:
-        if not value:
-            raise ValueError("stock_pool.symbols must not be empty")
-        return [normalize_symbol(symbol) for symbol in value]
+    @model_validator(mode="after")
+    def validate_symbols_source(self) -> "StockPoolConfig":
+        if not self.symbols and self.symbols_file is None:
+            raise ValueError("stock_pool.symbols or stock_pool.symbols_file must not be empty")
+        self.symbols = [normalize_symbol(symbol) for symbol in self.symbols]
+        return self
 
 
 class DataConfig(BaseModel):

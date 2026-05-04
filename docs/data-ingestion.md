@@ -3,6 +3,8 @@
 ## Components
 
 - `AkShareProvider` fetches daily A-share bars from AkShare.
+- `AkShareUniverseProvider` fetches the current all-board A-share stock
+  universe from AkShare stock-list endpoints.
 - `DataSyncService` coordinates retries, missing range detection, provider
   fetches, store writes, catalog updates, and task status updates.
 - `ParquetBarStore` writes validated bars to partitioned Parquet files.
@@ -27,6 +29,50 @@ data/bars/
 adjust mode, and year, merges with an existing partition if present, drops
 duplicate `date + symbol` rows keeping the latest row, sorts by symbol/date, and
 atomically replaces the partition file.
+
+## A-share Universe
+
+The project can build a current all-board A-share universe before choosing
+which stocks to sync or backtest:
+
+```bash
+backtest data universe --output data/universe/a_share_all.csv
+```
+
+The AkShare universe provider combines these stock-list endpoints:
+
+- `stock_info_sh_name_code(symbol="主板A股")` for Shanghai main-board A shares.
+- `stock_info_sh_name_code(symbol="科创板")` for STAR Market shares.
+- `stock_info_sz_name_code(symbol="A股列表")` for Shenzhen main-board and
+  ChiNext shares.
+- `stock_info_bj_name_code()` for Beijing Stock Exchange shares.
+
+The normalized CSV columns are:
+
+```text
+symbol, code, name, exchange, board, list_date, industry
+```
+
+`symbol` is the project-wide normalized code, including `.SH`, `.SZ`, and `.BJ`.
+
+For a repeatable random stock batch, sample from the generated universe:
+
+```bash
+backtest data sample-pool \
+  --universe data/universe/a_share_all.csv \
+  --size 200 \
+  --seed 42 \
+  --output data/universe/sample_200_seed_42.txt
+```
+
+The sample output is a one-symbol-per-line file. Use it directly in a backtest
+config with:
+
+```yaml
+data:
+  stock_pool:
+    symbols_file: data/universe/sample_200_seed_42.txt
+```
 
 ## SQLite Metadata
 

@@ -2,9 +2,37 @@
 
 ## Symbols
 
-Use normalized A-share symbols in the form `000001.SZ` or `600519.SH`.
-`normalize_symbol()` also accepts six-digit symbols and `SZ000001`/`SH600519`
-style input, then converts them to the normalized form.
+Use normalized A-share symbols in the form `000001.SZ`, `600519.SH`, or
+`430017.BJ`. `normalize_symbol()` also accepts six-digit symbols and
+`SZ000001`/`SH600519`/`BJ430017` style input, then converts them to the
+normalized form.
+
+Bare six-digit symbols are inferred by exchange prefix:
+
+- `4` and `8` prefixes become `.BJ`.
+- `5`, `6`, and `9` prefixes become `.SH`.
+- Other prefixes become `.SZ`.
+
+## Stock Pool
+
+Backtest configs can provide a stock pool inline:
+
+```yaml
+stock_pool:
+  symbols:
+    - 000001.SZ
+    - 600519.SH
+```
+
+They can also point to a text or CSV symbol file:
+
+```yaml
+stock_pool:
+  symbols_file: data/universe/sample_200_seed_42.txt
+```
+
+Text files use one symbol per line. CSV files must contain a `symbol` column.
+Relative `symbols_file` paths are resolved from the config file directory.
 
 ## BarFrame
 

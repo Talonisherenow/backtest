@@ -366,7 +366,9 @@ stock_pool:
     - 600519.SH
 ```
 
-后续确定真实验证范围后，只需要批量替换每个 case 的 `data.start_date`、`data.end_date` 和 `stock_pool.symbols`。
+后续确定真实验证范围后，只需要批量替换每个 case 的 `data.start_date`、`data.end_date`
+和 `stock_pool.symbols`；如果使用随机抽样生成的批次文件，也可以改成
+`stock_pool.symbols_file` 指向 `backtest data sample-pool` 的输出。
 
 固定持有期 case 的目录含义：
 

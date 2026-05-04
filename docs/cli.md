@@ -36,6 +36,18 @@ currently run with an explicit `bars_override`.
 
 ## Data
 
+Fetch the current all-board A-share universe:
+
+```bash
+backtest data universe --output data/universe/a_share_all.csv
+```
+
+Create a repeatable random stock batch from that universe:
+
+```bash
+backtest data sample-pool --universe data/universe/a_share_all.csv --size 200 --seed 42 --output data/universe/sample_200_seed_42.txt
+```
+
 Sync missing data:
 
 ```bash
@@ -120,6 +132,14 @@ report:
   output_dir: runs
   html: true
   charts: true
+```
+
+For larger batches, `stock_pool` can reference a generated symbol file instead:
+
+```yaml
+data:
+  stock_pool:
+    symbols_file: data/universe/sample_200_seed_42.txt
 ```
 
 `report.html` is always written by the current `FileReportWriter`. The `html`

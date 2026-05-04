@@ -242,6 +242,68 @@ def test_data_retry_cli_marks_failed_tasks_retrying(tmp_path: Path):
     assert record.last_error is None
 
 
+def test_data_universe_cli_writes_provider_output(tmp_path: Path, monkeypatch):
+    output_path = tmp_path / "a_share_all.csv"
+
+    class FakeUniverseProvider:
+        def fetch_a_share_universe(self):
+            import pandas as pd
+
+            return pd.DataFrame(
+                {
+                    "symbol": ["600000.SH", "000001.SZ"],
+                    "code": ["600000", "000001"],
+                    "name": ["浦发银行", "平安银行"],
+                    "exchange": ["SH", "SZ"],
+                    "board": ["主板", "主板"],
+                    "list_date": ["1999-11-10", "1991-04-03"],
+                    "industry": ["", "J 金融业"],
+                }
+            )
+
+    monkeypatch.setattr(data_cli, "AkShareUniverseProvider", FakeUniverseProvider)
+
+    result = CliRunner().invoke(app, ["data", "universe", "--output", str(output_path)])
+
+    assert result.exit_code == 0
+    assert "Wrote 2 symbols" in result.output
+    assert "600000.SH" in output_path.read_text(encoding="utf-8")
+
+
+def test_data_sample_pool_cli_writes_seeded_random_symbols(tmp_path: Path):
+    universe_path = tmp_path / "universe.csv"
+    output_path = tmp_path / "sample.txt"
+    universe_path.write_text(
+        "symbol,code,name,exchange,board,list_date,industry\n"
+        "600000.SH,600000,浦发银行,SH,主板,1999-11-10,\n"
+        "000001.SZ,000001,平安银行,SZ,主板,1991-04-03,J 金融业\n"
+        "430017.BJ,430017,星昊医药,BJ,北交所,2023-06-20,医药制造业\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "data",
+            "sample-pool",
+            "--universe",
+            str(universe_path),
+            "--size",
+            "2",
+            "--seed",
+            "7",
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Wrote 2 sampled symbols" in result.output
+    symbols = output_path.read_text(encoding="utf-8").splitlines()
+    assert len(symbols) == 2
+    assert set(symbols).issubset({"600000.SH", "000001.SZ", "430017.BJ"})
+
+
 def test_crawl_task_manager_mark_retrying_accepts_integer_task_id():
     signature = inspect.signature(CrawlTaskManager.mark_retrying)
 
