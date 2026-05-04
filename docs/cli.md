@@ -16,6 +16,7 @@ Current command groups:
 ```text
 backtest run --config ...
 backtest data ...
+backtest chart ...
 backtest validate ...
 ```
 
@@ -79,6 +80,23 @@ backtest data retry --failed --metadata data/metadata.sqlite
 ```
 
 `data sync` currently supports `source: akshare` only.
+
+## Chart
+
+Build a reusable static K-line browser page from cached bars:
+
+```bash
+backtest chart viewer \
+  --bars-root data/bars \
+  --universe data/universe/board_sample_20_each_20260504_seed42_clean.csv \
+  --symbols-file data/universe/board_sample_20_each_20260504_seed42_clean.txt \
+  --output runs/charts/kline_viewer.html \
+  --limit 300
+```
+
+The output HTML embeds the selected cached bars, so it can be opened directly
+with `file://` and used to switch symbols, filter by board, search by code/name,
+and change the visible range.
 
 ## Validate
 

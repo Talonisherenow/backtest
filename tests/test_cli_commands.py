@@ -304,6 +304,79 @@ def test_data_sample_pool_cli_writes_seeded_random_symbols(tmp_path: Path):
     assert set(symbols).issubset({"600000.SH", "000001.SZ", "430017.BJ"})
 
 
+def test_chart_viewer_cli_writes_static_html(tmp_path: Path):
+    import pandas as pd
+
+    from backtest.data.store import ParquetBarStore
+
+    bars_root = tmp_path / "bars"
+    ParquetBarStore(bars_root).write_bars(
+        pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2025-01-02", "2025-01-03"]),
+                "symbol": ["000001.SZ", "000001.SZ"],
+                "open": [10.0, 10.5],
+                "high": [11.0, 11.2],
+                "low": [9.8, 10.1],
+                "close": [10.5, 10.8],
+                "volume": [1000, 1200],
+                "amount": [10500.0, 12960.0],
+                "frequency": ["1d", "1d"],
+                "adjust": ["qfq", "qfq"],
+            }
+        )
+    )
+    ParquetBarStore(bars_root).write_bars(
+        pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2025-01-02", "2025-01-03"]),
+                "symbol": ["600000.SH", "600000.SH"],
+                "open": [20.0, 20.5],
+                "high": [21.0, 21.2],
+                "low": [19.8, 20.1],
+                "close": [20.5, 20.8],
+                "volume": [2000, 2200],
+                "amount": [41000.0, 45760.0],
+                "frequency": ["1d", "1d"],
+                "adjust": ["qfq", "qfq"],
+            }
+        )
+    )
+    universe_path = tmp_path / "universe.csv"
+    universe_path.write_text(
+        "symbol,code,name,exchange,board,list_date,industry\n"
+        "000001.SZ,000001,平安银行,SZ,主板,1991-04-03,J 金融业\n",
+        encoding="utf-8",
+    )
+    symbols_path = tmp_path / "symbols.txt"
+    symbols_path.write_text("000001.SZ\n", encoding="utf-8")
+    output_path = tmp_path / "kline_viewer.html"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "chart",
+            "viewer",
+            "--bars-root",
+            str(bars_root),
+            "--universe",
+            str(universe_path),
+            "--symbols-file",
+            str(symbols_path),
+            "--output",
+            str(output_path),
+            "--limit",
+            "2",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Wrote K-line viewer for 1 symbols" in result.output
+    html = output_path.read_text(encoding="utf-8")
+    assert "000001.SZ" in html
+    assert "600000.SH" not in html
+
+
 def test_crawl_task_manager_mark_retrying_accepts_integer_task_id():
     signature = inspect.signature(CrawlTaskManager.mark_retrying)
 
