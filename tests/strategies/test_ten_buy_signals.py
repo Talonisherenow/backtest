@@ -72,6 +72,25 @@ def _assert_signal_on(frame: pd.DataFrame, expected_date: pd.Timestamp, symbol: 
     assert 0 < matched.iloc[0]["target_weight"] <= 1
 
 
+def _assert_target_weight(
+    frame: pd.DataFrame,
+    expected_date: pd.Timestamp,
+    expected_weight: float,
+    symbol: str = SYMBOL,
+) -> None:
+    matched = frame[(frame["date"] == expected_date) & (frame["symbol"] == symbol)]
+    assert not matched.empty
+    assert matched.iloc[0]["target_weight"] == expected_weight
+
+
+def _volume_breakout_bars_with_future_dates(length: int = 60) -> pd.DataFrame:
+    closes = [100.0] * length
+    closes[34] = 90.0
+    volumes = [1000.0] * length
+    volumes[34] = 2500.0
+    return _bars(closes, volumes=volumes)
+
+
 def test_buy_signal_01_volume_breakout_emits_signal() -> None:
     closes = [100.0] * 35
     closes[-1] = 90.0
@@ -215,6 +234,44 @@ def test_ten_buy_signal_configs_point_to_available_strategy_functions() -> None:
     config_paths = sorted(CASE_DIR.glob("buy_signal_*.yaml"))
 
     assert len(config_paths) == 10
+    for config_path in config_paths:
+        config = load_config(config_path)
+        assert config.signals.type == "python"
+        assert config.signals.path.resolve() == (Path.cwd() / "strategies/ten_buy_signals.py").resolve()
+        assert hasattr(ten_buy_signals, config.signals.function)
+
+
+def test_buy_signal_hold_1_exits_after_one_trading_day_in_position() -> None:
+    bars = _volume_breakout_bars_with_future_dates()
+
+    result = ten_buy_signals.generate_buy_signal_01_hold_1(_context(bars))
+
+    _assert_target_weight(result, bars.iloc[34]["date"], 0.20)
+    _assert_target_weight(result, bars.iloc[35]["date"], 0.0)
+
+
+def test_buy_signal_hold_5_exits_after_five_trading_days_in_position() -> None:
+    bars = _volume_breakout_bars_with_future_dates()
+
+    result = ten_buy_signals.generate_buy_signal_01_hold_5(_context(bars))
+
+    _assert_target_weight(result, bars.iloc[34]["date"], 0.20)
+    _assert_target_weight(result, bars.iloc[39]["date"], 0.0)
+
+
+def test_buy_signal_hold_20_exits_after_twenty_trading_days_in_position() -> None:
+    bars = _volume_breakout_bars_with_future_dates()
+
+    result = ten_buy_signals.generate_buy_signal_01_hold_20(_context(bars))
+
+    _assert_target_weight(result, bars.iloc[34]["date"], 0.20)
+    _assert_target_weight(result, bars.iloc[54]["date"], 0.0)
+
+
+def test_fixed_holding_configs_point_to_available_strategy_functions() -> None:
+    config_paths = sorted(CASE_DIR.glob("hold_*/buy_signal_*.yaml"))
+
+    assert len(config_paths) == 30
     for config_path in config_paths:
         config = load_config(config_path)
         assert config.signals.type == "python"

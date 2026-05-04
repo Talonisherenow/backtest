@@ -8,6 +8,7 @@ import pandas as pd
 SIGNAL_COLUMNS = ["date", "symbol", "target_weight"]
 BASE_TARGET_WEIGHT = 0.20
 NEAR_MA_TOLERANCE = 0.02
+FIXED_HOLDING_DAYS = (1, 5, 20)
 
 
 def _prepare_daily_bars(context) -> pd.DataFrame:
@@ -140,6 +141,73 @@ def _first_daily_after_weekly_setups(
     if not signal_rows:
         return _empty_signals()
     return _with_target_weights(pd.DataFrame(signal_rows))
+
+
+def _first_date_index_after(dates: list[pd.Timestamp], signal_date: pd.Timestamp) -> int | None:
+    for index, date_value in enumerate(dates):
+        if date_value > signal_date:
+            return index
+    return None
+
+
+def _signals_with_fixed_holding(
+    context,
+    entry_generator: Callable[[object], pd.DataFrame],
+    holding_days: int,
+) -> pd.DataFrame:
+    if holding_days < 1:
+        raise ValueError("holding_days must be at least 1")
+
+    daily = _prepare_daily_bars(context)
+    entry_candidates = entry_generator(context)
+    if daily.empty or entry_candidates.empty:
+        return _empty_signals()
+
+    dates_by_symbol = {
+        symbol: list(symbol_bars["date"].drop_duplicates().sort_values())
+        for symbol, symbol_bars in daily.groupby("symbol", sort=False)
+    }
+    selected_entries: list[dict[str, object]] = []
+    exit_rows: list[dict[str, object]] = []
+    active_exit_execution_index_by_symbol: dict[str, int] = {}
+
+    for entry in entry_candidates.sort_values(["date", "symbol"]).itertuples(index=False):
+        symbol = entry.symbol
+        symbol_dates = dates_by_symbol.get(symbol, [])
+        signal_date = pd.Timestamp(entry.date)
+        entry_execution_index = _first_date_index_after(symbol_dates, signal_date)
+        if entry_execution_index is None:
+            continue
+
+        exit_signal_index = entry_execution_index + holding_days - 1
+        exit_execution_index = exit_signal_index + 1
+        if exit_execution_index >= len(symbol_dates):
+            continue
+
+        active_until = active_exit_execution_index_by_symbol.get(symbol, -1)
+        if entry_execution_index <= active_until:
+            continue
+
+        selected_entries.append({"date": signal_date, "symbol": symbol})
+        exit_rows.append(
+            {
+                "date": symbol_dates[exit_signal_index],
+                "symbol": symbol,
+                "target_weight": 0.0,
+            }
+        )
+        active_exit_execution_index_by_symbol[symbol] = exit_execution_index
+
+    if not selected_entries:
+        return _empty_signals()
+
+    entry_signals = _with_target_weights(pd.DataFrame(selected_entries))
+    exit_signals = pd.DataFrame(exit_rows, columns=SIGNAL_COLUMNS)
+    return (
+        pd.concat([entry_signals, exit_signals], ignore_index=True)
+        .sort_values(["date", "symbol"])
+        .reset_index(drop=True)
+    )
 
 
 def generate_buy_signal_01(context) -> pd.DataFrame:
@@ -324,3 +392,41 @@ def generate_buy_signal_10(context) -> pd.DataFrame:
     bullish_close = bars["close"] > bars["open"]
     mask = oversold & volume_expands & bullish_close
     return _signals_from_mask(bars, mask)
+
+
+_BUY_SIGNAL_GENERATORS = {
+    1: generate_buy_signal_01,
+    2: generate_buy_signal_02,
+    3: generate_buy_signal_03,
+    4: generate_buy_signal_04,
+    5: generate_buy_signal_05,
+    6: generate_buy_signal_06,
+    7: generate_buy_signal_07,
+    8: generate_buy_signal_08,
+    9: generate_buy_signal_09,
+    10: generate_buy_signal_10,
+}
+
+
+def _make_fixed_holding_generator(
+    signal_number: int,
+    entry_generator: Callable[[object], pd.DataFrame],
+    holding_days: int,
+) -> Callable[[object], pd.DataFrame]:
+    def generate(context) -> pd.DataFrame:
+        return _signals_with_fixed_holding(context, entry_generator, holding_days)
+
+    generate.__name__ = f"generate_buy_signal_{signal_number:02d}_hold_{holding_days}"
+    generate.__doc__ = f"Buy signal {signal_number:02d} with a fixed {holding_days}-trading-day holding exit."
+    return generate
+
+
+for _signal_number, _entry_generator in _BUY_SIGNAL_GENERATORS.items():
+    for _holding_days in FIXED_HOLDING_DAYS:
+        globals()[f"generate_buy_signal_{_signal_number:02d}_hold_{_holding_days}"] = _make_fixed_holding_generator(
+            _signal_number,
+            _entry_generator,
+            _holding_days,
+        )
+
+del _signal_number, _entry_generator, _holding_days

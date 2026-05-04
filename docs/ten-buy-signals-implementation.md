@@ -16,7 +16,8 @@ date, symbol, target_weight
 | --- | --- |
 | 原始规则来源 | `docs/0504-十大买讯对应的量化公式.md` |
 | 策略代码实现 | `strategies/ten_buy_signals.py` |
-| 10 个回测 case | `configs/ten_buy_signals/*.yaml` |
+| 基础买入 case | `configs/ten_buy_signals/*.yaml` |
+| 固定持有期 case | `configs/ten_buy_signals/hold_1/*.yaml`、`hold_5/*.yaml`、`hold_20/*.yaml` |
 | 正例触发测试 | `tests/strategies/test_ten_buy_signals.py` |
 
 每个 case 都使用同一个策略文件，只是 `signals.function` 指向不同函数：
@@ -80,7 +81,33 @@ signals:
 - 如果同一天多只股票触发，会按触发数量平均分配，并限制单票不超过 20%；
 - 返回结果满足项目 `SignalFrame` 校验要求。
 
-当前实现只生成买入目标权重，不单独生成止损、清仓或持有期退出信号。
+基础函数只生成买入目标权重；固定持有期函数会额外生成 `target_weight = 0` 的退出信号。
+
+### 固定持有期退出
+
+为了观察 1、5、20 个交易日持有期下的表现，策略文件为每条买讯自动生成 3 个包装函数：
+
+```text
+generate_buy_signal_01_hold_1
+generate_buy_signal_01_hold_5
+generate_buy_signal_01_hold_20
+...
+generate_buy_signal_10_hold_1
+generate_buy_signal_10_hold_5
+generate_buy_signal_10_hold_20
+```
+
+实现入口是 `_signals_with_fixed_holding()`。它先调用原始买讯函数生成入场信号，再根据交易日序列补一条退出信号：
+
+```text
+买讯信号日 S
+下一交易日 B 实际买入
+持有 N 个交易日，B 算第 1 天
+第 N 个持有交易日 H 生成 target_weight = 0
+H 的下一交易日由 BrokerEngine 以 next_open 卖出
+```
+
+如果同一只股票在尚未完成上一笔固定持有期退出前再次触发买讯，包装逻辑会忽略后续重叠入场，避免同一持仓周期被重复买入信号打乱。若信号靠近回测末尾，未来交易日不足以完成卖出执行，则该入场会被跳过。
 
 ## 十条买讯映射
 
@@ -315,22 +342,22 @@ AND volume_t >= 2 * MA5(volume, 不含当日)
 AND close_t > open_t
 ```
 
-原始文档里的“持有 3-5 个交易日”和“-5% 止损”目前没有转换成退出信号；当前代码只负责首次放量反弹买入信号。
+原始文档里的“-5% 止损”目前没有转换成退出信号。固定持有期 case 可用于观察 1、5、20 个交易日退出下的表现，其中 `hold_5` 可作为“持有 3-5 个交易日”这一说法的简化版本。
 
 ## 回测 case 如何连接策略
 
-10 个 YAML case 的共同结构是：
+基础 10 个 YAML case 和固定持有期 30 个 YAML case 的共同结构是：
 
 | 配置块 | 作用 |
 | --- | --- |
 | `project.name` | 生成 run id 和报告名 |
 | `data` | 指定数据源、复权方式、日期范围、股票池 |
-| `signals` | 指向 `strategies/ten_buy_signals.py` 中的某个函数 |
+| `signals` | 指向 `strategies/ten_buy_signals.py` 中的某个基础函数或固定持有期函数 |
 | `execution` | 使用项目现有 A 股交易设置和 `next_open` 执行 |
 | `metrics` | 输出收益、年化、最大回撤、夏普、交易次数 |
 | `report` | 每个买讯输出到独立目录 |
 
-当前 10 个 case 使用相同占位股票池：
+当前 40 个 case 使用相同占位股票池：
 
 ```yaml
 stock_pool:
@@ -341,12 +368,21 @@ stock_pool:
 
 后续确定真实验证范围后，只需要批量替换每个 case 的 `data.start_date`、`data.end_date` 和 `stock_pool.symbols`。
 
+固定持有期 case 的目录含义：
+
+| 目录 | 含义 |
+| --- | --- |
+| `configs/ten_buy_signals/hold_1/` | 实际买入后持有 1 个交易日，再发出退出信号 |
+| `configs/ten_buy_signals/hold_5/` | 实际买入后持有 5 个交易日，再发出退出信号 |
+| `configs/ten_buy_signals/hold_20/` | 实际买入后持有 20 个交易日，再发出退出信号 |
+
 ## 测试覆盖关系
 
-`tests/strategies/test_ten_buy_signals.py` 做两类验证：
+`tests/strategies/test_ten_buy_signals.py` 做三类验证：
 
 1. 为每条买讯构造一段最小正例 K 线，确认对应 `generate_buy_signal_XX()` 至少能在应触发日期生成信号。
 2. 扫描 `configs/ten_buy_signals/buy_signal_*.yaml`，确认正好有 10 个 case，且每个 case 指向的策略函数真实存在。
+3. 验证 `hold_1`、`hold_5`、`hold_20` 会在预期交易日生成 `target_weight = 0`，并扫描 30 个固定持有期 case 是否指向真实函数。
 
 这些测试验证的是“公式到信号”的转换，不验证真实行情上的收益表现。
 
@@ -355,9 +391,9 @@ stock_pool:
 当前版本优先把 10 条买讯落成可回测的信号 case，以下部分需要等数据和执行需求进一步明确后扩展：
 
 - 分钟级买入点：原始文档多处提到“收盘前 5 分钟”或“盘中突破”，当前项目使用日线信号和 `next_open` 执行。
-- 止损和持有期退出：原始文档中的止损、持有 3-5 天、前高下方止损等尚未生成卖出信号。
+- 退出策略：固定持有期退出已支持 1、5、20 个交易日；止损、前高下方止损、次日确认等条件退出尚未实现。
 - 事件数据：买讯四目前使用技术替代版，没有接利空事件源。
 - 板块数据：买讯九暂以 `stock_pool` 前两只股票作为龙头，没有真实板块成分和龙头排名。
 - 资金管理参数：单票默认 20% 目标仓位是代码约定，后续可以改为从 `context.params` 或配置读取。
 
-这份映射文档可以作为后续接入真实数据、补充退出规则和扩展板块/事件数据时的索引。
+这份映射文档可以作为后续接入真实数据、补充止损/条件退出规则和扩展板块/事件数据时的索引。
