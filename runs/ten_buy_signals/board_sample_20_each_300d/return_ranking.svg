@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="932" viewBox="0 0 1280 932" role="img" aria-label="十大买讯回测收益排名">
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",Arial,sans-serif}.title{font-size:24px;font-weight:760;fill:#172033}.sub{font-size:13px;fill:#64748b}.label{font-size:13px;fill:#334155}.value{font-size:13px;font-weight:700}.grid{stroke:#e2e8f0;stroke-width:1}.zero{stroke:#475569;stroke-width:1.2}.barText{font-size:12px;fill:#ffffff;font-weight:700}</style>
+<rect width="100%" height="100%" rx="0" fill="#ffffff"/>
+<text x="24" y="28" class="title">十大买讯回测收益排名</text>
+<text x="24" y="45" class="sub">样本：100 支 A 股，每支 300 个交易日；退出：固定持有 1/5/20 个交易日</text>
+<line x1="340.8" y1="40" x2="340.8" y2="896" class="grid"/>
+<text x="340.8" y="914" text-anchor="middle" class="sub">-30.00%</text>
+<line x1="514.6" y1="40" x2="514.6" y2="896" class="grid"/>
+<text x="514.6" y="914" text-anchor="middle" class="sub">-20.00%</text>
+<line x1="688.4" y1="40" x2="688.4" y2="896" class="grid"/>
+<text x="688.4" y="914" text-anchor="middle" class="sub">-10.00%</text>
+<line x1="862.2" y1="40" x2="862.2" y2="896" class="zero"/>
+<text x="862.2" y="914" text-anchor="middle" class="sub">0.00%</text>
+<line x1="1036.0" y1="40" x2="1036.0" y2="896" class="grid"/>
+<text x="1036.0" y="914" text-anchor="middle" class="sub">10.00%</text>
+<text x="24" y="71" class="label">05 强势突破 / 持有5日</text>
+<rect x="300.0" y="52.0" width="562.2" height="20" rx="4" fill="#dc2626"/>
+<text x="292.0" y="71" text-anchor="end" class="value" fill="#dc2626">-32.34%</text>
+<text x="24" y="99" class="label">05 强势突破 / 持有1日</text>
+<rect x="314.0" y="80.0" width="548.2" height="20" rx="4" fill="#dc2626"/>
+<text x="306.0" y="99" text-anchor="end" class="value" fill="#dc2626">-31.54%</text>
+<text x="24" y="127" class="label">01 量增突破 / 持有5日</text>
+<rect x="651.0" y="108.0" width="211.2" height="20" rx="4" fill="#dc2626"/>
+<text x="643.0" y="127" text-anchor="end" class="value" fill="#dc2626">-12.15%</text>
+<text x="24" y="155" class="label">02 上涨回调 / 持有5日</text>
+<rect x="654.3" y="136.0" width="207.9" height="20" rx="4" fill="#dc2626"/>
+<text x="646.3" y="155" text-anchor="end" class="value" fill="#dc2626">-11.96%</text>
+<text x="24" y="183" class="label">05 强势突破 / 持有20日</text>
+<rect x="723.4" y="164.0" width="138.8" height="20" rx="4" fill="#d97706"/>
+<text x="715.4" y="183" text-anchor="end" class="value" fill="#d97706">-7.99%</text>
+<text x="24" y="211" class="label">02 上涨回调 / 持有1日</text>
+<rect x="738.3" y="192.0" width="123.9" height="20" rx="4" fill="#d97706"/>
+<text x="730.3" y="211" text-anchor="end" class="value" fill="#d97706">-7.13%</text>
+<text x="24" y="239" class="label">07 跳空反转 / 持有1日</text>
+<rect x="757.2" y="220.0" width="105.0" height="20" rx="4" fill="#d97706"/>
+<text x="749.2" y="239" text-anchor="end" class="value" fill="#d97706">-6.04%</text>
+<text x="24" y="267" class="label">01 量增突破 / 持有1日</text>
+<rect x="811.6" y="248.0" width="50.6" height="20" rx="4" fill="#d97706"/>
+<text x="803.6" y="267" text-anchor="end" class="value" fill="#d97706">-2.91%</text>
+<text x="24" y="295" class="label">06 周线收高 / 持有1日</text>
+<rect x="832.3" y="276.0" width="29.9" height="20" rx="4" fill="#d97706"/>
+<text x="824.3" y="295" text-anchor="end" class="value" fill="#d97706">-1.72%</text>
+<text x="24" y="323" class="label">09 板块领涨 / 持有1日</text>
+<rect x="853.9" y="304.0" width="8.3" height="20" rx="4" fill="#d97706"/>
+<text x="845.9" y="323" text-anchor="end" class="value" fill="#d97706">-0.48%</text>
+<text x="24" y="351" class="label">06 周线收高 / 持有20日</text>
+<rect x="854.4" y="332.0" width="7.8" height="20" rx="4" fill="#d97706"/>
+<text x="846.4" y="351" text-anchor="end" class="value" fill="#d97706">-0.45%</text>
+<text x="24" y="379" class="label">04 利空吸收 / 持有1日</text>
+<rect x="858.5" y="360.0" width="3.7" height="20" rx="4" fill="#d97706"/>
+<text x="850.5" y="379" text-anchor="end" class="value" fill="#d97706">-0.21%</text>
+<text x="24" y="407" class="label">10 超跌引力线 / 持有1日</text>
+<rect x="862.2" y="388.0" width="2.0" height="20" rx="4" fill="#65a30d"/>
+<text x="870.2" y="407" text-anchor="start" class="value" fill="#65a30d">0.00%</text>
+<text x="24" y="435" class="label">10 超跌引力线 / 持有20日</text>
+<rect x="862.2" y="416.0" width="2.0" height="20" rx="4" fill="#65a30d"/>
+<text x="870.2" y="435" text-anchor="start" class="value" fill="#65a30d">0.00%</text>
+<text x="24" y="463" class="label">10 超跌引力线 / 持有5日</text>
+<rect x="862.2" y="444.0" width="2.0" height="20" rx="4" fill="#65a30d"/>
+<text x="870.2" y="463" text-anchor="start" class="value" fill="#65a30d">0.00%</text>
+<text x="24" y="491" class="label">04 利空吸收 / 持有20日</text>
+<rect x="862.2" y="472.0" width="2.2" height="20" rx="4" fill="#65a30d"/>
+<text x="872.4" y="491" text-anchor="start" class="value" fill="#65a30d">0.13%</text>
+<text x="24" y="519" class="label">06 周线收高 / 持有5日</text>
+<rect x="862.2" y="500.0" width="17.2" height="20" rx="4" fill="#65a30d"/>
+<text x="887.4" y="519" text-anchor="start" class="value" fill="#65a30d">0.99%</text>
+<text x="24" y="547" class="label">09 板块领涨 / 持有5日</text>
+<rect x="862.2" y="528.0" width="23.5" height="20" rx="4" fill="#65a30d"/>
+<text x="893.7" y="547" text-anchor="start" class="value" fill="#65a30d">1.35%</text>
+<text x="24" y="575" class="label">07 跳空反转 / 持有5日</text>
+<rect x="862.2" y="556.0" width="31.0" height="20" rx="4" fill="#65a30d"/>
+<text x="901.2" y="575" text-anchor="start" class="value" fill="#65a30d">1.78%</text>
+<text x="24" y="603" class="label">03 周线缩量 / 持有1日</text>
+<rect x="862.2" y="584.0" width="51.9" height="20" rx="4" fill="#65a30d"/>
+<text x="922.1" y="603" text-anchor="start" class="value" fill="#65a30d">2.99%</text>
+<text x="24" y="631" class="label">09 板块领涨 / 持有20日</text>
+<rect x="862.2" y="612.0" width="57.0" height="20" rx="4" fill="#0f766e"/>
+<text x="927.2" y="631" text-anchor="start" class="value" fill="#0f766e">3.28%</text>
+<text x="24" y="659" class="label">08 两周连涨 / 持有1日</text>
+<rect x="862.2" y="640.0" width="60.1" height="20" rx="4" fill="#0f766e"/>
+<text x="930.3" y="659" text-anchor="start" class="value" fill="#0f766e">3.45%</text>
+<text x="24" y="687" class="label">04 利空吸收 / 持有5日</text>
+<rect x="862.2" y="668.0" width="61.1" height="20" rx="4" fill="#0f766e"/>
+<text x="931.3" y="687" text-anchor="start" class="value" fill="#0f766e">3.51%</text>
+<text x="24" y="715" class="label">03 周线缩量 / 持有5日</text>
+<rect x="862.2" y="696.0" width="111.4" height="20" rx="4" fill="#0f766e"/>
+<text x="981.6" y="715" text-anchor="start" class="value" fill="#0f766e">6.41%</text>
+<text x="24" y="743" class="label">08 两周连涨 / 持有5日</text>
+<rect x="862.2" y="724.0" width="121.4" height="20" rx="4" fill="#0f766e"/>
+<text x="991.6" y="743" text-anchor="start" class="value" fill="#0f766e">6.99%</text>
+<text x="24" y="771" class="label">07 跳空反转 / 持有20日</text>
+<rect x="862.2" y="752.0" width="142.3" height="20" rx="4" fill="#0f766e"/>
+<text x="1012.5" y="771" text-anchor="start" class="value" fill="#0f766e">8.19%</text>
+<text x="24" y="799" class="label">08 两周连涨 / 持有20日</text>
+<rect x="862.2" y="780.0" width="151.6" height="20" rx="4" fill="#0f766e"/>
+<text x="1021.8" y="799" text-anchor="start" class="value" fill="#0f766e">8.72%</text>
+<text x="24" y="827" class="label">03 周线缩量 / 持有20日</text>
+<rect x="862.2" y="808.0" width="194.1" height="20" rx="4" fill="#047857"/>
+<text x="1064.3" y="827" text-anchor="start" class="value" fill="#047857">11.17%</text>
+<text x="24" y="855" class="label">01 量增突破 / 持有20日</text>
+<rect x="862.2" y="836.0" width="263.1" height="20" rx="4" fill="#047857"/>
+<text x="1133.3" y="855" text-anchor="start" class="value" fill="#047857">15.13%</text>
+<text x="24" y="883" class="label">02 上涨回调 / 持有20日</text>
+<rect x="862.2" y="864.0" width="297.8" height="20" rx="4" fill="#047857"/>
+<text x="1168.0" y="883" text-anchor="start" class="value" fill="#047857">17.13%</text>
+</svg>

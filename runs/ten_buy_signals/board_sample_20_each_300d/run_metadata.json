@@ -1,0 +1,19 @@
+{
+  "sample_file": "data/universe/board_sample_20_each_20260504_seed42_clean.txt",
+  "sample_symbol_count": 100,
+  "bars_root": "data/bars",
+  "start_date": "2025-02-07",
+  "end_date": "2026-04-30",
+  "loaded_bar_rows": 30000,
+  "loaded_symbol_count": 100,
+  "min_bars_per_symbol": 300,
+  "max_bars_per_symbol": 300,
+  "holding_days": [
+    1,
+    5,
+    20
+  ],
+  "case_count": 30,
+  "successful_cases": 30,
+  "failed_cases": 0
+}

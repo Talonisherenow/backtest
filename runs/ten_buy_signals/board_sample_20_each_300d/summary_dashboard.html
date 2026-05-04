@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>十大买讯回测可视化结果</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --panel: #ffffff;
+      --page: #f5f7fa;
+      --teal: #0f766e;
+      --green: #047857;
+      --red: #dc2626;
+      --orange: #d97706;
+      --blue: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--page);
+      letter-spacing: 0;
+    }
+    .shell { max-width: 1280px; margin: 0 auto; padding: 28px 24px 48px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-size: 30px; line-height: 1.2; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
+    .badge { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 12px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+    .stat-card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgba(15, 23, 42, 0.05); }
+    .stat-card { padding: 16px; min-height: 118px; }
+    .stat-label { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+    .stat-main { font-size: 28px; font-weight: 780; line-height: 1.1; }
+    .stat-sub { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.5; }
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+    .neutral { color: var(--blue); }
+    .panels { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(340px, 0.6fr); gap: 16px; align-items: start; }
+    .panel { padding: 18px; margin-top: 16px; overflow: hidden; }
+    .panel h2 { margin: 0 0 12px; font-size: 18px; }
+    .panel p { color: var(--muted); margin: 6px 0 0; font-size: 13px; line-height: 1.6; }
+    .chart-wrap { overflow-x: auto; border-top: 1px solid var(--line); padding-top: 12px; }
+    svg { max-width: 100%; height: auto; display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; color: var(--muted); font-weight: 650; border-bottom: 1px solid var(--line); padding: 10px 8px; white-space: nowrap; }
+    td { border-bottom: 1px solid #edf2f7; padding: 10px 8px; vertical-align: middle; }
+    td span { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+    tr:hover td { background: #f8fafc; }
+    a { color: var(--blue); text-decoration: none; font-weight: 650; }
+    a:hover { text-decoration: underline; }
+    .rank { font-weight: 760; color: var(--muted); }
+    .metric { font-weight: 760; white-space: nowrap; }
+    .hold-row { display: grid; grid-template-columns: 82px 1fr 72px; align-items: center; gap: 10px; margin: 12px 0; }
+    .hold-name, .hold-value { font-size: 13px; font-weight: 700; }
+    .hold-track { height: 12px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+    .hold-bar { height: 100%; border-radius: 999px; }
+    .hold-bar.positive { background: var(--green); }
+    .hold-bar.negative { background: var(--red); }
+    .note { margin-top: 12px; padding: 12px; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: 13px; line-height: 1.6; }
+    .full-table { max-height: 620px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+    .full-table th { position: sticky; top: 0; background: #ffffff; z-index: 1; }
+    @media (max-width: 980px) {
+      .grid, .panels { grid-template-columns: 1fr; }
+      header { display: block; }
+      .badge { display: inline-block; margin-top: 12px; }
+      .shell { padding: 20px 14px 36px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <h1>十大买讯回测可视化结果</h1>
+        <p class="subtitle">基于已缓存的 100 支 A 股样本、近 300 个交易日数据；每个买讯分别使用固定持有 1/5/20 日退出。</p>
+      </div>
+      <div class="badge">30 个 case · 0 个失败 · 数据区间 2025-02-07 至 2026-04-30</div>
+    </header>
+
+    <section class="grid">
+      <div class="stat-card">
+        <div class="stat-label">收益最高</div>
+        <div class="stat-main positive">17.13%</div>
+        <div class="stat-sub">02 上涨回调 · 持有 20 日</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">正收益 case</div>
+        <div class="stat-main neutral">15/30</div>
+        <div class="stat-sub">用于快速观察策略触发后的胜率倾向</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">平均收益最好的持有期</div>
+        <div class="stat-main positive">持有 20 日</div>
+        <div class="stat-sub">平均收益 5.53%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">收益最低</div>
+        <div class="stat-main negative">-32.34%</div>
+        <div class="stat-sub">05 强势突破 · 持有 5 日</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>收益排名</h2>
+      <p>横轴是总收益率，绿色为正收益，红色为负收益。整体看这批样本中 20 日持有明显更占优。</p>
+      <div class="chart-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="1280" height="932" viewBox="0 0 1280 932" role="img" aria-label="十大买讯回测收益排名">
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",Arial,sans-serif}.title{font-size:24px;font-weight:760;fill:#172033}.sub{font-size:13px;fill:#64748b}.label{font-size:13px;fill:#334155}.value{font-size:13px;font-weight:700}.grid{stroke:#e2e8f0;stroke-width:1}.zero{stroke:#475569;stroke-width:1.2}.barText{font-size:12px;fill:#ffffff;font-weight:700}</style>
+<rect width="100%" height="100%" rx="0" fill="#ffffff"/>
+<text x="24" y="28" class="title">十大买讯回测收益排名</text>
+<text x="24" y="45" class="sub">样本：100 支 A 股，每支 300 个交易日；退出：固定持有 1/5/20 个交易日</text>
+<line x1="340.8" y1="40" x2="340.8" y2="896" class="grid"/>
+<text x="340.8" y="914" text-anchor="middle" class="sub">-30.00%</text>
+<line x1="514.6" y1="40" x2="514.6" y2="896" class="grid"/>
+<text x="514.6" y="914" text-anchor="middle" class="sub">-20.00%</text>
+<line x1="688.4" y1="40" x2="688.4" y2="896" class="grid"/>
+<text x="688.4" y="914" text-anchor="middle" class="sub">-10.00%</text>
+<line x1="862.2" y1="40" x2="862.2" y2="896" class="zero"/>
+<text x="862.2" y="914" text-anchor="middle" class="sub">0.00%</text>
+<line x1="1036.0" y1="40" x2="1036.0" y2="896" class="grid"/>
+<text x="1036.0" y="914" text-anchor="middle" class="sub">10.00%</text>
+<text x="24" y="71" class="label">05 强势突破 / 持有5日</text>
+<rect x="300.0" y="52.0" width="562.2" height="20" rx="4" fill="#dc2626"/>
+<text x="292.0" y="71" text-anchor="end" class="value" fill="#dc2626">-32.34%</text>
+<text x="24" y="99" class="label">05 强势突破 / 持有1日</text>
+<rect x="314.0" y="80.0" width="548.2" height="20" rx="4" fill="#dc2626"/>
+<text x="306.0" y="99" text-anchor="end" class="value" fill="#dc2626">-31.54%</text>
+<text x="24" y="127" class="label">01 量增突破 / 持有5日</text>
+<rect x="651.0" y="108.0" width="211.2" height="20" rx="4" fill="#dc2626"/>
+<text x="643.0" y="127" text-anchor="end" class="value" fill="#dc2626">-12.15%</text>
+<text x="24" y="155" class="label">02 上涨回调 / 持有5日</text>
+<rect x="654.3" y="136.0" width="207.9" height="20" rx="4" fill="#dc2626"/>
+<text x="646.3" y="155" text-anchor="end" class="value" fill="#dc2626">-11.96%</text>
+<text x="24" y="183" class="label">05 强势突破 / 持有20日</text>
+<rect x="723.4" y="164.0" width="138.8" height="20" rx="4" fill="#d97706"/>
+<text x="715.4" y="183" text-anchor="end" class="value" fill="#d97706">-7.99%</text>
+<text x="24" y="211" class="label">02 上涨回调 / 持有1日</text>
+<rect x="738.3" y="192.0" width="123.9" height="20" rx="4" fill="#d97706"/>
+<text x="730.3" y="211" text-anchor="end" class="value" fill="#d97706">-7.13%</text>
+<text x="24" y="239" class="label">07 跳空反转 / 持有1日</text>
+<rect x="757.2" y="220.0" width="105.0" height="20" rx="4" fill="#d97706"/>
+<text x="749.2" y="239" text-anchor="end" class="value" fill="#d97706">-6.04%</text>
+<text x="24" y="267" class="label">01 量增突破 / 持有1日</text>
+<rect x="811.6" y="248.0" width="50.6" height="20" rx="4" fill="#d97706"/>
+<text x="803.6" y="267" text-anchor="end" class="value" fill="#d97706">-2.91%</text>
+<text x="24" y="295" class="label">06 周线收高 / 持有1日</text>
+<rect x="832.3" y="276.0" width="29.9" height="20" rx="4" fill="#d97706"/>
+<text x="824.3" y="295" text-anchor="end" class="value" fill="#d97706">-1.72%</text>
+<text x="24" y="323" class="label">09 板块领涨 / 持有1日</text>
+<rect x="853.9" y="304.0" width="8.3" height="20" rx="4" fill="#d97706"/>
+<text x="845.9" y="323" text-anchor="end" class="value" fill="#d97706">-0.48%</text>
+<text x="24" y="351" class="label">06 周线收高 / 持有20日</text>
+<rect x="854.4" y="332.0" width="7.8" height="20" rx="4" fill="#d97706"/>
+<text x="846.4" y="351" text-anchor="end" class="value" fill="#d97706">-0.45%</text>
+<text x="24" y="379" class="label">04 利空吸收 / 持有1日</text>
+<rect x="858.5" y="360.0" width="3.7" height="20" rx="4" fill="#d97706"/>
+<text x="850.5" y="379" text-anchor="end" class="value" fill="#d97706">-0.21%</text>
+<text x="24" y="407" class="label">10 超跌引力线 / 持有1日</text>
+<rect x="862.2" y="388.0" width="2.0" height="20" rx="4" fill="#65a30d"/>
+<text x="870.2" y="407" text-anchor="start" class="value" fill="#65a30d">0.00%</text>
+<text x="24" y="435" class="label">10 超跌引力线 / 持有20日</text>
+<rect x="862.2" y="416.0" width="2.0" height="20" rx="4" fill="#65a30d"/>
+<text x="870.2" y="435" text-anchor="start" class="value" fill="#65a30d">0.00%</text>
+<text x="24" y="463" class="label">10 超跌引力线 / 持有5日</text>
+<rect x="862.2" y="444.0" width="2.0" height="20" rx="4" fill="#65a30d"/>
+<text x="870.2" y="463" text-anchor="start" class="value" fill="#65a30d">0.00%</text>
+<text x="24" y="491" class="label">04 利空吸收 / 持有20日</text>
+<rect x="862.2" y="472.0" width="2.2" height="20" rx="4" fill="#65a30d"/>
+<text x="872.4" y="491" text-anchor="start" class="value" fill="#65a30d">0.13%</text>
+<text x="24" y="519" class="label">06 周线收高 / 持有5日</text>
+<rect x="862.2" y="500.0" width="17.2" height="20" rx="4" fill="#65a30d"/>
+<text x="887.4" y="519" text-anchor="start" class="value" fill="#65a30d">0.99%</text>
+<text x="24" y="547" class="label">09 板块领涨 / 持有5日</text>
+<rect x="862.2" y="528.0" width="23.5" height="20" rx="4" fill="#65a30d"/>
+<text x="893.7" y="547" text-anchor="start" class="value" fill="#65a30d">1.35%</text>
+<text x="24" y="575" class="label">07 跳空反转 / 持有5日</text>
+<rect x="862.2" y="556.0" width="31.0" height="20" rx="4" fill="#65a30d"/>
+<text x="901.2" y="575" text-anchor="start" class="value" fill="#65a30d">1.78%</text>
+<text x="24" y="603" class="label">03 周线缩量 / 持有1日</text>
+<rect x="862.2" y="584.0" width="51.9" height="20" rx="4" fill="#65a30d"/>
+<text x="922.1" y="603" text-anchor="start" class="value" fill="#65a30d">2.99%</text>
+<text x="24" y="631" class="label">09 板块领涨 / 持有20日</text>
+<rect x="862.2" y="612.0" width="57.0" height="20" rx="4" fill="#0f766e"/>
+<text x="927.2" y="631" text-anchor="start" class="value" fill="#0f766e">3.28%</text>
+<text x="24" y="659" class="label">08 两周连涨 / 持有1日</text>
+<rect x="862.2" y="640.0" width="60.1" height="20" rx="4" fill="#0f766e"/>
+<text x="930.3" y="659" text-anchor="start" class="value" fill="#0f766e">3.45%</text>
+<text x="24" y="687" class="label">04 利空吸收 / 持有5日</text>
+<rect x="862.2" y="668.0" width="61.1" height="20" rx="4" fill="#0f766e"/>
+<text x="931.3" y="687" text-anchor="start" class="value" fill="#0f766e">3.51%</text>
+<text x="24" y="715" class="label">03 周线缩量 / 持有5日</text>
+<rect x="862.2" y="696.0" width="111.4" height="20" rx="4" fill="#0f766e"/>
+<text x="981.6" y="715" text-anchor="start" class="value" fill="#0f766e">6.41%</text>
+<text x="24" y="743" class="label">08 两周连涨 / 持有5日</text>
+<rect x="862.2" y="724.0" width="121.4" height="20" rx="4" fill="#0f766e"/>
+<text x="991.6" y="743" text-anchor="start" class="value" fill="#0f766e">6.99%</text>
+<text x="24" y="771" class="label">07 跳空反转 / 持有20日</text>
+<rect x="862.2" y="752.0" width="142.3" height="20" rx="4" fill="#0f766e"/>
+<text x="1012.5" y="771" text-anchor="start" class="value" fill="#0f766e">8.19%</text>
+<text x="24" y="799" class="label">08 两周连涨 / 持有20日</text>
+<rect x="862.2" y="780.0" width="151.6" height="20" rx="4" fill="#0f766e"/>
+<text x="1021.8" y="799" text-anchor="start" class="value" fill="#0f766e">8.72%</text>
+<text x="24" y="827" class="label">03 周线缩量 / 持有20日</text>
+<rect x="862.2" y="808.0" width="194.1" height="20" rx="4" fill="#047857"/>
+<text x="1064.3" y="827" text-anchor="start" class="value" fill="#047857">11.17%</text>
+<text x="24" y="855" class="label">01 量增突破 / 持有20日</text>
+<rect x="862.2" y="836.0" width="263.1" height="20" rx="4" fill="#047857"/>
+<text x="1133.3" y="855" text-anchor="start" class="value" fill="#047857">15.13%</text>
+<text x="24" y="883" class="label">02 上涨回调 / 持有20日</text>
+<rect x="862.2" y="864.0" width="297.8" height="20" rx="4" fill="#047857"/>
+<text x="1168.0" y="883" text-anchor="start" class="value" fill="#047857">17.13%</text>
+</svg></div>
+    </section>
+
+    <section class="panels">
+      <div class="panel">
+        <h2>买讯与持有期热力图</h2>
+        <div class="chart-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="960" height="526" viewBox="0 0 960 526" role="img" aria-label="十大买讯持有期收益热力图">
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",Arial,sans-serif}.title{font-size:22px;font-weight:760;fill:#172033}.sub{font-size:13px;fill:#64748b}.axis{font-size:13px;font-weight:700;fill:#334155}.cellText{font-size:14px;font-weight:760;fill:#172033}.small{font-size:12px;fill:#64748b}</style>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="24" y="28" class="title">买讯 × 持有期收益热力图</text>
+<text x="24" y="46" class="sub">绿色更强，红色更弱；单元格为总收益率</text>
+<text x="257.0" y="42" text-anchor="middle" class="axis">持有 1 日</text>
+<text x="435.0" y="42" text-anchor="middle" class="axis">持有 5 日</text>
+<text x="613.0" y="42" text-anchor="middle" class="axis">持有 20 日</text>
+<text x="24" y="85" class="axis">01 量增突破</text>
+<rect x="168" y="58" width="168" height="34" rx="7" fill="#f9d4d4" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="82" text-anchor="middle" class="cellText">-2.91%</text>
+<rect x="346" y="58" width="168" height="34" rx="7" fill="#e97676" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="82" text-anchor="middle" class="cellText">-12.15%</text>
+<rect x="524" y="58" width="168" height="34" rx="7" fill="#46958f" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="82" text-anchor="middle" class="cellText">15.13%</text>
+<text x="24" y="127" class="axis">02 上涨回调</text>
+<rect x="168" y="100" width="168" height="34" rx="7" fill="#f1a9a9" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="124" text-anchor="middle" class="cellText">-7.13%</text>
+<rect x="346" y="100" width="168" height="34" rx="7" fill="#e97777" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="124" text-anchor="middle" class="cellText">-11.96%</text>
+<rect x="524" y="100" width="168" height="34" rx="7" fill="#2f8881" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="124" text-anchor="middle" class="cellText">17.13%</text>
+<text x="24" y="169" class="axis">03 周线缩量</text>
+<rect x="168" y="142" width="168" height="34" rx="7" fill="#d1e4e1" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="166" text-anchor="middle" class="cellText">2.99%</text>
+<rect x="346" y="142" width="168" height="34" rx="7" fill="#aaceca" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="166" text-anchor="middle" class="cellText">6.41%</text>
+<rect x="524" y="142" width="168" height="34" rx="7" fill="#74afaa" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="166" text-anchor="middle" class="cellText">11.17%</text>
+<text x="24" y="211" class="axis">04 利空吸收</text>
+<rect x="168" y="184" width="168" height="34" rx="7" fill="#fdefef" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="208" text-anchor="middle" class="cellText">-0.21%</text>
+<rect x="346" y="184" width="168" height="34" rx="7" fill="#cbe1de" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="208" text-anchor="middle" class="cellText">3.51%</text>
+<rect x="524" y="184" width="168" height="34" rx="7" fill="#f2f7f5" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="208" text-anchor="middle" class="cellText">0.13%</text>
+<text x="24" y="253" class="axis">05 强势突破</text>
+<rect x="168" y="226" width="168" height="34" rx="7" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="250" text-anchor="middle" class="cellText">-31.54%</text>
+<rect x="346" y="226" width="168" height="34" rx="7" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="250" text-anchor="middle" class="cellText">-32.34%</text>
+<rect x="524" y="226" width="168" height="34" rx="7" fill="#f0a0a0" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="250" text-anchor="middle" class="cellText">-7.99%</text>
+<text x="24" y="295" class="axis">06 周线收高</text>
+<rect x="168" y="268" width="168" height="34" rx="7" fill="#fbe0e0" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="292" text-anchor="middle" class="cellText">-1.72%</text>
+<rect x="346" y="268" width="168" height="34" rx="7" fill="#e8f1ef" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="292" text-anchor="middle" class="cellText">0.99%</text>
+<rect x="524" y="268" width="168" height="34" rx="7" fill="#fdeded" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="292" text-anchor="middle" class="cellText">-0.45%</text>
+<text x="24" y="337" class="axis">07 跳空反转</text>
+<rect x="168" y="310" width="168" height="34" rx="7" fill="#f3b4b4" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="334" text-anchor="middle" class="cellText">-6.04%</text>
+<rect x="346" y="310" width="168" height="34" rx="7" fill="#dfece9" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="334" text-anchor="middle" class="cellText">1.78%</text>
+<rect x="524" y="310" width="168" height="34" rx="7" fill="#96c2be" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="334" text-anchor="middle" class="cellText">8.19%</text>
+<text x="24" y="379" class="axis">08 两周连涨</text>
+<rect x="168" y="352" width="168" height="34" rx="7" fill="#cce1de" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="376" text-anchor="middle" class="cellText">3.45%</text>
+<rect x="346" y="352" width="168" height="34" rx="7" fill="#a4cac6" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="376" text-anchor="middle" class="cellText">6.99%</text>
+<rect x="524" y="352" width="168" height="34" rx="7" fill="#90bfba" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="376" text-anchor="middle" class="cellText">8.72%</text>
+<text x="24" y="421" class="axis">09 板块领涨</text>
+<rect x="168" y="394" width="168" height="34" rx="7" fill="#fdeded" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="418" text-anchor="middle" class="cellText">-0.48%</text>
+<rect x="346" y="394" width="168" height="34" rx="7" fill="#e4efec" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="418" text-anchor="middle" class="cellText">1.35%</text>
+<rect x="524" y="394" width="168" height="34" rx="7" fill="#cee2df" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="418" text-anchor="middle" class="cellText">3.28%</text>
+<text x="24" y="463" class="axis">10 超跌引力线</text>
+<rect x="168" y="436" width="168" height="34" rx="7" fill="#f4f8f6" stroke="#ffffff" stroke-width="2"/>
+<text x="252.0" y="460" text-anchor="middle" class="cellText">0.00%</text>
+<rect x="346" y="436" width="168" height="34" rx="7" fill="#f4f8f6" stroke="#ffffff" stroke-width="2"/>
+<text x="430.0" y="460" text-anchor="middle" class="cellText">0.00%</text>
+<rect x="524" y="436" width="168" height="34" rx="7" fill="#f4f8f6" stroke="#ffffff" stroke-width="2"/>
+<text x="608.0" y="460" text-anchor="middle" class="cellText">0.00%</text>
+</svg></div>
+      </div>
+      <div class="panel">
+        <h2>持有期平均收益</h2>
+        
+        <div class="hold-row">
+          <div class="hold-name">持有 1 日</div>
+          <div class="hold-track"><div class="hold-bar negative" style="width:78.79%"></div></div>
+          <div class="hold-value negative">-4.36%</div>
+        </div>
+        
+        <div class="hold-row">
+          <div class="hold-name">持有 5 日</div>
+          <div class="hold-track"><div class="hold-bar negative" style="width:64.05%"></div></div>
+          <div class="hold-value negative">-3.54%</div>
+        </div>
+        
+        <div class="hold-row">
+          <div class="hold-name">持有 20 日</div>
+          <div class="hold-track"><div class="hold-bar positive" style="width:100.00%"></div></div>
+          <div class="hold-value positive">5.53%</div>
+        </div>
+        
+        <p>这里按每个持有期下的 10 个买讯取平均，只用于粗看退出周期，不代表单个策略优劣。</p>
+        <div class="note">注意：买讯10在三个持有期里都没有触发入场信号，因此收益为 0。</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Top 10 收益明细</h2>
+      <div class="full-table">
+        <table>
+          <thead><tr><th>#</th><th>买讯</th><th>退出</th><th>总收益</th><th>最大回撤</th><th>Sharpe</th><th>入场信号</th><th>报告</th></tr></thead>
+          <tbody>
+        <tr>
+          <td class="rank">1</td>
+          <td><strong>02 上涨回调</strong><span>rising_price_pullback</span></td>
+          <td>持有 20 日</td>
+          <td class="metric positive">17.13%</td>
+          <td>-12.00%</td>
+          <td>0.85</td>
+          <td>102</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_02_rising_price_pullback/ten-buy-signal-02-rising_price_pullback-hold-20-board-sample-300d_20260504T155847605836Z/report.html">报告</a></td>
+        </tr>
+        
+        <tr>
+          <td class="rank">2</td>
+          <td><strong>01 量增突破</strong><span>volume_breakout</span></td>
+          <td>持有 20 日</td>
+          <td class="metric positive">15.13%</td>
+          <td>-17.00%</td>
+          <td>0.62</td>
+          <td>198</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_01_volume_breakout/ten-buy-signal-01-volume_breakout-hold-20-board-sample-300d_20260504T155846702530Z/report.html">报告</a></td>
+        </tr>
+        
+        <tr>
+          <td class="rank">3</td>
+          <td><strong>03 周线缩量</strong><span>weekly_volume_contraction</span></td>
+          <td>持有 20 日</td>
+          <td class="metric positive">11.17%</td>
+          <td>-22.57%</td>
+          <td>0.68</td>
+          <td>54</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_03_weekly_volume_contraction/ten-buy-signal-03-weekly_volume_contraction-hold-20-board-sample-300d_20260504T155848764651Z/report.html">报告</a></td>
+        </tr>
+        
+        <tr>
+          <td class="rank">4</td>
+          <td><strong>08 两周连涨</strong><span>two_weekly_up_volume</span></td>
+          <td>持有 20 日</td>
+          <td class="metric positive">8.72%</td>
+          <td>-23.47%</td>
+          <td>0.41</td>
+          <td>314</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_08_two_weekly_up_volume/ten-buy-signal-08-two_weekly_up_volume-hold-20-board-sample-300d_20260504T155852865898Z/report.html">报告</a></td>
+        </tr>
+        
+        <tr>
+          <td class="rank">5</td>
+          <td><strong>07 跳空反转</strong><span>gap_down_reversal</span></td>
+          <td>持有 20 日</td>
+          <td class="metric positive">8.19%</td>
+          <td>-21.44%</td>
+          <td>0.40</td>
+          <td>35</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_07_gap_down_reversal/ten-buy-signal-07-gap_down_reversal-hold-20-board-sample-300d_20260504T155851531597Z/report.html">报告</a></td>
+        </tr>
+        
+        <tr>
+          <td class="rank">6</td>
+          <td><strong>08 两周连涨</strong><span>two_weekly_up_volume</span></td>
+          <td>持有 5 日</td>
+          <td class="metric positive">6.99%</td>
+          <td>-24.70%</td>
+          <td>0.37</td>
+          <td>370</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_08_two_weekly_up_volume/ten-buy-signal-08-two_weekly_up_volume-hold-5-board-sample-300d_20260504T155844811321Z/report.html">报告</a></td>
+        </tr>
+        
+        <tr>
+          <td class="rank">7</td>
+          <td><strong>03 周线缩量</strong><span>weekly_volume_contraction</span></td>
+          <td>持有 5 日</td>
+          <td class="metric positive">6.41%</td>
+          <td>-5.76%</td>
+          <td>0.61</td>
+          <td>70</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_03_weekly_volume_contraction/ten-buy-signal-03-weekly_volume_contraction-hold-5-board-sample-300d_20260504T155840264969Z/report.html">报告</a></td>
+        </tr>
+        
+        <tr>
+          <td class="rank">8</td>
+          <td><strong>04 利空吸收</strong><span>bad_news_absorption</span></td>
+          <td>持有 5 日</td>
+          <td class="metric positive">3.51%</td>
+          <td>-6.16%</td>
+          <td>0.84</td>
+          <td>25</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_04_bad_news_absorption/ten-buy-signal-04-bad_news_absorption-hold-5-board-sample-300d_20260504T155840796116Z/report.html">报告</a></td>
+        </tr>
+        
+        <tr>
+          <td class="rank">9</td>
+          <td><strong>08 两周连涨</strong><span>two_weekly_up_volume</span></td>
+          <td>持有 1 日</td>
+          <td class="metric positive">3.45%</td>
+          <td>-6.45%</td>
+          <td>0.32</td>
+          <td>486</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_08_two_weekly_up_volume/ten-buy-signal-08-two_weekly_up_volume-hold-1-board-sample-300d_20260504T155835681149Z/report.html">报告</a></td>
+        </tr>
+        
+        <tr>
+          <td class="rank">10</td>
+          <td><strong>09 板块领涨</strong><span>sector_leaders</span></td>
+          <td>持有 20 日</td>
+          <td class="metric positive">3.28%</td>
+          <td>-3.95%</td>
+          <td>0.80</td>
+          <td>2</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_09_sector_leaders/ten-buy-signal-09-sector_leaders-hold-20-board-sample-300d_20260504T155853292367Z/report.html">报告</a></td>
+        </tr>
+        </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>全部 30 个 case</h2>
+      <div class="full-table">
+        <table>
+          <thead><tr><th>买讯</th><th>退出</th><th>总收益</th><th>年化收益</th><th>最大回撤</th><th>Sharpe</th><th>入场信号</th><th>成交</th><th>期末权益</th><th>报告</th></tr></thead>
+          <tbody>
+        <tr>
+          <td>02 上涨回调</td>
+          <td>持有 20 日</td>
+          <td class="metric positive">17.13%</td>
+          <td>14.79%</td>
+          <td>-12.00%</td>
+          <td>0.85</td>
+          <td>102</td>
+          <td>122</td>
+          <td>1,171,330.04</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_02_rising_price_pullback/ten-buy-signal-02-rising_price_pullback-hold-20-board-sample-300d_20260504T155847605836Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>01 量增突破</td>
+          <td>持有 20 日</td>
+          <td class="metric positive">15.13%</td>
+          <td>14.17%</td>
+          <td>-17.00%</td>
+          <td>0.62</td>
+          <td>198</td>
+          <td>158</td>
+          <td>1,151,347.11</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_01_volume_breakout/ten-buy-signal-01-volume_breakout-hold-20-board-sample-300d_20260504T155846702530Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>03 周线缩量</td>
+          <td>持有 20 日</td>
+          <td class="metric positive">11.17%</td>
+          <td>10.90%</td>
+          <td>-22.57%</td>
+          <td>0.68</td>
+          <td>54</td>
+          <td>70</td>
+          <td>1,111,689.53</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_03_weekly_volume_contraction/ten-buy-signal-03-weekly_volume_contraction-hold-20-board-sample-300d_20260504T155848764651Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>08 两周连涨</td>
+          <td>持有 20 日</td>
+          <td class="metric positive">8.72%</td>
+          <td>8.00%</td>
+          <td>-23.47%</td>
+          <td>0.41</td>
+          <td>314</td>
+          <td>288</td>
+          <td>1,087,237.82</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_08_two_weekly_up_volume/ten-buy-signal-08-two_weekly_up_volume-hold-20-board-sample-300d_20260504T155852865898Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>07 跳空反转</td>
+          <td>持有 20 日</td>
+          <td class="metric positive">8.19%</td>
+          <td>6.98%</td>
+          <td>-21.44%</td>
+          <td>0.40</td>
+          <td>35</td>
+          <td>54</td>
+          <td>1,081,878.85</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_07_gap_down_reversal/ten-buy-signal-07-gap_down_reversal-hold-20-board-sample-300d_20260504T155851531597Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>08 两周连涨</td>
+          <td>持有 5 日</td>
+          <td class="metric positive">6.99%</td>
+          <td>6.41%</td>
+          <td>-24.70%</td>
+          <td>0.37</td>
+          <td>370</td>
+          <td>694</td>
+          <td>1,069,850.19</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_08_two_weekly_up_volume/ten-buy-signal-08-two_weekly_up_volume-hold-5-board-sample-300d_20260504T155844811321Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>03 周线缩量</td>
+          <td>持有 5 日</td>
+          <td class="metric positive">6.41%</td>
+          <td>6.26%</td>
+          <td>-5.76%</td>
+          <td>0.61</td>
+          <td>70</td>
+          <td>108</td>
+          <td>1,064,095.67</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_03_weekly_volume_contraction/ten-buy-signal-03-weekly_volume_contraction-hold-5-board-sample-300d_20260504T155840264969Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>04 利空吸收</td>
+          <td>持有 5 日</td>
+          <td class="metric positive">3.51%</td>
+          <td>9.49%</td>
+          <td>-6.16%</td>
+          <td>0.84</td>
+          <td>25</td>
+          <td>50</td>
+          <td>1,035,134.27</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_04_bad_news_absorption/ten-buy-signal-04-bad_news_absorption-hold-5-board-sample-300d_20260504T155840796116Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>08 两周连涨</td>
+          <td>持有 1 日</td>
+          <td class="metric positive">3.45%</td>
+          <td>3.17%</td>
+          <td>-6.45%</td>
+          <td>0.32</td>
+          <td>486</td>
+          <td>966</td>
+          <td>1,034,549.94</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_08_two_weekly_up_volume/ten-buy-signal-08-two_weekly_up_volume-hold-1-board-sample-300d_20260504T155835681149Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>09 板块领涨</td>
+          <td>持有 20 日</td>
+          <td class="metric positive">3.28%</td>
+          <td>3.25%</td>
+          <td>-3.95%</td>
+          <td>0.80</td>
+          <td>2</td>
+          <td>4</td>
+          <td>1,032,793.95</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_09_sector_leaders/ten-buy-signal-09-sector_leaders-hold-20-board-sample-300d_20260504T155853292367Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>03 周线缩量</td>
+          <td>持有 1 日</td>
+          <td class="metric positive">2.99%</td>
+          <td>2.92%</td>
+          <td>-4.90%</td>
+          <td>0.58</td>
+          <td>71</td>
+          <td>142</td>
+          <td>1,029,864.69</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_03_weekly_volume_contraction/ten-buy-signal-03-weekly_volume_contraction-hold-1-board-sample-300d_20260504T155830918228Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>07 跳空反转</td>
+          <td>持有 5 日</td>
+          <td class="metric positive">1.78%</td>
+          <td>1.53%</td>
+          <td>-9.31%</td>
+          <td>0.19</td>
+          <td>36</td>
+          <td>70</td>
+          <td>1,017,839.11</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_07_gap_down_reversal/ten-buy-signal-07-gap_down_reversal-hold-5-board-sample-300d_20260504T155843299383Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>09 板块领涨</td>
+          <td>持有 5 日</td>
+          <td class="metric positive">1.35%</td>
+          <td>1.34%</td>
+          <td>-0.90%</td>
+          <td>0.79</td>
+          <td>2</td>
+          <td>4</td>
+          <td>1,013,501.25</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_09_sector_leaders/ten-buy-signal-09-sector_leaders-hold-5-board-sample-300d_20260504T155845235472Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>06 周线收高</td>
+          <td>持有 5 日</td>
+          <td class="metric positive">0.99%</td>
+          <td>0.87%</td>
+          <td>-3.31%</td>
+          <td>0.26</td>
+          <td>7</td>
+          <td>14</td>
+          <td>1,009,877.07</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_06_weekly_high_close_ma_turn/ten-buy-signal-06-weekly_high_close_ma_turn-hold-5-board-sample-300d_20260504T155842663671Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>04 利空吸收</td>
+          <td>持有 20 日</td>
+          <td class="metric positive">0.13%</td>
+          <td>0.34%</td>
+          <td>-10.22%</td>
+          <td>0.11</td>
+          <td>17</td>
+          <td>20</td>
+          <td>1,001,276.37</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_04_bad_news_absorption/ten-buy-signal-04-bad_news_absorption-hold-20-board-sample-300d_20260504T155849280426Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>10 超跌引力线</td>
+          <td>持有 5 日</td>
+          <td class="metric positive">0.00%</td>
+          <td>0.00%</td>
+          <td>0.00%</td>
+          <td>0.00</td>
+          <td>0</td>
+          <td>0</td>
+          <td>1,000,000.00</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_10_oversold_gravity_volume/ten-buy-signal-10-oversold_gravity_volume-hold-5-board-sample-300d_20260504T155845676437Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>10 超跌引力线</td>
+          <td>持有 20 日</td>
+          <td class="metric positive">0.00%</td>
+          <td>0.00%</td>
+          <td>0.00%</td>
+          <td>0.00</td>
+          <td>0</td>
+          <td>0</td>
+          <td>1,000,000.00</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_10_oversold_gravity_volume/ten-buy-signal-10-oversold_gravity_volume-hold-20-board-sample-300d_20260504T155853734303Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>10 超跌引力线</td>
+          <td>持有 1 日</td>
+          <td class="metric positive">0.00%</td>
+          <td>0.00%</td>
+          <td>0.00%</td>
+          <td>0.00</td>
+          <td>0</td>
+          <td>0</td>
+          <td>1,000,000.00</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_10_oversold_gravity_volume/ten-buy-signal-10-oversold_gravity_volume-hold-1-board-sample-300d_20260504T155836536186Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>04 利空吸收</td>
+          <td>持有 1 日</td>
+          <td class="metric negative">-0.21%</td>
+          <td>-0.56%</td>
+          <td>-3.74%</td>
+          <td>-0.06</td>
+          <td>27</td>
+          <td>54</td>
+          <td>997,865.58</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_04_bad_news_absorption/ten-buy-signal-04-bad_news_absorption-hold-1-board-sample-300d_20260504T155831466061Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>06 周线收高</td>
+          <td>持有 20 日</td>
+          <td class="metric negative">-0.45%</td>
+          <td>-0.40%</td>
+          <td>-10.83%</td>
+          <td>-0.01</td>
+          <td>6</td>
+          <td>12</td>
+          <td>995,488.21</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_06_weekly_high_close_ma_turn/ten-buy-signal-06-weekly_high_close_ma_turn-hold-20-board-sample-300d_20260504T155850932988Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>09 板块领涨</td>
+          <td>持有 1 日</td>
+          <td class="metric negative">-0.48%</td>
+          <td>-0.47%</td>
+          <td>-0.48%</td>
+          <td>-1.15</td>
+          <td>2</td>
+          <td>4</td>
+          <td>995,245.19</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_09_sector_leaders/ten-buy-signal-09-sector_leaders-hold-1-board-sample-300d_20260504T155836105231Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>06 周线收高</td>
+          <td>持有 1 日</td>
+          <td class="metric negative">-1.72%</td>
+          <td>-1.51%</td>
+          <td>-2.02%</td>
+          <td>-1.15</td>
+          <td>7</td>
+          <td>14</td>
+          <td>982,790.65</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_06_weekly_high_close_ma_turn/ten-buy-signal-06-weekly_high_close_ma_turn-hold-1-board-sample-300d_20260504T155833280997Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>01 量增突破</td>
+          <td>持有 1 日</td>
+          <td class="metric negative">-2.91%</td>
+          <td>-2.74%</td>
+          <td>-11.74%</td>
+          <td>-0.16</td>
+          <td>286</td>
+          <td>570</td>
+          <td>970,865.76</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_01_volume_breakout/ten-buy-signal-01-volume_breakout-hold-1-board-sample-300d_20260504T155828461495Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>07 跳空反转</td>
+          <td>持有 1 日</td>
+          <td class="metric negative">-6.04%</td>
+          <td>-5.20%</td>
+          <td>-8.88%</td>
+          <td>-1.19</td>
+          <td>36</td>
+          <td>72</td>
+          <td>939,584.03</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_07_gap_down_reversal/ten-buy-signal-07-gap_down_reversal-hold-1-board-sample-300d_20260504T155833944253Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>02 上涨回调</td>
+          <td>持有 1 日</td>
+          <td class="metric negative">-7.13%</td>
+          <td>-6.24%</td>
+          <td>-11.54%</td>
+          <td>-1.33</td>
+          <td>121</td>
+          <td>242</td>
+          <td>928,739.76</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_02_rising_price_pullback/ten-buy-signal-02-rising_price_pullback-hold-1-board-sample-300d_20260504T155829629010Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>05 强势突破</td>
+          <td>持有 20 日</td>
+          <td class="metric negative">-7.99%</td>
+          <td>-8.40%</td>
+          <td>-30.50%</td>
+          <td>-0.06</td>
+          <td>81</td>
+          <td>114</td>
+          <td>920,141.96</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_20/buy_signal_05_strong_stock_breakout/ten-buy-signal-05-strong_stock_breakout-hold-20-board-sample-300d_20260504T155850151259Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>02 上涨回调</td>
+          <td>持有 5 日</td>
+          <td class="metric negative">-11.96%</td>
+          <td>-10.51%</td>
+          <td>-15.01%</td>
+          <td>-0.80</td>
+          <td>120</td>
+          <td>226</td>
+          <td>880,375.37</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_02_rising_price_pullback/ten-buy-signal-02-rising_price_pullback-hold-5-board-sample-300d_20260504T155839028290Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>01 量增突破</td>
+          <td>持有 5 日</td>
+          <td class="metric negative">-12.15%</td>
+          <td>-11.47%</td>
+          <td>-22.99%</td>
+          <td>-0.43</td>
+          <td>259</td>
+          <td>360</td>
+          <td>878,469.02</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_01_volume_breakout/ten-buy-signal-01-volume_breakout-hold-5-board-sample-300d_20260504T155837910102Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>05 强势突破</td>
+          <td>持有 1 日</td>
+          <td class="metric negative">-31.54%</td>
+          <td>-32.93%</td>
+          <td>-32.47%</td>
+          <td>-1.86</td>
+          <td>206</td>
+          <td>412</td>
+          <td>684,633.28</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_1/buy_signal_05_strong_stock_breakout/ten-buy-signal-05-strong_stock_breakout-hold-1-board-sample-300d_20260504T155832511471Z/report.html">打开</a></td>
+        </tr>
+        
+        <tr>
+          <td>05 强势突破</td>
+          <td>持有 5 日</td>
+          <td class="metric negative">-32.34%</td>
+          <td>-33.77%</td>
+          <td>-37.15%</td>
+          <td>-1.32</td>
+          <td>128</td>
+          <td>234</td>
+          <td>676,553.98</td>
+          <td><a href="runs/ten_buy_signals/board_sample_20_each_300d/hold_5/buy_signal_05_strong_stock_breakout/ten-buy-signal-05-strong_stock_breakout-hold-5-board-sample-300d_20260504T155841860920Z/report.html">打开</a></td>
+        </tr>
+        </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
