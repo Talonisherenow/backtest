@@ -21,6 +21,7 @@ This plan implements phase 1 only:
 - Add portfolio and execution report models.
 - Add a simple SQLite `OrderLedger` for order intents and execution reports.
 - Use a single default account in phase 1 while preserving an `account_id` field.
+- Make every order, execution report, portfolio state, and ledger row account-scoped.
 - Keep real broker/exchange API integration outside this phase.
 - Treat `CCXT` as the first real API adapter for the next phase.
 - Keep CLI as the default future live entrypoint and leave room for a daemon runner later.
@@ -880,6 +881,7 @@ from backtest.portfolio.state import CashBalance, PortfolioState, PositionState
 
 def test_order_planner_builds_buy_intent_from_target_weight():
     portfolio = PortfolioState(
+        account_id="paper",
         cash=[CashBalance(currency="CNY", available=Decimal("100000"))],
         positions=[],
         updated_at=datetime(2025, 1, 3, 9, 30),
@@ -913,6 +915,7 @@ def test_order_planner_builds_buy_intent_from_target_weight():
     )
 
     assert len(intents) == 1
+    assert intents[0].account_id == "paper"
     assert intents[0].side == OrderSide.BUY
     assert intents[0].quantity == Decimal("2000")
     assert intents[0].order_type == OrderType.MARKET
@@ -920,6 +923,7 @@ def test_order_planner_builds_buy_intent_from_target_weight():
 
 def test_order_planner_builds_sell_intent_from_lower_target_weight():
     portfolio = PortfolioState(
+        account_id="paper",
         cash=[CashBalance(currency="CNY", available=Decimal("50000"))],
         positions=[
             PositionState(
@@ -962,12 +966,14 @@ def test_order_planner_builds_sell_intent_from_lower_target_weight():
     )
 
     assert len(intents) == 1
+    assert intents[0].account_id == "paper"
     assert intents[0].side == OrderSide.SELL
     assert intents[0].quantity == Decimal("3000")
 
 
 def test_order_planner_skips_below_lot_size_delta():
     portfolio = PortfolioState(
+        account_id="paper",
         cash=[CashBalance(currency="CNY", available=Decimal("100000"))],
         positions=[],
         updated_at=datetime(2025, 1, 3, 9, 30),
@@ -1070,6 +1076,7 @@ class OrderPlanner:
 
             intents.append(
                 OrderIntent(
+                    account_id=portfolio.account_id,
                     client_order_id=f"{self.strategy_id}-{uuid4().hex}",
                     strategy_id=self.strategy_id,
                     instrument_id=instrument_id,
@@ -1532,6 +1539,7 @@ not imply that a broker accepted or filled anything.
 Required fields:
 
 ```text
+account_id
 client_order_id
 strategy_id
 instrument_id
@@ -1549,6 +1557,9 @@ from `ExecutionReport`, not from the intent.
 
 `OrderLedger` records order intent and execution report state. The phase-1
 implementation stores rows in SQLite and scopes them by `account_id`.
+
+Every order, execution report, portfolio state, and ledger row is account-scoped.
+Phase 1 uses `account_id=default` unless a caller passes a different account.
 ````
 
 - [ ] **Step 2: Update architecture documentation**
@@ -1656,6 +1667,6 @@ Placeholder scan:
 Type consistency:
 
 - `instrument_id` is the neutral identifier across instruments, targets, orders, positions, and reports.
-- `account_id` scopes orders and portfolio state while phase 1 defaults to one account.
+- `account_id` scopes orders, execution reports, portfolio state, and ledger rows while phase 1 defaults to one account.
 - `Decimal` is used for quantities, prices, and cash in new trading models.
 - Legacy `symbol` and `target_weight` remain supported through the conversion helper.

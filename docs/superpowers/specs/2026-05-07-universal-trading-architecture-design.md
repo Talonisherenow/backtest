@@ -214,6 +214,7 @@ OrderIntent[]
 字段：
 
 ```text
+account_id
 client_order_id
 strategy_id
 instrument_id
@@ -316,6 +317,22 @@ expired
 failed
 ```
 
+字段：
+
+```text
+account_id
+client_order_id
+instrument_id
+status
+order_quantity
+filled_quantity
+avg_fill_price
+reported_at
+broker_order_id
+error
+raw_response
+```
+
 回测中由模拟撮合生成，实盘中由券商或交易所 API 返回。`ExecutionReport` 才是更新仓位的依据。
 
 ### 6.12 PortfolioState
@@ -325,6 +342,7 @@ failed
 字段：
 
 ```text
+account_id
 cash_by_currency
 positions
 pending_orders
@@ -436,6 +454,7 @@ ExecutionReport 才能更新 PortfolioState
 - 第一阶段按单账户实现，模型预留 `account_id`，默认值为 `default`。
 - 第一个真实 API 适配器优先接 `CCXT`。
 - 实盘运行入口优先支持 CLI 手动触发，同时保留后续守护进程循环复用的引擎边界。
+- 任何订单、成交、仓位、台账记录都不得脱离 `account_id` 存在；第一阶段默认 `account_id='default'`。
 
 ## 11. 多账户说明
 
@@ -447,6 +466,32 @@ ExecutionReport 才能更新 PortfolioState
 - 后续多策略平台需要按账户统计现金、持仓、订单和成交。
 
 多账户的核心功能是让 `PortfolioState`、`OrderIntent`、`ExecutionReport` 和 `OrderLedger` 都带 `account_id`，避免不同账户的现金、仓位和订单混在一起。第一阶段不实现多账户调度和多账户聚合，只保留 `account_id='default'` 字段，后续扩展时不用重写订单和仓位合同。
+
+第一阶段需要预留的口子：
+
+- `OrderIntent.account_id`：订单意图属于哪个账户。
+- `ExecutionReport.account_id`：成交回报来自哪个账户。
+- `PortfolioState.account_id`：仓位和现金属于哪个账户。
+- `OrderLedger` 主键使用 `(account_id, client_order_id)`。
+- `OrderPlanner` 从 `PortfolioState.account_id` 继承账户标识，生成同账户订单。
+- 后续 `ExecutionRouter` 可以根据 `account_id` 选择对应的 `ExecutionAdapter`。
+- 后续 `RiskGate` 可以按 `account_id` 做账户级风控。
+
+后续多账户配置形态可以是：
+
+```yaml
+accounts:
+  - id: default
+    mode: paper
+    adapter: dry_run
+
+  - id: binance_spot
+    mode: live
+    adapter: ccxt
+    exchange: binance
+```
+
+第一阶段不实现完整 `accounts` 配置解析，但所有核心交易合同按上述形态预留。
 
 ## 12. 后续阶段方向
 
