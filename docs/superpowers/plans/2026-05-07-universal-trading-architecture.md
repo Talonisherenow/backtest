@@ -544,14 +544,20 @@ class OrderIntent(BaseModel):
     created_at: datetime
     reason: str = ""
 
-    @field_validator("account_id", "client_order_id", "strategy_id", "instrument_id")
+    @field_validator("account_id", "client_order_id", "strategy_id")
     @classmethod
-    def normalize_text(cls, value: str) -> str:
+    def strip_required_text(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             raise ValueError("value must not be empty")
-        if "." in normalized or "-" in normalized:
-            return normalized.upper()
+        return normalized
+
+    @field_validator("instrument_id")
+    @classmethod
+    def normalize_instrument_id(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not normalized:
+            raise ValueError("instrument_id must not be empty")
         return normalized
 
     @model_validator(mode="after")
@@ -576,14 +582,20 @@ class ExecutionReport(BaseModel):
     error: str = ""
     raw_response: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("account_id", "client_order_id", "instrument_id")
+    @field_validator("account_id", "client_order_id")
     @classmethod
-    def normalize_text(cls, value: str) -> str:
+    def strip_required_text(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             raise ValueError("value must not be empty")
-        if "." in normalized or "-" in normalized:
-            return normalized.upper()
+        return normalized
+
+    @field_validator("instrument_id")
+    @classmethod
+    def normalize_instrument_id(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not normalized:
+            raise ValueError("instrument_id must not be empty")
         return normalized
 
     @model_validator(mode="after")
