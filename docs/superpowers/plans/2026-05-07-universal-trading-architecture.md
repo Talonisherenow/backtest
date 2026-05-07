@@ -4,7 +4,7 @@
 
 **Goal:** Build the first phase of the universal trading architecture while preserving all existing A-share backtest behavior.
 
-**Architecture:** Add market-neutral domain models for instruments, targets, orders, portfolio state, and execution reports. Introduce a reusable `OrderPlanner` beside the existing `BrokerEngine`, then protect current A-share backtest behavior with regression tests before any later internal migration.
+**Architecture:** Add market-neutral domain models for instruments, targets, orders, portfolio state, execution reports, and a simple SQLite order ledger. Introduce a reusable `OrderPlanner` beside the existing `BrokerEngine`, then protect current A-share backtest behavior with regression tests before any later internal migration.
 
 **Tech Stack:** Python 3.11+, pandas, pydantic v2, pytest, existing Typer CLI and Parquet/report stack.
 
@@ -19,7 +19,11 @@ This plan implements phase 1 only:
 - Convert old `SignalFrame` data into `TargetPortfolioFrame`.
 - Add an independent `OrderPlanner`.
 - Add portfolio and execution report models.
+- Add a simple SQLite `OrderLedger` for order intents and execution reports.
+- Use a single default account in phase 1 while preserving an `account_id` field.
 - Keep real broker/exchange API integration outside this phase.
+- Treat `CCXT` as the first real API adapter for the next phase.
+- Keep CLI as the default future live entrypoint and leave room for a daemon runner later.
 
 The implementation must not touch unrelated generated files under `runs/`.
 
@@ -30,6 +34,8 @@ Create:
 - `backtest/core/instruments.py`: market, exchange, asset class, instrument, and trading rule models.
 - `backtest/core/targets.py`: `TargetPortfolioFrame` columns and validator.
 - `backtest/core/orders.py`: `OrderIntent`, order enums, and execution report models.
+- `backtest/execution/__init__.py`: public exports for execution infrastructure.
+- `backtest/execution/ledger.py`: SQLite order ledger.
 - `backtest/portfolio/__init__.py`: public exports for portfolio models.
 - `backtest/portfolio/state.py`: `CashBalance`, `PositionState`, `PortfolioState`.
 - `backtest/planning/__init__.py`: public exports for order planning.
@@ -37,6 +43,7 @@ Create:
 - `tests/core/test_instruments.py`: tests for instruments and trading rules.
 - `tests/core/test_targets.py`: tests for target portfolio validation.
 - `tests/core/test_orders.py`: tests for order intent and execution report validation.
+- `tests/execution/test_order_ledger.py`: tests for SQLite order ledger persistence.
 - `tests/portfolio/test_state.py`: tests for portfolio state.
 - `tests/planning/test_order_planner.py`: tests for order planning.
 
@@ -425,6 +432,7 @@ from backtest.core.orders import (
 
 def test_order_intent_normalizes_ids_and_keeps_decimal_quantity():
     intent = OrderIntent(
+        account_id="paper",
         client_order_id="co-1",
         strategy_id="mean-reversion",
         instrument_id="aapl.us",
@@ -437,6 +445,7 @@ def test_order_intent_normalizes_ids_and_keeps_decimal_quantity():
         reason="rebalance",
     )
 
+    assert intent.account_id == "paper"
     assert intent.instrument_id == "AAPL.US"
     assert intent.quantity == Decimal("1.25")
     assert intent.limit_price == Decimal("180.12")
@@ -445,6 +454,7 @@ def test_order_intent_normalizes_ids_and_keeps_decimal_quantity():
 def test_order_intent_rejects_limit_order_without_limit_price():
     with pytest.raises(ValueError, match="limit_price"):
         OrderIntent(
+            account_id="default",
             client_order_id="co-1",
             strategy_id="s",
             instrument_id="AAPL.US",
@@ -459,6 +469,7 @@ def test_order_intent_rejects_limit_order_without_limit_price():
 def test_execution_report_rejects_filled_quantity_above_order_quantity():
     with pytest.raises(ValueError, match="filled_quantity"):
         ExecutionReport(
+            account_id="default",
             client_order_id="co-1",
             instrument_id="AAPL.US",
             status=ExecutionStatus.FILLED,
@@ -520,6 +531,7 @@ class ExecutionStatus(StrEnum):
 
 
 class OrderIntent(BaseModel):
+    account_id: str = "default"
     client_order_id: str
     strategy_id: str
     instrument_id: str
@@ -531,7 +543,7 @@ class OrderIntent(BaseModel):
     created_at: datetime
     reason: str = ""
 
-    @field_validator("client_order_id", "strategy_id", "instrument_id")
+    @field_validator("account_id", "client_order_id", "strategy_id", "instrument_id")
     @classmethod
     def normalize_text(cls, value: str) -> str:
         normalized = value.strip()
@@ -551,6 +563,7 @@ class OrderIntent(BaseModel):
 
 
 class ExecutionReport(BaseModel):
+    account_id: str = "default"
     client_order_id: str
     instrument_id: str
     status: ExecutionStatus
@@ -562,7 +575,7 @@ class ExecutionReport(BaseModel):
     error: str = ""
     raw_response: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("client_order_id", "instrument_id")
+    @field_validator("account_id", "client_order_id", "instrument_id")
     @classmethod
     def normalize_text(cls, value: str) -> str:
         normalized = value.strip()
@@ -618,6 +631,7 @@ from backtest.portfolio.state import CashBalance, PortfolioState, PositionState
 
 def test_portfolio_state_tracks_cash_by_currency_and_positions():
     state = PortfolioState(
+        account_id="paper",
         cash=[
             CashBalance(currency="usd", available=Decimal("1000"), frozen=Decimal("25")),
             CashBalance(currency="hkd", available=Decimal("8000"), frozen=Decimal("0")),
@@ -635,6 +649,7 @@ def test_portfolio_state_tracks_cash_by_currency_and_positions():
         updated_at=datetime(2026, 5, 7, 9, 30),
     )
 
+    assert state.account_id == "paper"
     assert state.cash_by_currency()["USD"].available == Decimal("1000")
     assert state.position_by_instrument()["AAPL.US"].quantity == Decimal("1.5")
     assert state.total_cash("USD") == Decimal("1025")
@@ -700,13 +715,22 @@ class PositionState(BaseModel):
 
 
 class PortfolioState(BaseModel):
+    account_id: str = "default"
     cash: list[CashBalance] = Field(default_factory=list)
     positions: list[PositionState] = Field(default_factory=list)
     updated_at: datetime
 
+    @field_validator("account_id")
     @classmethod
-    def empty(cls, updated_at: datetime) -> "PortfolioState":
-        return cls(cash=[], positions=[], updated_at=updated_at)
+    def normalize_account_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("account_id must not be empty")
+        return normalized
+
+    @classmethod
+    def empty(cls, updated_at: datetime, account_id: str = "default") -> "PortfolioState":
+        return cls(account_id=account_id, cash=[], positions=[], updated_at=updated_at)
 
     def cash_by_currency(self) -> dict[str, CashBalance]:
         return {item.currency: item for item in self.cash}
@@ -1095,7 +1119,297 @@ git add backtest/planning tests/planning/test_order_planner.py
 git commit -m "feat: add target portfolio order planner"
 ```
 
-## Task 7: Verify Existing Backtest Behavior Remains Stable
+## Task 7: Add SQLite Order Ledger
+
+**Files:**
+- Create: `backtest/execution/__init__.py`
+- Create: `backtest/execution/ledger.py`
+- Test: `tests/execution/test_order_ledger.py`
+
+- [ ] **Step 1: Write failing ledger test**
+
+Create `tests/execution/test_order_ledger.py`:
+
+```python
+from datetime import datetime
+from decimal import Decimal
+
+from backtest.core.orders import (
+    ExecutionReport,
+    ExecutionStatus,
+    OrderIntent,
+    OrderSide,
+    OrderType,
+    TimeInForce,
+)
+from backtest.execution.ledger import SQLiteOrderLedger
+
+
+def test_sqlite_order_ledger_records_intent_and_execution_report(tmp_path):
+    ledger = SQLiteOrderLedger(tmp_path / "orders.sqlite")
+    intent = OrderIntent(
+        account_id="paper",
+        client_order_id="co-1",
+        strategy_id="demo",
+        instrument_id="BTC-USDT.BINANCE",
+        side=OrderSide.BUY,
+        quantity=Decimal("0.25"),
+        order_type=OrderType.MARKET,
+        time_in_force=TimeInForce.DAY,
+        created_at=datetime(2026, 5, 7, 9, 30),
+        reason="rebalance",
+    )
+    report = ExecutionReport(
+        account_id="paper",
+        client_order_id="co-1",
+        instrument_id="BTC-USDT.BINANCE",
+        status=ExecutionStatus.FILLED,
+        order_quantity=Decimal("0.25"),
+        filled_quantity=Decimal("0.25"),
+        avg_fill_price=Decimal("60000"),
+        reported_at=datetime(2026, 5, 7, 9, 31),
+        broker_order_id="broker-1",
+        raw_response={"source": "sim"},
+    )
+
+    ledger.record_intent(intent)
+    ledger.record_report(report)
+
+    row = ledger.get_order(account_id="paper", client_order_id="co-1")
+    assert row is not None
+    assert row["account_id"] == "paper"
+    assert row["instrument_id"] == "BTC-USDT.BINANCE"
+    assert row["status"] == "filled"
+    assert row["quantity"] == Decimal("0.25")
+    assert row["filled_quantity"] == Decimal("0.25")
+    assert row["avg_fill_price"] == Decimal("60000")
+    assert row["broker_order_id"] == "broker-1"
+    assert row["raw_response"] == {"source": "sim"}
+
+
+def test_sqlite_order_ledger_lists_orders_by_account(tmp_path):
+    ledger = SQLiteOrderLedger(tmp_path / "orders.sqlite")
+    for account_id in ["paper", "live"]:
+        ledger.record_intent(
+            OrderIntent(
+                account_id=account_id,
+                client_order_id=f"{account_id}-1",
+                strategy_id="demo",
+                instrument_id="AAPL.US",
+                side=OrderSide.BUY,
+                quantity=Decimal("1"),
+                order_type=OrderType.MARKET,
+                time_in_force=TimeInForce.DAY,
+                created_at=datetime(2026, 5, 7, 9, 30),
+            )
+        )
+
+    assert [row["client_order_id"] for row in ledger.list_orders(account_id="paper")] == ["paper-1"]
+    assert [row["client_order_id"] for row in ledger.list_orders(account_id="live")] == ["live-1"]
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run:
+
+```bash
+pytest tests/execution/test_order_ledger.py -v
+```
+
+Expected: FAIL with `ModuleNotFoundError: No module named 'backtest.execution'`.
+
+- [ ] **Step 3: Implement SQLite order ledger**
+
+Create `backtest/execution/ledger.py`:
+
+```python
+from datetime import datetime
+from decimal import Decimal
+import json
+from pathlib import Path
+import sqlite3
+from typing import Any
+
+from backtest.core.orders import ExecutionReport, OrderIntent
+
+
+class SQLiteOrderLedger:
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialize()
+
+    def record_intent(self, intent: OrderIntent) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO orders
+                (
+                    account_id, client_order_id, strategy_id, instrument_id, side,
+                    quantity, order_type, limit_price, time_in_force, status,
+                    created_at, reason, broker_order_id, filled_quantity,
+                    avg_fill_price, reported_at, error, raw_response
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    intent.account_id,
+                    intent.client_order_id,
+                    intent.strategy_id,
+                    intent.instrument_id,
+                    intent.side.value,
+                    str(intent.quantity),
+                    intent.order_type.value,
+                    str(intent.limit_price) if intent.limit_price is not None else None,
+                    intent.time_in_force.value,
+                    "created",
+                    intent.created_at.isoformat(),
+                    intent.reason,
+                    None,
+                    "0",
+                    None,
+                    None,
+                    "",
+                    "{}",
+                ),
+            )
+
+    def record_report(self, report: ExecutionReport) -> None:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE orders
+                SET status = ?,
+                    broker_order_id = ?,
+                    filled_quantity = ?,
+                    avg_fill_price = ?,
+                    reported_at = ?,
+                    error = ?,
+                    raw_response = ?
+                WHERE account_id = ? AND client_order_id = ?
+                """,
+                (
+                    report.status.value,
+                    report.broker_order_id,
+                    str(report.filled_quantity),
+                    str(report.avg_fill_price) if report.avg_fill_price is not None else None,
+                    report.reported_at.isoformat(),
+                    report.error,
+                    json.dumps(report.raw_response, sort_keys=True),
+                    report.account_id,
+                    report.client_order_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Order intent not found: {report.account_id}/{report.client_order_id}")
+
+    def get_order(self, account_id: str, client_order_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM orders
+                WHERE account_id = ? AND client_order_id = ?
+                """,
+                (account_id, client_order_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_dict(row)
+
+    def list_orders(self, account_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM orders
+                WHERE account_id = ?
+                ORDER BY created_at, client_order_id
+                """,
+                (account_id,),
+            ).fetchall()
+        return [self._row_to_dict(row) for row in rows]
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _initialize(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS orders (
+                    account_id TEXT NOT NULL,
+                    client_order_id TEXT NOT NULL,
+                    strategy_id TEXT NOT NULL,
+                    instrument_id TEXT NOT NULL,
+                    side TEXT NOT NULL,
+                    quantity TEXT NOT NULL,
+                    order_type TEXT NOT NULL,
+                    limit_price TEXT,
+                    time_in_force TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    broker_order_id TEXT,
+                    filled_quantity TEXT NOT NULL,
+                    avg_fill_price TEXT,
+                    reported_at TEXT,
+                    error TEXT NOT NULL,
+                    raw_response TEXT NOT NULL,
+                    PRIMARY KEY (account_id, client_order_id)
+                )
+                """
+            )
+
+    def _row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "account_id": row["account_id"],
+            "client_order_id": row["client_order_id"],
+            "strategy_id": row["strategy_id"],
+            "instrument_id": row["instrument_id"],
+            "side": row["side"],
+            "quantity": Decimal(row["quantity"]),
+            "order_type": row["order_type"],
+            "limit_price": Decimal(row["limit_price"]) if row["limit_price"] is not None else None,
+            "time_in_force": row["time_in_force"],
+            "status": row["status"],
+            "created_at": datetime.fromisoformat(row["created_at"]),
+            "reason": row["reason"],
+            "broker_order_id": row["broker_order_id"],
+            "filled_quantity": Decimal(row["filled_quantity"]),
+            "avg_fill_price": Decimal(row["avg_fill_price"]) if row["avg_fill_price"] is not None else None,
+            "reported_at": datetime.fromisoformat(row["reported_at"]) if row["reported_at"] is not None else None,
+            "error": row["error"],
+            "raw_response": json.loads(row["raw_response"]),
+        }
+```
+
+Create `backtest/execution/__init__.py`:
+
+```python
+from backtest.execution.ledger import SQLiteOrderLedger
+
+__all__ = ["SQLiteOrderLedger"]
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run:
+
+```bash
+pytest tests/execution/test_order_ledger.py -v
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backtest/execution tests/execution/test_order_ledger.py
+git commit -m "feat: add sqlite order ledger"
+```
+
+## Task 8: Verify Existing Backtest Behavior Remains Stable
 
 **Files:**
 - Test: `tests/broker/test_execution.py`
@@ -1162,7 +1476,7 @@ Expected: PASS.
 
 No commit is needed for this task if no files changed. The verification result should be included in the final implementation summary.
 
-## Task 8: Document New Contracts
+## Task 9: Document New Contracts
 
 **Files:**
 - Modify: `docs/data-contracts.md`
@@ -1230,6 +1544,11 @@ created_at
 
 `OrderIntent` is not an execution result. The system updates portfolio state
 from `ExecutionReport`, not from the intent.
+
+## OrderLedger
+
+`OrderLedger` records order intent and execution report state. The phase-1
+implementation stores rows in SQLite and scopes them by `account_id`.
 ````
 
 - [ ] **Step 2: Update architecture documentation**
@@ -1263,7 +1582,7 @@ API adapters.
 Run:
 
 ```bash
-rg "TargetPortfolioFrame|OrderIntent|Universal Trading Evolution" docs
+rg "TargetPortfolioFrame|OrderIntent|OrderLedger|Universal Trading Evolution" docs
 ```
 
 Expected: output includes `docs/data-contracts.md` and `docs/architecture.md`.
@@ -1275,7 +1594,7 @@ git add docs/data-contracts.md docs/architecture.md
 git commit -m "docs: describe universal trading contracts"
 ```
 
-## Task 9: Final Verification
+## Task 10: Final Verification
 
 **Files:**
 - No new files.
@@ -1324,9 +1643,10 @@ Spec coverage:
 - Order intent and execution report: Task 3.
 - Portfolio state: Task 4.
 - Order planning: Task 6.
-- Preserve existing A-share behavior: Task 7.
-- Documentation: Task 8.
-- Verification: Task 9.
+- SQLite order ledger: Task 7.
+- Preserve existing A-share behavior: Task 8.
+- Documentation: Task 9.
+- Verification: Task 10.
 
 Placeholder scan:
 
@@ -1336,5 +1656,6 @@ Placeholder scan:
 Type consistency:
 
 - `instrument_id` is the neutral identifier across instruments, targets, orders, positions, and reports.
+- `account_id` scopes orders and portfolio state while phase 1 defaults to one account.
 - `Decimal` is used for quantities, prices, and cash in new trading models.
 - Legacy `symbol` and `target_weight` remain supported through the conversion helper.
