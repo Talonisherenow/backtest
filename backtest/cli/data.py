@@ -7,6 +7,7 @@ from backtest.config.models import BacktestConfig
 from backtest.data.akshare_provider import AkShareProvider
 from backtest.data.catalog import DataCatalog
 from backtest.data.ccxt_provider import CCXTOHLCVProvider
+from backtest.data.jobs import MarketDataJobRunner, load_data_sync_job_config
 from backtest.data.metadata import MetadataStore
 from backtest.data.service import DataSyncService
 from backtest.data.store import ParquetBarStore
@@ -41,6 +42,16 @@ def _catalog_source(config: BacktestConfig) -> str:
     if config.data.source == "ccxt":
         return f"ccxt:{_ccxt_exchange(config)}"
     raise ValueError(f"Unsupported data source: {config.data.source}")
+
+
+def _provider_for_source(source: str, exchange: str | None):
+    if source == "akshare":
+        return AkShareProvider()
+    if source == "ccxt":
+        if not exchange:
+            raise ValueError("exchange is required when source=ccxt")
+        return CCXTOHLCVProvider(exchange_id=exchange)
+    raise ValueError(f"Unsupported data source: {source}")
 
 
 @app.command("universe")
@@ -141,6 +152,44 @@ def sync_data(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo("Data sync complete")
+
+
+@app.command("sync-job")
+def sync_job(
+    job_path: Path = typer.Option(
+        ...,
+        "--job",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to market data sync job YAML",
+    ),
+) -> None:
+    """Run a batch market data sync job."""
+    try:
+        config = load_data_sync_job_config(job_path)
+        metadata = _metadata_store(config.metadata)
+        catalog = DataCatalog(metadata)
+        service = DataSyncService(
+            provider=_provider_for_source(config.source, config.exchange),
+            store=ParquetBarStore(config.bars_root),
+            catalog=catalog,
+            tasks=CrawlTaskManager(metadata),
+        )
+        result = MarketDataJobRunner(service=service, catalog=catalog).run(config)
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(
+        f"Data job {config.name} complete: total={result.total_items} "
+        f"success={result.success_count} failed={result.failed_count} rows={result.total_rows}"
+    )
+    typer.echo(f"Summary written to {config.output_dir / 'summary.csv'}")
+    if result.failed_count:
+        raise typer.Exit(code=1)
 
 
 @app.command("inventory")

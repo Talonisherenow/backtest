@@ -251,6 +251,102 @@ def test_data_sync_cli_requires_exchange_for_ccxt_source(tmp_path: Path):
     assert "data.exchange is required for source=ccxt" in result.output
 
 
+def _write_data_job_config(tmp_path: Path, *, failed_continue: bool = False) -> Path:
+    job_path = tmp_path / "crypto-job.yaml"
+    job_path.write_text(
+        f"""
+name: crypto-job
+source: ccxt
+exchange: bitget
+symbols:
+  - BTC/USDT
+frequencies:
+  - 1d
+adjust: none
+start_date: "2025-01-01"
+end_date: "2025-01-31"
+bars_root: {tmp_path / "bars"}
+metadata: {tmp_path / "metadata.sqlite"}
+output_dir: {tmp_path / "job-output"}
+retry:
+  max_attempts: 1
+  continue_on_error: {str(failed_continue).lower()}
+""",
+        encoding="utf-8",
+    )
+    return job_path
+
+
+def test_data_sync_job_cli_uses_ccxt_provider_and_runner(tmp_path: Path, monkeypatch):
+    job_path = _write_data_job_config(tmp_path)
+    captured = {}
+
+    class FakeCCXTProvider:
+        def __init__(self, exchange_id: str) -> None:
+            self.exchange_id = exchange_id
+
+    class NoopSyncService:
+        def __init__(self, provider, store, catalog, tasks) -> None:
+            captured["provider"] = provider
+            captured["store_root"] = store.root
+            captured["catalog"] = catalog
+
+    class FakeRunner:
+        def __init__(self, service, catalog) -> None:
+            captured["runner_service"] = service
+            captured["runner_catalog"] = catalog
+
+        def run(self, config):
+            captured["config"] = config
+
+            class Result:
+                total_items = 1
+                success_count = 1
+                failed_count = 0
+                total_rows = 7
+
+            return Result()
+
+    monkeypatch.setattr(data_cli, "CCXTOHLCVProvider", FakeCCXTProvider)
+    monkeypatch.setattr(data_cli, "DataSyncService", NoopSyncService)
+    monkeypatch.setattr(data_cli, "MarketDataJobRunner", FakeRunner)
+
+    result = CliRunner().invoke(app, ["data", "sync-job", "--job", str(job_path)])
+
+    assert result.exit_code == 0
+    assert "Data job crypto-job complete" in result.output
+    assert "success=1 failed=0 rows=7" in result.output
+    assert captured["provider"].exchange_id == "bitget"
+    assert captured["store_root"] == tmp_path / "bars"
+    assert captured["config"].catalog_source == "ccxt:bitget"
+
+
+def test_data_sync_job_cli_returns_nonzero_when_result_has_failures(
+    tmp_path: Path, monkeypatch
+):
+    job_path = _write_data_job_config(tmp_path, failed_continue=True)
+
+    class FakeRunner:
+        def __init__(self, service, catalog) -> None:
+            pass
+
+        def run(self, config):
+            class Result:
+                total_items = 1
+                success_count = 0
+                failed_count = 1
+                total_rows = 0
+
+            return Result()
+
+    monkeypatch.setattr(data_cli, "MarketDataJobRunner", FakeRunner)
+
+    result = CliRunner().invoke(app, ["data", "sync-job", "--job", str(job_path)])
+
+    assert result.exit_code == 1
+    assert "failed=1" in result.output
+
+
 def test_chart_viewer_cli_passes_frequency_and_adjust_options(tmp_path: Path, monkeypatch):
     bars_root = tmp_path / "bars"
     bars_root.mkdir()
