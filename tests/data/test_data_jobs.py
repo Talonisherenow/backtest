@@ -1,10 +1,15 @@
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 
+from backtest.core.contracts import CatalogRecord
 from backtest.core.enums import AdjustMode, Frequency
-from backtest.data.jobs import DataSyncJobConfig, load_data_sync_job_config
+from backtest.data.jobs import (
+    DataSyncJobConfig,
+    MarketDataJobRunner,
+    load_data_sync_job_config,
+)
 
 
 def _write_job_config(tmp_path: Path, content: str) -> Path:
@@ -109,3 +114,187 @@ def test_data_sync_job_config_rejects_inverted_date_range():
             start_date=date(2025, 1, 3),
             end_date=date(2025, 1, 2),
         )
+
+
+class RecordingSyncService:
+    def __init__(self, failures_before_success: int = 0) -> None:
+        self.failures_before_success = failures_before_success
+        self.calls: list[dict] = []
+
+    def sync(self, **kwargs) -> None:
+        self.calls.append(kwargs)
+        if len(self.calls) <= self.failures_before_success:
+            raise RuntimeError("temporary exchange error")
+
+
+class AlwaysFailingSyncService:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def sync(self, **kwargs) -> None:
+        self.calls.append(kwargs)
+        raise RuntimeError("permanent exchange error")
+
+
+class FakeCatalog:
+    def coverage(self, symbol, frequency, adjust, source=None):
+        return [
+            CatalogRecord(
+                symbol=symbol,
+                frequency=frequency,
+                adjust=adjust,
+                start_date=date(2025, 1, 1),
+                end_date=date(2025, 1, 31),
+                rows=7,
+                source=source or "fixture",
+                cache_path=Path("bars.parquet"),
+                updated_at=datetime(2025, 1, 31, 12, 0, 0),
+            )
+        ]
+
+
+def _job_config(tmp_path: Path, **overrides) -> DataSyncJobConfig:
+    values = {
+        "name": "runner-job",
+        "source": "ccxt",
+        "exchange": "bitget",
+        "symbols": ["BTC/USDT", "ETH/USDT"],
+        "frequencies": [Frequency.DAILY, Frequency.HOUR_4],
+        "adjust": AdjustMode.NONE,
+        "start_date": date(2025, 1, 1),
+        "end_date": date(2025, 1, 31),
+        "output_dir": tmp_path / "job-output",
+    }
+    values.update(overrides)
+    return DataSyncJobConfig(**values)
+
+
+def test_market_data_job_runner_expands_symbols_and_frequencies(tmp_path: Path):
+    service = RecordingSyncService()
+    runner = MarketDataJobRunner(
+        service=service,
+        catalog=FakeCatalog(),
+        sleep=lambda seconds: None,
+        now=lambda: datetime(2025, 2, 1, 0, 0, 0),
+    )
+
+    result = runner.run(_job_config(tmp_path))
+
+    assert len(service.calls) == 4
+    assert [
+        (call["symbols"], call["frequency"], call["source"])
+        for call in service.calls
+    ] == [
+        (["BTC/USDT"], Frequency.DAILY, "ccxt:bitget"),
+        (["BTC/USDT"], Frequency.HOUR_4, "ccxt:bitget"),
+        (["ETH/USDT"], Frequency.DAILY, "ccxt:bitget"),
+        (["ETH/USDT"], Frequency.HOUR_4, "ccxt:bitget"),
+    ]
+    assert result.total_items == 4
+    assert result.success_count == 4
+    assert result.failed_count == 0
+    assert result.total_rows == 28
+
+
+def test_market_data_job_runner_retries_failed_item(tmp_path: Path):
+    service = RecordingSyncService(failures_before_success=1)
+    sleeps: list[float] = []
+    config = _job_config(
+        tmp_path,
+        symbols=["BTC/USDT"],
+        frequencies=[Frequency.DAILY],
+        retry={
+            "max_attempts": 2,
+            "request_delay_seconds": 0,
+            "failure_cooldown_seconds": 3,
+            "continue_on_error": True,
+        },
+    )
+    runner = MarketDataJobRunner(
+        service=service,
+        catalog=FakeCatalog(),
+        sleep=sleeps.append,
+        now=lambda: datetime(2025, 2, 1, 0, 0, 0),
+    )
+
+    result = runner.run(config)
+
+    assert len(service.calls) == 2
+    assert sleeps == [3]
+    assert result.items[0].status == "success"
+    assert result.items[0].attempts == 2
+    assert result.items[0].error is None
+
+
+def test_market_data_job_runner_continues_after_failed_item(tmp_path: Path):
+    service = AlwaysFailingSyncService()
+    config = _job_config(
+        tmp_path,
+        symbols=["BTC/USDT", "ETH/USDT"],
+        frequencies=[Frequency.DAILY],
+        retry={"max_attempts": 1, "continue_on_error": True},
+    )
+    runner = MarketDataJobRunner(
+        service=service,
+        catalog=FakeCatalog(),
+        sleep=lambda seconds: None,
+        now=lambda: datetime(2025, 2, 1, 0, 0, 0),
+    )
+
+    result = runner.run(config)
+
+    assert len(service.calls) == 2
+    assert result.total_items == 2
+    assert result.success_count == 0
+    assert result.failed_count == 2
+    assert [item.error for item in result.items] == [
+        "permanent exchange error",
+        "permanent exchange error",
+    ]
+
+
+def test_market_data_job_runner_stops_when_continue_on_error_is_false(tmp_path: Path):
+    service = AlwaysFailingSyncService()
+    config = _job_config(
+        tmp_path,
+        symbols=["BTC/USDT", "ETH/USDT"],
+        frequencies=[Frequency.DAILY],
+        retry={"max_attempts": 1, "continue_on_error": False},
+    )
+    runner = MarketDataJobRunner(
+        service=service,
+        catalog=FakeCatalog(),
+        sleep=lambda seconds: None,
+        now=lambda: datetime(2025, 2, 1, 0, 0, 0),
+    )
+
+    with pytest.raises(RuntimeError, match="Data sync job runner-job failed"):
+        runner.run(config)
+
+    assert len(service.calls) == 1
+    assert (tmp_path / "job-output" / "summary.csv").exists()
+    assert (tmp_path / "job-output" / "summary.json").exists()
+
+
+def test_market_data_job_runner_writes_summary_files(tmp_path: Path):
+    service = RecordingSyncService()
+    config = _job_config(
+        tmp_path,
+        symbols=["BTC/USDT"],
+        frequencies=[Frequency.DAILY],
+    )
+    runner = MarketDataJobRunner(
+        service=service,
+        catalog=FakeCatalog(),
+        sleep=lambda seconds: None,
+        now=lambda: datetime(2025, 2, 1, 0, 0, 0),
+    )
+
+    result = runner.run(config)
+
+    csv_text = (tmp_path / "job-output" / "summary.csv").read_text(encoding="utf-8")
+    json_text = (tmp_path / "job-output" / "summary.json").read_text(encoding="utf-8")
+    assert "BTC/USDT" in csv_text
+    assert "success" in csv_text
+    assert '"name": "runner-job"' in json_text
+    assert result.items[0].rows == 7
