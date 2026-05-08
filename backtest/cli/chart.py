@@ -31,6 +31,12 @@ def viewer(
         help="Output HTML path",
     ),
     limit: int = typer.Option(300, "--limit", min=1, help="Maximum bars per symbol"),
+    frequency: list[str] | None = typer.Option(
+        None,
+        "--frequency",
+        help="Optional frequency filter; repeat for multiple frequencies",
+    ),
+    adjust: str = typer.Option("qfq", "--adjust", help="Adjust mode to read from cache"),
     symbols_file: Path | None = typer.Option(
         None,
         "--symbols-file",
@@ -55,6 +61,9 @@ def viewer(
             universe_path=universe_path,
             symbols=selected_symbols or None,
             limit=limit,
+            frequency=None if not frequency else frequency[0],
+            frequencies=list(frequency or []) or None,
+            adjust=adjust,
         )
         write_kline_viewer(payload, output_path)
     except Exception as exc:

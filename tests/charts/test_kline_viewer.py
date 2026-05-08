@@ -6,12 +6,20 @@ from backtest.charts.kline_viewer import build_kline_payload, write_kline_viewer
 from backtest.data.store import ParquetBarStore
 
 
-def _write_cached_bars(bars_root: Path, symbol: str) -> None:
+def _write_cached_bars(
+    bars_root: Path,
+    symbol: str,
+    *,
+    frequency: str = "1d",
+    adjust: str = "qfq",
+    dates: list[str] | None = None,
+) -> None:
+    dates = dates or ["2025-01-02", "2025-01-03", "2025-01-06"]
     store = ParquetBarStore(bars_root)
     store.write_bars(
         pd.DataFrame(
             {
-                "date": pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"]),
+                "date": pd.to_datetime(dates),
                 "symbol": [symbol, symbol, symbol],
                 "open": [10.0, 10.5, 10.8],
                 "high": [11.0, 11.2, 11.4],
@@ -19,8 +27,8 @@ def _write_cached_bars(bars_root: Path, symbol: str) -> None:
                 "close": [10.5, 10.8, 11.0],
                 "volume": [1000, 1200, 1400],
                 "amount": [10500.0, 12960.0, 15400.0],
-                "frequency": ["1d", "1d", "1d"],
-                "adjust": ["qfq", "qfq", "qfq"],
+                "frequency": [frequency, frequency, frequency],
+                "adjust": [adjust, adjust, adjust],
             }
         )
     )
@@ -51,6 +59,65 @@ def test_build_kline_payload_reads_cached_bars_and_universe_metadata(tmp_path: P
     assert first["bars"][-1]["close"] == 11.0
 
 
+def test_build_kline_payload_discovers_crypto_symbols_and_multiple_frequencies(
+    tmp_path: Path,
+):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="1d",
+        adjust="none",
+        dates=["2025-01-01", "2025-01-02", "2025-01-03"],
+    )
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="4h",
+        adjust="none",
+        dates=["2025-01-02 00:00:00", "2025-01-02 04:00:00", "2025-01-02 08:00:00"],
+    )
+
+    payload = build_kline_payload(
+        bars_root, symbols=["BTC/USDT"], limit=2, frequency=None, adjust="none"
+    )
+
+    item = payload["symbols"][0]
+    assert item["symbol"] == "BTC/USDT"
+    assert [series["frequency"] for series in item["series"]] == ["4h", "1d"]
+    assert item["series"][0]["first_bar"] == "2025-01-02T00:00:00"
+    assert item["series"][0]["last_bar"] == "2025-01-02T08:00:00"
+    assert item["series"][0]["bars"][-1]["date"] == "2025-01-02T08:00:00"
+    assert item["series"][1]["rows"] == 3
+    assert item["series"][1]["years"] == [2025]
+    assert item["series"][1]["first_bar"] == "2025-01-01"
+    assert item["series"][1]["last_bar"] == "2025-01-03"
+    assert [bar["date"] for bar in item["series"][1]["bars"]] == [
+        "2025-01-02",
+        "2025-01-03",
+    ]
+
+
+def test_build_kline_payload_honors_frequency_filter_for_crypto_cache(
+    tmp_path: Path,
+):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(bars_root, "BTC/USDT", frequency="1d", adjust="none")
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="4h",
+        adjust="none",
+        dates=["2025-01-02 00:00:00", "2025-01-02 04:00:00", "2025-01-02 08:00:00"],
+    )
+
+    payload = build_kline_payload(
+        bars_root, symbols=["BTC/USDT"], limit=2, frequency="4h", adjust="none"
+    )
+
+    assert [series["frequency"] for series in payload["symbols"][0]["series"]] == ["4h"]
+
+
 def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     payload = {
         "frequency": "1d",
@@ -61,6 +128,27 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
                 "name": "平安银行",
                 "exchange": "SZ",
                 "board": "主板",
+                "series": [
+                    {
+                        "frequency": "1d",
+                        "adjust": "qfq",
+                        "rows": 1,
+                        "first_bar": "2025-01-02",
+                        "last_bar": "2025-01-02",
+                        "years": [2025],
+                        "bars": [
+                            {
+                                "date": "2025-01-02",
+                                "open": 10.0,
+                                "high": 11.0,
+                                "low": 9.8,
+                                "close": 10.5,
+                                "volume": 1000,
+                                "amount": 10500.0,
+                            }
+                        ],
+                    }
+                ],
                 "bars": [
                     {
                         "date": "2025-01-02",
@@ -87,3 +175,7 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "title: {" not in html
     assert 'yanchor: "bottom"' in html
     assert 'tickformat: ".2f"' in html
+    assert "frequencyButtons" in html
+    assert "dataStatusDrawer" in html
+    assert "toggleDataStatus" in html
+    assert "seriesByFrequency" in html

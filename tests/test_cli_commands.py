@@ -4,6 +4,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from backtest.cli import chart as chart_cli
 from backtest.cli import data as data_cli
 from backtest.cli.app import app
 from backtest.core.contracts import CatalogRecord
@@ -248,6 +249,47 @@ def test_data_sync_cli_requires_exchange_for_ccxt_source(tmp_path: Path):
 
     assert result.exit_code == 1
     assert "data.exchange is required for source=ccxt" in result.output
+
+
+def test_chart_viewer_cli_passes_frequency_and_adjust_options(tmp_path: Path, monkeypatch):
+    bars_root = tmp_path / "bars"
+    bars_root.mkdir()
+    output_path = tmp_path / "viewer.html"
+    captured = {}
+
+    def fake_build_kline_payload(**kwargs):
+        captured.update(kwargs)
+        return {"symbols": [{"symbol": "BTC/USDT"}]}
+
+    def fake_write_kline_viewer(payload, path):
+        captured["output_path"] = path
+        path.write_text("viewer", encoding="utf-8")
+
+    monkeypatch.setattr(chart_cli, "build_kline_payload", fake_build_kline_payload)
+    monkeypatch.setattr(chart_cli, "write_kline_viewer", fake_write_kline_viewer)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "chart",
+            "viewer",
+            "--bars-root",
+            str(bars_root),
+            "--output",
+            str(output_path),
+            "--frequency",
+            "1d",
+            "--frequency",
+            "4h",
+            "--adjust",
+            "none",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["frequencies"] == ["1d", "4h"]
+    assert captured["adjust"] == "none"
+    assert captured["output_path"] == output_path
 
 
 def test_data_sync_cli_reports_sync_errors(tmp_path: Path, monkeypatch):
