@@ -8,6 +8,7 @@ class Frequency(StrEnum):
     MIN_15 = "15m"
     MIN_30 = "30m"
     MIN_60 = "60m"
+    HOUR_4 = "4h"
 
 
 class AdjustMode(StrEnum):
