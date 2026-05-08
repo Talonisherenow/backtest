@@ -3,8 +3,10 @@ from pathlib import Path
 import typer
 
 from backtest.config.loader import load_config
+from backtest.config.models import BacktestConfig
 from backtest.data.akshare_provider import AkShareProvider
 from backtest.data.catalog import DataCatalog
+from backtest.data.ccxt_provider import CCXTOHLCVProvider
 from backtest.data.metadata import MetadataStore
 from backtest.data.service import DataSyncService
 from backtest.data.store import ParquetBarStore
@@ -16,6 +18,29 @@ app = typer.Typer(help="Manage market data cache, catalog, and crawl tasks")
 
 def _metadata_store(path: Path) -> MetadataStore:
     return MetadataStore(path)
+
+
+def _ccxt_exchange(config: BacktestConfig) -> str:
+    exchange = config.data.exchange
+    if not exchange:
+        raise ValueError("data.exchange is required for source=ccxt")
+    return exchange
+
+
+def _provider_for_config(config: BacktestConfig):
+    if config.data.source == "akshare":
+        return AkShareProvider()
+    if config.data.source == "ccxt":
+        return CCXTOHLCVProvider(exchange_id=_ccxt_exchange(config))
+    raise ValueError(f"Unsupported data source: {config.data.source}")
+
+
+def _catalog_source(config: BacktestConfig) -> str:
+    if config.data.source == "akshare":
+        return "akshare"
+    if config.data.source == "ccxt":
+        return f"ccxt:{_ccxt_exchange(config)}"
+    raise ValueError(f"Unsupported data source: {config.data.source}")
 
 
 @app.command("universe")
@@ -93,14 +118,11 @@ def sync_data(
     """Sync missing market data for a config."""
     try:
         config = load_config(config_path)
-        if config.data.source != "akshare":
-            typer.echo("Only source=akshare is supported", err=True)
-            raise typer.Exit(code=1)
 
         metadata = _metadata_store(metadata_path)
         catalog = DataCatalog(metadata)
         service = DataSyncService(
-            provider=AkShareProvider(),
+            provider=_provider_for_config(config),
             store=ParquetBarStore(bars_root),
             catalog=catalog,
             tasks=CrawlTaskManager(metadata),
@@ -111,7 +133,7 @@ def sync_data(
             end_date=config.data.end_date,
             frequency=config.data.frequency,
             adjust=config.data.adjust,
-            source=config.data.source,
+            source=_catalog_source(config),
         )
     except typer.Exit:
         raise
@@ -166,7 +188,7 @@ def coverage(
         config.data.end_date,
         config.data.frequency,
         config.data.adjust,
-        source=config.data.source,
+        source=_catalog_source(config),
     )
     if not missing_ranges:
         typer.echo("Data coverage complete")

@@ -6,7 +6,9 @@ from typer.testing import CliRunner
 
 from backtest.cli import data as data_cli
 from backtest.cli.app import app
+from backtest.core.contracts import CatalogRecord
 from backtest.core.enums import AdjustMode, Frequency
+from backtest.data.catalog import DataCatalog
 from backtest.data.metadata import MetadataStore
 from backtest.data.tasks import CrawlTaskManager
 
@@ -42,6 +44,51 @@ execution:
   stamp_tax_rate: 0.0005
   slippage_rate: 0.0005
   board_lot_size: 100
+metrics:
+  builtin:
+    - total_return
+report:
+  output_dir: runs
+  html: true
+  charts: true
+""",
+        encoding="utf-8",
+    )
+    return config_path
+
+
+def _write_crypto_config(tmp_path: Path, *, include_exchange: bool = True) -> Path:
+    signals_path = tmp_path / "signals.csv"
+    signals_path.write_text(
+        "date,symbol,target_weight\n2025-01-02,BTC/USDT,0.5\n",
+        encoding="utf-8",
+    )
+    exchange_line = "  exchange: binance\n" if include_exchange else ""
+    config_path = tmp_path / "crypto.yaml"
+    config_path.write_text(
+        f"""
+project:
+  name: crypto-demo
+data:
+  source: ccxt
+{exchange_line}  frequency: 4h
+  adjust: none
+  start_date: "2025-01-01"
+  end_date: "2025-01-31"
+  stock_pool:
+    symbols:
+      - "BTC/USDT"
+signals:
+  type: file
+  path: signals.csv
+execution:
+  timing: next_open
+  initial_cash: 100000
+  commission_rate: 0.001
+  min_commission: 0
+  stamp_tax_rate: 0
+  slippage_rate: 0.0005
+  board_lot_size: 1
 metrics:
   builtin:
     - total_return
@@ -139,6 +186,70 @@ def test_data_sync_cli_passes_bars_root_to_store(tmp_path: Path, monkeypatch):
     assert captured["sync_kwargs"]["symbols"] == ["000001.SZ"]
 
 
+def test_data_sync_cli_uses_ccxt_provider_and_exchange_scoped_source(
+    tmp_path: Path, monkeypatch
+):
+    config_path = _write_crypto_config(tmp_path)
+    captured = {}
+
+    class FakeCCXTProvider:
+        def __init__(self, exchange_id: str) -> None:
+            self.exchange_id = exchange_id
+
+    class NoopSyncService:
+        def __init__(self, provider, store, catalog, tasks) -> None:
+            captured["provider"] = provider
+            captured["store_root"] = store.root
+
+        def sync(self, **kwargs) -> None:
+            captured["sync_kwargs"] = kwargs
+
+    monkeypatch.setattr(data_cli, "CCXTOHLCVProvider", FakeCCXTProvider)
+    monkeypatch.setattr(data_cli, "DataSyncService", NoopSyncService)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "data",
+            "sync",
+            "--config",
+            str(config_path),
+            "--metadata",
+            str(tmp_path / "metadata.sqlite"),
+            "--bars-root",
+            str(tmp_path / "bars"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["provider"].exchange_id == "binance"
+    assert captured["sync_kwargs"]["symbols"] == ["BTC/USDT"]
+    assert captured["sync_kwargs"]["frequency"] == Frequency.HOUR_4
+    assert captured["sync_kwargs"]["adjust"] == AdjustMode.NONE
+    assert captured["sync_kwargs"]["source"] == "ccxt:binance"
+
+
+def test_data_sync_cli_requires_exchange_for_ccxt_source(tmp_path: Path):
+    config_path = _write_crypto_config(tmp_path, include_exchange=False)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "data",
+            "sync",
+            "--config",
+            str(config_path),
+            "--metadata",
+            str(tmp_path / "metadata.sqlite"),
+            "--bars-root",
+            str(tmp_path / "bars"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "data.exchange is required for source=ccxt" in result.output
+
+
 def test_data_sync_cli_reports_sync_errors(tmp_path: Path, monkeypatch):
     config_path = _write_config(tmp_path)
 
@@ -170,7 +281,7 @@ def test_data_sync_cli_reports_sync_errors(tmp_path: Path, monkeypatch):
     assert "provider unavailable" in result.output
 
 
-def test_data_sync_cli_accepts_bars_root_option_for_non_akshare_config(tmp_path: Path):
+def test_data_sync_cli_rejects_unknown_data_source(tmp_path: Path):
     config_path = _write_config(tmp_path)
     config_path.write_text(config_path.read_text(encoding="utf-8").replace("source: akshare", "source: fixture"))
 
@@ -189,7 +300,7 @@ def test_data_sync_cli_accepts_bars_root_option_for_non_akshare_config(tmp_path:
     )
 
     assert result.exit_code == 1
-    assert "Only source=akshare is supported" in result.output
+    assert "Unsupported data source: fixture" in result.output
 
 
 def test_data_inventory_cli_handles_empty_metadata(tmp_path: Path):
@@ -212,6 +323,33 @@ def test_data_coverage_cli_prints_missing_ranges(tmp_path: Path):
 
     assert result.exit_code == 0
     assert "000001.SZ missing 2025-01-01 to 2025-01-31" in result.output
+
+
+def test_data_coverage_cli_uses_exchange_scoped_ccxt_source(tmp_path: Path):
+    config_path = _write_crypto_config(tmp_path)
+    metadata_path = tmp_path / "metadata.sqlite"
+    metadata = MetadataStore(metadata_path)
+    DataCatalog(metadata).upsert(
+        CatalogRecord(
+            symbol="BTC/USDT",
+            frequency=Frequency.HOUR_4,
+            adjust=AdjustMode.NONE,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 31),
+            rows=186,
+            source="ccxt:binance",
+            cache_path=tmp_path / "bars.parquet",
+            updated_at=metadata.now(),
+        )
+    )
+
+    result = CliRunner().invoke(
+        app,
+        ["data", "coverage", "--config", str(config_path), "--metadata", str(metadata_path)],
+    )
+
+    assert result.exit_code == 0
+    assert "Data coverage complete" in result.output
 
 
 def test_data_retry_cli_marks_failed_tasks_retrying(tmp_path: Path):
