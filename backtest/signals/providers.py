@@ -4,7 +4,21 @@ from pathlib import Path
 import pandas as pd
 
 from backtest.core.frames import validate_signal_frame
+from backtest.core.targets import validate_target_portfolio_frame
 from backtest.signals.context import StrategyContext
+
+
+def legacy_signals_to_target_portfolio(
+    signals: pd.DataFrame,
+    universe: list[str] | None = None,
+) -> pd.DataFrame:
+    frame = signals.rename(
+        columns={
+            "date": "timestamp",
+            "symbol": "instrument_id",
+        }
+    )
+    return validate_target_portfolio_frame(frame, universe=universe)
 
 
 class FileSignalProvider:

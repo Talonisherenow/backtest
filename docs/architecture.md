@@ -48,6 +48,26 @@ Config -> BacktestEngine -> SignalProvider -> BrokerEngine -> Metrics -> Reports
 - Reports are both human-readable and machine-readable. Future GUI tools should
   consume JSON and Parquet artifacts rather than scraping `report.html`.
 
+## Universal Trading Evolution
+
+The next architecture separates strategy decisions from execution facts:
+
+```text
+MarketDataProvider
+  -> StrategyRunner
+  -> TargetPortfolio / OrderIntent
+  -> RiskGate
+  -> OrderLedger
+  -> ExecutionAdapter
+  -> ExecutionReport
+  -> PortfolioState
+```
+
+Backtests and live trading should share strategy, target, order intent, risk,
+and portfolio contracts. They should not share execution implementation:
+backtests use a simulation adapter, while live trading uses broker or exchange
+API adapters.
+
 ## Current MVP Limitations
 
 - `AkShareProvider` supports daily bars only.

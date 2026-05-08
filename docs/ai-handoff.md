@@ -4,10 +4,24 @@
 
 ## 一句话定位
 
-这是一个本地研究型 A 股回测 MVP。它不是多用户服务，而是一个 Python package + CLI，用来做可复现的 A 股策略研究：
+这是一个本地研究型 A 股回测 MVP，并已经在
+`feat/universal-trading-architecture` 分支上补了通用标的交易架构的第一阶段地基。它不是多用户服务，而是一个 Python package + CLI，用来做可复现的 A 股策略研究，并为后续接入港股、美股、加密货币和真实交易 API 预留统一合同：
 
 ```text
 配置 YAML -> 数据缓存 -> 信号生成 -> 模拟撮合 -> 指标计算 -> 结构化报告/可视化
+```
+
+通用交易架构目标链路：
+
+```text
+MarketDataProvider
+  -> StrategyRunner
+  -> TargetPortfolio / OrderIntent
+  -> RiskGate
+  -> OrderLedger
+  -> ExecutionAdapter
+  -> ExecutionReport
+  -> PortfolioState
 ```
 
 当前已经具备：
@@ -20,7 +34,11 @@
 - 内置指标和自定义指标扩展；
 - 结构化回测报告；
 - 可复用 K 线查看器；
-- 十大买讯策略、固定持有期退出、30 个回测 case 和可视化结果页。
+- 十大买讯策略、固定持有期退出、30 个回测 case 和可视化结果页；
+- 通用 `Instrument`、`TradingRule`、`TargetPortfolioFrame`；
+- 通用 `OrderIntent`、`ExecutionReport`、`PortfolioState`；
+- 独立 `OrderPlanner`；
+- SQLite `OrderLedger`，按 `(account_id, client_order_id)` 隔离订单。
 
 ## 新会话建议阅读顺序
 
@@ -31,28 +49,48 @@
 3. `docs/data-contracts.md`
 4. `docs/data-ingestion.md`
 5. `docs/cli.md`
-6. `docs/ten-buy-signals-implementation.md`
-7. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
-8. 当前要改的代码和测试
+6. `docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md`
+7. `docs/superpowers/plans/2026-05-07-universal-trading-architecture.md`
+8. `docs/ten-buy-signals-implementation.md`
+9. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
+10. 当前要改的代码和测试
 
 旧设计文档在 `docs/superpowers/specs/` 下，可作为背景，但当前代码、测试和本文档优先级更高。
 
 ## 当前分支和近期能力
 
-截至 2026-05-05，当前工作分支是：
+截至 2026-05-08，当前工作分支是：
 
 ```text
-feat/a-share-backtest-mvp
+feat/universal-trading-architecture
 ```
+
+该分支从 `feat/a-share-backtest-mvp` 切出。A 股回测主能力仍来自原分支；本分支新增的是通用交易架构第一阶段地基，未接真实 API。
 
 和本轮能力直接相关的提交：
 
 ```text
+ee21167 feat: add universal instrument models
+0f8263d feat: add target portfolio frame contract
+237e6a6 feat: add order intent contracts
+09e4e2c feat: add portfolio state models
+aece6eb feat: convert legacy signals to target portfolios
+8902fae feat: add target portfolio order planner
+bb5818d feat: add sqlite order ledger
+d955e3c docs: describe universal trading contracts
 bed842d feat: add fixed holding exits for buy signals
 be19a89 feat: add all A-share universe sampling
 10c6b8a feat: add reusable k-line viewer
 b6c701c feat: add ten buy signal backtest results
 ```
+
+本轮已经确认的产品和架构决策：
+
+- 第一个真实 API 适配器优先接 `CCXT`，先服务加密货币交易闭环；
+- 多账户能力要保留口子，第一版默认单账户 `default`；
+- 订单、执行回报、组合状态、ledger 都必须带 `account_id`；
+- CLI 单次触发是默认运行形态，但 runner 边界要能被未来守护进程复用；
+- 策略和交易 API 解耦：策略只产出目标组合或订单意图，不直接调用 API。
 
 新会话继续工作前先确认：
 
@@ -99,6 +137,9 @@ backtest/core/         枚举、符号规范化、BarFrame/SignalFrame 校验
 backtest/data/         AkShare provider、行情缓存、元数据、股票池、同步服务
 backtest/signals/      CSV/Parquet/Python 信号 provider
 backtest/broker/       账户、费用、滑点、执行循环、订单和成交结果
+backtest/planning/     TargetPortfolio -> OrderIntent 规划器
+backtest/portfolio/    多账户预留的组合状态模型
+backtest/execution/    执行基础设施，目前有 SQLite OrderLedger
 backtest/metrics/      内置指标、自定义指标 registry、结果上下文
 backtest/reports/      manifest、结构化报告、HTML report
 backtest/charts/       K 线查看器
@@ -120,6 +161,8 @@ docs/signal-integration.md                       文件信号和 Python 策略�
 docs/metrics-extension.md                        内置指标和自定义指标
 docs/reports.md                                  报告产物结构
 docs/cli.md                                      当前 CLI 命令
+docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md 通用交易架构设计
+docs/superpowers/plans/2026-05-07-universal-trading-architecture.md 通用交易架构第一阶段执行计划
 docs/0504-十大买讯对应的量化公式.md              原始十大买讯公式
 docs/ten-buy-signals-implementation.md           十大买讯公式到代码的映射
 docs/2026-05-05-ten-buy-signals-backtest-handoff.md 本轮回测能力交接
@@ -281,6 +324,81 @@ date, symbol, target_weight
 
 所有策略或外部信号都应通过 `validate_signal_frame()`。不要绕过校验。
 
+### 通用交易合同
+
+本分支新增通用交易合同，但还没有把 `BrokerEngine` 改成实盘执行引擎。未来 AI 必须区分旧回测合同和新通用交易合同。
+
+新增核心模型：
+
+```text
+backtest/core/instruments.py
+  Market
+  AssetClass
+  Instrument
+  TradingRule
+
+backtest/core/targets.py
+  TARGET_PORTFOLIO_COLUMNS
+  validate_target_portfolio_frame()
+
+backtest/core/orders.py
+  OrderIntent
+  ExecutionReport
+  OrderSide
+  OrderType
+  TimeInForce
+  ExecutionStatus
+
+backtest/portfolio/state.py
+  CashBalance
+  PositionState
+  PortfolioState
+
+backtest/planning/order_planner.py
+  OrderPlanner
+
+backtest/execution/ledger.py
+  SQLiteOrderLedger
+```
+
+核心语义：
+
+```text
+TargetPortfolio != OrderIntent
+OrderIntent != ExecutionReport
+ExecutionReport 才能更新 PortfolioState
+```
+
+`TargetPortfolioFrame` 必需列：
+
+```text
+timestamp, instrument_id, target_weight
+```
+
+`OrderIntent` 表示“系统想提交什么订单”，不是成交事实。关键字段：
+
+```text
+account_id, client_order_id, strategy_id, instrument_id, side,
+quantity, order_type, limit_price, time_in_force, created_at, reason
+```
+
+`ExecutionReport` 表示“执行层发生了什么”，回测里由模拟撮合生成，实盘里未来由券商或交易所 API 返回。关键字段：
+
+```text
+account_id, client_order_id, instrument_id, status, order_quantity,
+filled_quantity, avg_fill_price, reported_at, broker_order_id, error, raw_response
+```
+
+`PortfolioState` 是账户级组合状态：
+
+```text
+account_id, cash, positions, updated_at
+```
+
+`SQLiteOrderLedger` 使用 `(account_id, client_order_id)` 做主键。第一版默认 `account_id="default"`，但测试已经覆盖 `paper`、`live` 两个账户的订单隔离。
+
+旧 `SignalFrame(date, symbol, target_weight)` 可以通过 `legacy_signals_to_target_portfolio()` 转成新 `TargetPortfolioFrame(timestamp, instrument_id, target_weight)`。这只是兼容桥，不代表旧策略已经直接支持实盘下单。
+
 ## 策略和信号接入
 
 项目支持两类信号：
@@ -337,14 +455,42 @@ params
 - 停牌、涨停买入限制、跌停卖出限制；
 - 输出 orders、trades、positions、equity curve。
 
+注意：`BrokerEngine` 仍是 A 股回测撮合器，不是真实交易系统。通用交易架构第一阶段没有替换 `BrokerEngine`，只是新增了可以复用的交易合同和规划器。
+
+新增执行相关能力：
+
+- `OrderPlanner`：把 `TargetPortfolioFrame + PortfolioState + prices + TradingRule` 转成 `OrderIntent`；
+- `OrderPlanner` 会从 `PortfolioState.account_id` 继承账户标识；
+- `SQLiteOrderLedger`：记录订单意图和执行回报，主键为 `(account_id, client_order_id)`；
+- `OrderIntent`、`ExecutionReport`、`PortfolioState` 都带 `account_id`，第一版默认单账户 `default`；
+- `OrderIntent.client_order_id`、`account_id`、`strategy_id` 会保留调用方原始大小写，只去首尾空格；
+- `instrument_id` 会标准化为大写。
+
 当前不支持：
 
 - `same_close` 或 `next_close` 执行；
 - 分钟级撮合；
 - 复杂订单类型；
 - 真实资金费率或融资融券。
+- 真实交易 API；
+- `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`；
+- 多账户调度和多账户聚合视图。
 
-新增执行行为时改 `backtest/broker/` 并补测试。
+新增 A 股回测撮合行为时改 `backtest/broker/` 并补测试。新增通用交易行为时优先扩展 `backtest/planning/`、`backtest/portfolio/`、`backtest/execution/`，不要把真实 API 调用塞进策略或 `BrokerEngine`。
+
+下一阶段真实 API 适配器优先级：
+
+```text
+1. DryRunExecutionAdapter
+2. CCXTAdapter
+3. 后续再评估 Longbridge / QMT / IBKR
+```
+
+实盘运行形态约定：
+
+- CLI 单次触发是默认入口；
+- 后续可以复用同一 runner 边界做守护进程循环；
+- 现在不要承诺已有实盘守护进程。
 
 ## 指标能力
 
@@ -565,7 +711,7 @@ PY
 
 ```bash
 python -m pip install -e ".[dev]"
-.venv/bin/pytest
+.venv/bin/python -m pytest
 git diff --check
 ```
 
@@ -602,7 +748,11 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - 新增缓存行为：改 `ParquetBarStore`、`DataCatalog` 或 `DataSyncService`。
 - 新增信号格式：写新的 provider，但输出仍必须是 `SignalFrame`。
 - 新增策略：放到 `strategies/`，通过 Python signal provider 接入。
-- 新增执行逻辑：改 `backtest/broker/`，补执行测试。
+- 新增 A 股回测撮合行为：改 `backtest/broker/`，补 broker 执行测试。
+- 新增通用交易规划行为：改 `backtest/planning/`，补 `OrderIntent` 生成测试。
+- 新增账户和仓位状态：改 `backtest/portfolio/`，保持 `account_id` 显式传递。
+- 新增订单持久化或执行回报记录：改 `backtest/execution/`，保持 `(account_id, client_order_id)` 隔离。
+- 新增真实 API 接入：先定义 `ExecutionAdapter` 边界，再接 `CCXT`；不要从策略、metrics 或 report 里直接调用 API。
 - 新增指标：走 `MetricRegistry` 和 `MetricResult`。
 - 新增 GUI/dashboard：消费 `manifest.json`、`metrics.json` 和 Parquet，不解析 HTML。
 - 新增 K 线交互：优先改 `backtest/charts/kline_viewer.py`，补 `tests/charts/`。
@@ -619,6 +769,13 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - 指标不要去抓原始数据，也不要推断缓存路径，只消费回测结果上下文。
 - dashboard 和 GUI 读取结构化产物，不要 scrape `report.html`。
 - `source: akshare` 和日线是当前 MVP 约束，不是永久架构限制。
+- 不要混淆 `SignalFrame`、`TargetPortfolioFrame`、`OrderIntent`、`ExecutionReport`：
+  `SignalFrame` 是旧回测信号，`TargetPortfolioFrame` 是目标组合，`OrderIntent` 是下单意图，`ExecutionReport` 是执行事实。
+- 不要用 `OrderIntent` 更新仓位；只有 `ExecutionReport` 或回测撮合结果能驱动 `PortfolioState` 变化。
+- 不要宣称项目已经具备真实 API 交易能力；`CCXT` 只是下一阶段优先适配目标。
+- 订单、执行回报、组合状态和 ledger 记录必须按账户隔离；第一版默认 `account_id="default"`，但接口不能写死只能单账户。
+- 标识符归一化规则不能随意改：`instrument_id` 大写；`client_order_id`、`account_id`、`strategy_id` 只去首尾空格并保留原始大小写。
+- 后续做多账户时，应扩展账户选择、账户级配置、跨账户汇总和执行路由；不要把多账户逻辑隐藏在全局变量里。
 - 提交时避开 `.idea/`、`.DS_Store`、`__pycache__/` 和用户未要求的临时导出文件。
 - 仓库可能有用户未提交改动；不要 revert、删除或覆盖不属于当前任务的文件。
 
@@ -631,13 +788,17 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - 十大买讯部分条件是日线近似，尚无分钟级或事件数据。
 - 买讯 09 缺少真实板块成分数据。
 - 本轮 30 case 是 100 支随机样本和 300 日窗口的探索结果，不是全市场最终结论。
+- 通用交易架构还停在合同、状态、规划器和 ledger 第一阶段，没有真实 API 适配器。
+- 尚未实现 `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`、实盘 runner、守护进程或 live CLI。
+- 多账户目前是模型和 ledger 层预留口子，还没有账户调度、跨账户汇总、权限隔离或账户级风控。
+- `CCXT` 是下一阶段优先方向，但当前代码尚未引入 `ccxt` 依赖，也没有任何交易所凭证管理。
 
 ## 当前交接验证命令
 
-这组命令可以快速确认本轮核心能力仍可用：
+这组命令可以快速确认旧回测产物和通用交易合同仍可用：
 
 ```bash
-python - <<'PY'
+.venv/bin/python - <<'PY'
 from pathlib import Path
 import json
 import pandas as pd
@@ -667,8 +828,60 @@ print("reports=30")
 print("visualization=true")
 PY
 
+.venv/bin/python - <<'PY'
+from datetime import UTC, datetime
+from decimal import Decimal
+from tempfile import TemporaryDirectory
+from pathlib import Path
+
+from backtest.core.orders import (
+    ExecutionReport,
+    ExecutionStatus,
+    OrderIntent,
+    OrderSide,
+    OrderType,
+)
+from backtest.execution.ledger import SQLiteOrderLedger
+from backtest.portfolio.state import PortfolioState
+
+now = datetime(2026, 5, 8, tzinfo=UTC)
+portfolio = PortfolioState.empty(updated_at=now, account_id="paper")
+assert portfolio.account_id == "paper"
+
+with TemporaryDirectory() as tmp:
+    ledger = SQLiteOrderLedger(Path(tmp) / "orders.sqlite")
+    for account_id in ["paper", "live"]:
+        intent = OrderIntent(
+            account_id=account_id,
+            client_order_id="SameId",
+            strategy_id="StrategyA",
+            instrument_id="btc/usdt",
+            side=OrderSide.BUY,
+            quantity=Decimal("0.01"),
+            order_type=OrderType.MARKET,
+            created_at=now,
+        )
+        ledger.record_intent(intent)
+    report = ExecutionReport(
+        account_id="paper",
+        client_order_id="SameId",
+        instrument_id="BTC/USDT",
+        status=ExecutionStatus.FILLED,
+        order_quantity=Decimal("0.01"),
+        filled_quantity=Decimal("0.01"),
+        avg_fill_price=Decimal("64000"),
+        reported_at=now,
+    )
+    ledger.record_report(report)
+    assert ledger.get_order("paper", "SameId")["status"] == "filled"
+    assert ledger.get_order("live", "SameId")["status"] == "created"
+
+print("universal_contracts=true")
+print("ledger_account_isolation=true")
+PY
+
 git diff --check
-.venv/bin/pytest
+.venv/bin/python -m pytest
 ```
 
 最近一次完整验证结果：
@@ -678,5 +891,7 @@ case_configs=30
 summary_rows=30
 reports=30
 visualization=true
-120 passed, 2 warnings
+universal_contracts=true
+ledger_account_isolation=true
+137 passed, 2 warnings
 ```

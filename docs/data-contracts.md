@@ -105,6 +105,73 @@ Validation performed by `validate_signal_frame()`:
 - If a stock pool is provided, every signal symbol must be in it.
 - Output is sorted by `date, symbol`.
 
+## Instrument
+
+`Instrument` is the market-neutral identifier for a tradable or researchable
+asset. It replaces assumptions that every asset is an A-share stock.
+
+Required fields:
+
+```text
+instrument_id
+market
+exchange
+asset_class
+quote_currency
+```
+
+Examples:
+
+```text
+000001.SZ
+00700.HK
+AAPL.US
+BTC-USDT.BINANCE
+```
+
+## TargetPortfolioFrame
+
+Required columns:
+
+```text
+timestamp
+instrument_id
+target_weight
+```
+
+This frame expresses desired portfolio exposure. It is not an order and does
+not imply that a broker accepted or filled anything.
+
+## OrderIntent
+
+`OrderIntent` is the internal order command created by a strategy or
+`OrderPlanner`.
+
+Required fields:
+
+```text
+account_id
+client_order_id
+strategy_id
+instrument_id
+side
+quantity
+order_type
+time_in_force
+created_at
+```
+
+`OrderIntent` is not an execution result. The system updates portfolio state
+from `ExecutionReport`, not from the intent.
+
+## OrderLedger
+
+`OrderLedger` records order intent and execution report state. The phase-1
+implementation stores rows in SQLite and scopes them by `account_id`.
+
+Every order, execution report, portfolio state, and ledger row is account-scoped.
+Phase 1 uses `account_id=default` unless a caller passes a different account.
+
 ## Converting Existing Data
 
 For existing market data, rename source columns into the `BarFrame` names above,
