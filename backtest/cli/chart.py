@@ -30,7 +30,12 @@ def viewer(
         "--output",
         help="Output HTML path",
     ),
-    limit: int = typer.Option(300, "--limit", min=1, help="Maximum bars per symbol"),
+    limit: int = typer.Option(
+        300,
+        "--limit",
+        min=0,
+        help="Maximum bars per symbol/frequency to embed; 0 embeds all cached bars",
+    ),
     frequency: list[str] | None = typer.Option(
         None,
         "--frequency",

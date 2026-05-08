@@ -30,8 +30,8 @@ def build_kline_payload(
     frequencies: list[str] | None = None,
     adjust: str = "qfq",
 ) -> dict[str, Any]:
-    if limit <= 0:
-        raise ValueError("limit must be positive")
+    if limit < 0:
+        raise ValueError("limit must be non-negative")
 
     normalized_symbols = [normalize_symbol(symbol) for symbol in symbols] if symbols else None
     selected_frequencies = _resolve_frequencies(bars_root, frequency, frequencies, adjust)
@@ -55,8 +55,8 @@ def build_kline_payload(
                 "symbol": symbol,
                 "code": details.get("code", _symbol_code(symbol)),
                 "name": details.get("name", ""),
-                "exchange": details.get("exchange", _symbol_exchange(symbol)),
-                "board": details.get("board", ""),
+                "exchange": _metadata_text(details, "exchange", _symbol_exchange(symbol)),
+                "board": _metadata_text(details, "board", _symbol_board(symbol)),
                 "industry": details.get("industry", ""),
                 "bars": series[0]["bars"],
                 "series": series,
@@ -162,11 +162,12 @@ def _read_symbol_series(
     frame = frame.copy()
     frame["date"] = pd.to_datetime(frame["date"])
     frame = frame.sort_values("date").drop_duplicates(["date", "symbol"], keep="last")
-    limited = frame.tail(limit)
+    limited = frame if limit == 0 else frame.tail(limit)
     return {
         "frequency": frequency,
         "adjust": adjust,
         "rows": int(len(frame)),
+        "loaded_rows": int(len(limited)),
         "first_bar": _timestamp_label(frame["date"].iloc[0], frequency),
         "last_bar": _timestamp_label(frame["date"].iloc[-1], frequency),
         "years": _years_from_paths(paths),
@@ -217,7 +218,20 @@ def _symbol_code(symbol: str) -> str:
 def _symbol_exchange(symbol: str) -> str:
     if "." in symbol:
         return symbol.split(".")[1]
+    if "/" in symbol:
+        return "Crypto"
     return ""
+
+
+def _symbol_board(symbol: str) -> str:
+    if "/" in symbol:
+        return "Spot"
+    return ""
+
+
+def _metadata_text(details: dict[str, str], key: str, default: str) -> str:
+    value = details.get(key, "")
+    return value if value else default
 
 
 HTML_TEMPLATE = """<!doctype html>
@@ -270,7 +284,7 @@ HTML_TEMPLATE = """<!doctype html>
     }
     .controls {
       display: grid;
-      grid-template-columns: minmax(150px, 0.9fr) minmax(220px, 1.4fr) minmax(130px, 0.8fr) minmax(220px, 1.2fr) auto auto;
+      grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.2fr) minmax(130px, 0.7fr) minmax(220px, 1.1fr) minmax(110px, 0.6fr) minmax(180px, 0.9fr) auto;
       gap: 10px;
       align-items: end;
     }
@@ -315,6 +329,27 @@ HTML_TEMPLATE = """<!doctype html>
       background: #e9f2ff;
       color: var(--blue);
       font-weight: 700;
+    }
+    .window-position {
+      display: grid;
+      grid-template-columns: minmax(80px, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 0 9px;
+    }
+    .window-position input {
+      min-height: auto;
+      padding: 0;
+      border: 0;
+    }
+    .window-position span {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
     }
     .toolbar-button {
       min-height: 36px;
@@ -533,6 +568,21 @@ HTML_TEMPLATE = """<!doctype html>
       <label>Frequency
         <div class="range" id="frequencyButtons" aria-label="Frequency"></div>
       </label>
+      <label>Window
+        <select id="windowSizeSelect">
+          <option value="100">100 bars</option>
+          <option value="300" selected>300 bars</option>
+          <option value="1000">1000 bars</option>
+          <option value="5000">5000 bars</option>
+          <option value="all">All loaded</option>
+        </select>
+      </label>
+      <label>Position
+        <div class="window-position">
+          <input id="windowSlider" type="range" min="0" max="0" value="0">
+          <span id="windowMeta">Latest</span>
+        </div>
+      </label>
       <button type="button" class="toolbar-button" id="dataStatusButton" aria-expanded="false">Data Status</button>
     </div>
   </header>
@@ -560,6 +610,8 @@ HTML_TEMPLATE = """<!doctype html>
       frequency: symbols[0]?.series?.[0]?.frequency || payload.frequency || "1d",
       board: "all",
       search: "",
+      windowSize: "300",
+      windowStart: 0,
       drawerOpen: false,
     };
 
@@ -567,6 +619,9 @@ HTML_TEMPLATE = """<!doctype html>
     const symbolSelect = document.getElementById("symbolSelect");
     const searchInput = document.getElementById("searchInput");
     const frequencyButtons = document.getElementById("frequencyButtons");
+    const windowSizeSelect = document.getElementById("windowSizeSelect");
+    const windowSlider = document.getElementById("windowSlider");
+    const windowMeta = document.getElementById("windowMeta");
     const dataStatusButton = document.getElementById("dataStatusButton");
     const closeDrawerButton = document.getElementById("closeDrawerButton");
     const drawerBackdrop = document.getElementById("drawerBackdrop");
@@ -578,7 +633,7 @@ HTML_TEMPLATE = """<!doctype html>
     const chart = document.getElementById("chart");
 
     function boardKey(item) {
-      return [item.exchange || "", item.board || ""].filter(Boolean).join(" / ");
+      return [item.exchange || "", item.board || ""].filter(Boolean).join(" / ") || "Unknown";
     }
 
     function optionLabel(item) {
@@ -630,6 +685,7 @@ HTML_TEMPLATE = """<!doctype html>
 
     function populateSymbols() {
       const visible = filteredSymbols();
+      const previousSymbol = state.symbol;
       if (!visible.some((item) => item.symbol === state.symbol)) {
         state.symbol = visible[0]?.symbol || "";
       }
@@ -638,6 +694,9 @@ HTML_TEMPLATE = """<!doctype html>
         return `<option value="${escapeHtml(item.symbol)}"${selected}>${escapeHtml(optionLabel(item))}</option>`;
       }).join("");
       populateFrequencies();
+      if (previousSymbol !== state.symbol) {
+        setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
+      }
       renderDataStatus();
       render();
     }
@@ -652,6 +711,45 @@ HTML_TEMPLATE = """<!doctype html>
         const active = entry.frequency === state.frequency ? " active" : "";
         return `<button type="button" data-frequency="${escapeHtml(entry.frequency)}" class="${active.trim()}">${escapeHtml(entry.frequency)}</button>`;
       }).join("");
+    }
+
+    function windowSizeValue(series) {
+      const loaded = (series?.bars || []).length;
+      if (state.windowSize === "all") {
+        return loaded;
+      }
+      return Math.min(Number(state.windowSize), loaded);
+    }
+
+    function setWindowToLatest(series) {
+      const loaded = (series?.bars || []).length;
+      const size = windowSizeValue(series);
+      state.windowStart = Math.max(0, loaded - size);
+    }
+
+    function visibleBars(series) {
+      const bars = series?.bars || [];
+      const size = windowSizeValue(series);
+      const maxStart = Math.max(0, bars.length - size);
+      state.windowStart = Math.min(Math.max(0, state.windowStart), maxStart);
+      if (size >= bars.length) {
+        return bars;
+      }
+      return bars.slice(state.windowStart, state.windowStart + size);
+    }
+
+    function updateWindowControls(series, bars) {
+      const loaded = (series?.bars || []).length;
+      const total = Number(series?.rows || loaded);
+      const size = windowSizeValue(series);
+      const maxStart = Math.max(0, loaded - size);
+      windowSizeSelect.value = state.windowSize;
+      windowSlider.max = String(maxStart);
+      windowSlider.value = String(state.windowStart);
+      windowSlider.disabled = maxStart === 0;
+      const end = Math.min(loaded, state.windowStart + bars.length);
+      const loadedText = total === loaded ? `${compact(loaded)} bars loaded` : `${compact(loaded)} / ${compact(total)} bars loaded`;
+      windowMeta.textContent = loaded ? `${state.windowStart + 1}-${end} | ${loadedText}` : "No bars";
     }
 
     function movingAverage(bars, days) {
@@ -679,7 +777,7 @@ HTML_TEMPLATE = """<!doctype html>
         metric("Time Span", `${first.date} to ${last.date}`),
         metric("Close", fixed(last.close)),
         metric("Change", `${fixed(change)} (${fixed(changePct)}%)`),
-        metric("Rows", compact(series?.rows || bars.length)),
+        metric("Loaded", `${compact(series?.loaded_rows || bars.length)} / ${compact(series?.rows || bars.length)}`),
       ].join("");
     }
 
@@ -709,7 +807,8 @@ HTML_TEMPLATE = """<!doctype html>
         chart.textContent = "Chart library failed to load";
         return;
       }
-      const bars = series.bars || [];
+      const bars = visibleBars(series);
+      updateWindowControls(series, bars);
       renderSummary(item, series, bars);
       const x = bars.map((bar) => bar.date);
       const upColor = "#d32f2f";
@@ -810,7 +909,7 @@ HTML_TEMPLATE = """<!doctype html>
           const range = [entry.first_bar, entry.last_bar].filter(Boolean).join(" to ");
           const details = [
             range,
-            `${compact(entry.rows || 0)} rows`,
+            `${compact(entry.loaded_rows || (entry.bars || []).length)} / ${compact(entry.rows || 0)} loaded`,
             years ? `years ${years}` : "",
             entry.adjust ? `adjust ${entry.adjust}` : "",
           ].filter(Boolean).join(" | ");
@@ -877,6 +976,7 @@ HTML_TEMPLATE = """<!doctype html>
     symbolSelect.addEventListener("change", () => {
       state.symbol = symbolSelect.value;
       populateFrequencies();
+      setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
       renderDataStatus();
       render();
     });
@@ -891,7 +991,17 @@ HTML_TEMPLATE = """<!doctype html>
       }
       state.frequency = button.dataset.frequency;
       populateFrequencies();
+      setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
       renderDataStatus();
+      render();
+    });
+    windowSizeSelect.addEventListener("change", () => {
+      state.windowSize = windowSizeSelect.value;
+      setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
+      render();
+    });
+    windowSlider.addEventListener("input", () => {
+      state.windowStart = Number(windowSlider.value);
       render();
     });
     dataStatusButton.addEventListener("click", () => toggleDataStatus());
@@ -906,6 +1016,7 @@ HTML_TEMPLATE = """<!doctype html>
       state.frequency = row.dataset.frequency;
       symbolSelect.value = state.symbol;
       populateFrequencies();
+      setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
       toggleDataStatus(false);
       renderDataStatus();
       render();

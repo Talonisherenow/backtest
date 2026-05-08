@@ -277,6 +277,8 @@ def test_chart_viewer_cli_passes_frequency_and_adjust_options(tmp_path: Path, mo
             str(bars_root),
             "--output",
             str(output_path),
+            "--limit",
+            "0",
             "--frequency",
             "1d",
             "--frequency",
@@ -287,6 +289,7 @@ def test_chart_viewer_cli_passes_frequency_and_adjust_options(tmp_path: Path, mo
     )
 
     assert result.exit_code == 0
+    assert captured["limit"] == 0
     assert captured["frequencies"] == ["1d", "4h"]
     assert captured["adjust"] == "none"
     assert captured["output_path"] == output_path

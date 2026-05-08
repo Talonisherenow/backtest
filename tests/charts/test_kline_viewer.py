@@ -84,6 +84,8 @@ def test_build_kline_payload_discovers_crypto_symbols_and_multiple_frequencies(
 
     item = payload["symbols"][0]
     assert item["symbol"] == "BTC/USDT"
+    assert item["exchange"] == "Crypto"
+    assert item["board"] == "Spot"
     assert [series["frequency"] for series in item["series"]] == ["4h", "1d"]
     assert item["series"][0]["first_bar"] == "2025-01-02T00:00:00"
     assert item["series"][0]["last_bar"] == "2025-01-02T08:00:00"
@@ -144,6 +146,30 @@ def test_build_kline_payload_combines_year_partitions_into_one_series(tmp_path: 
     ]
 
 
+def test_build_kline_payload_limit_zero_embeds_all_cached_bars(tmp_path: Path):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="1d",
+        adjust="none",
+        dates=["2025-01-01", "2025-01-02", "2025-01-03"],
+    )
+
+    payload = build_kline_payload(
+        bars_root, symbols=["BTC/USDT"], limit=0, frequency="1d", adjust="none"
+    )
+
+    series = payload["symbols"][0]["series"][0]
+    assert series["rows"] == 3
+    assert series["loaded_rows"] == 3
+    assert [bar["date"] for bar in series["bars"]] == [
+        "2025-01-01",
+        "2025-01-02",
+        "2025-01-03",
+    ]
+
+
 def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     payload = {
         "frequency": "1d",
@@ -159,6 +185,7 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
                         "frequency": "1d",
                         "adjust": "qfq",
                         "rows": 1,
+                        "loaded_rows": 1,
                         "first_bar": "2025-01-02",
                         "last_bar": "2025-01-02",
                         "years": [2025],
@@ -205,7 +232,11 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "dataStatusDrawer" in html
     assert "toggleDataStatus" in html
     assert "seriesByFrequency" in html
+    assert "windowSizeSelect" in html
+    assert "windowSlider" in html
+    assert "updateWindowControls" in html
+    assert "loaded_rows" in html
     assert "status-symbol-group" in html
     assert "rangeButtons" not in html
     assert "60D" not in html
-    assert "Unknown" not in html
+    assert '|| "Unknown"' in html
