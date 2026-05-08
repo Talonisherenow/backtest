@@ -235,6 +235,10 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "windowSizeSelect" in html
     assert "windowSlider" in html
     assert "updateWindowControls" in html
+    assert "flex-wrap: wrap" in html
+    assert 'class="control control-position"' in html
+    assert "windowMeta.title" in html
+    assert "${state.windowStart + 1}-${end} / ${compact(loaded)}" in html
     assert "loaded_rows" in html
     assert "status-symbol-group" in html
     assert "rangeButtons" not in html

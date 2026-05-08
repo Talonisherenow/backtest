@@ -262,10 +262,7 @@ HTML_TEMPLATE = """<!doctype html>
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     }
     .topbar {
-      display: grid;
-      grid-template-columns: minmax(220px, 1fr) minmax(520px, 2fr);
-      gap: 16px;
-      align-items: end;
+      display: block;
       padding: 16px 20px 12px;
       background: var(--surface);
       border-bottom: 1px solid var(--line);
@@ -283,10 +280,12 @@ HTML_TEMPLATE = """<!doctype html>
       font-size: 13px;
     }
     .controls {
-      display: grid;
-      grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.2fr) minmax(130px, 0.7fr) minmax(220px, 1.1fr) minmax(110px, 0.6fr) minmax(180px, 0.9fr) auto;
+      display: flex;
+      flex-wrap: wrap;
       gap: 10px;
       align-items: end;
+      margin-top: 12px;
+      max-width: 100%;
     }
     label {
       display: grid;
@@ -294,6 +293,32 @@ HTML_TEMPLATE = """<!doctype html>
       color: var(--muted);
       font-size: 12px;
       font-weight: 600;
+    }
+    .control {
+      min-width: 0;
+    }
+    .control-board {
+      flex: 1 1 180px;
+      max-width: 260px;
+    }
+    .control-symbol {
+      flex: 1 1 260px;
+      max-width: 360px;
+    }
+    .control-search {
+      flex: 1 1 150px;
+      max-width: 220px;
+    }
+    .control-frequency {
+      flex: 1 1 360px;
+      max-width: 460px;
+    }
+    .control-window {
+      flex: 0 0 140px;
+    }
+    .control-position {
+      flex: 1 1 300px;
+      max-width: 400px;
     }
     select, input {
       min-height: 36px;
@@ -307,14 +332,15 @@ HTML_TEMPLATE = """<!doctype html>
       font-size: 14px;
     }
     .range {
-      display: inline-flex;
+      display: flex;
       min-height: 36px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      overflow: hidden;
+      overflow-x: auto;
       background: #fff;
     }
     .range button {
+      flex: 0 0 48px;
       border: 0;
       border-right: 1px solid var(--line);
       background: transparent;
@@ -332,9 +358,10 @@ HTML_TEMPLATE = """<!doctype html>
     }
     .window-position {
       display: grid;
-      grid-template-columns: minmax(80px, 1fr) auto;
+      grid-template-columns: minmax(120px, 1fr) minmax(70px, auto);
       gap: 8px;
       align-items: center;
+      min-width: 0;
       min-height: 36px;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -349,6 +376,8 @@ HTML_TEMPLATE = """<!doctype html>
     .window-position span {
       color: var(--muted);
       font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
     .toolbar-button {
@@ -363,6 +392,7 @@ HTML_TEMPLATE = """<!doctype html>
       font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
+      flex: 0 0 auto;
     }
     .toolbar-button:hover {
       border-color: #b8c7d6;
@@ -534,13 +564,22 @@ HTML_TEMPLATE = """<!doctype html>
       font-weight: 700;
     }
     @media (max-width: 980px) {
-      .topbar { grid-template-columns: 1fr; }
-      .controls { grid-template-columns: 1fr 1fr; }
+      .control-board,
+      .control-symbol,
+      .control-search,
+      .control-frequency,
+      .control-position {
+        max-width: none;
+      }
       .summary { grid-template-columns: repeat(3, minmax(90px, 1fr)); }
       #chart { height: 640px; }
     }
     @media (max-width: 620px) {
-      .controls { grid-template-columns: 1fr; }
+      .control,
+      .toolbar-button {
+        flex-basis: 100%;
+        max-width: none;
+      }
       .summary { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
       main { padding: 10px; }
       .topbar { padding: 12px; }
@@ -556,19 +595,19 @@ HTML_TEMPLATE = """<!doctype html>
       <div class="subtitle" id="datasetMeta"></div>
     </div>
     <div class="controls">
-      <label>Market / Board
+      <label class="control control-board">Market / Board
         <select id="boardSelect"></select>
       </label>
-      <label>Symbol
+      <label class="control control-symbol">Symbol
         <select id="symbolSelect"></select>
       </label>
-      <label>Search
+      <label class="control control-search">Search
         <input id="searchInput" type="search" autocomplete="off" placeholder="Code or name">
       </label>
-      <label>Frequency
+      <label class="control control-frequency">Frequency
         <div class="range" id="frequencyButtons" aria-label="Frequency"></div>
       </label>
-      <label>Window
+      <label class="control control-window">Window
         <select id="windowSizeSelect">
           <option value="100">100 bars</option>
           <option value="300" selected>300 bars</option>
@@ -577,7 +616,7 @@ HTML_TEMPLATE = """<!doctype html>
           <option value="all">All loaded</option>
         </select>
       </label>
-      <label>Position
+      <label class="control control-position">Position
         <div class="window-position">
           <input id="windowSlider" type="range" min="0" max="0" value="0">
           <span id="windowMeta">Latest</span>
@@ -749,7 +788,8 @@ HTML_TEMPLATE = """<!doctype html>
       windowSlider.disabled = maxStart === 0;
       const end = Math.min(loaded, state.windowStart + bars.length);
       const loadedText = total === loaded ? `${compact(loaded)} bars loaded` : `${compact(loaded)} / ${compact(total)} bars loaded`;
-      windowMeta.textContent = loaded ? `${state.windowStart + 1}-${end} | ${loadedText}` : "No bars";
+      windowMeta.textContent = loaded ? `${state.windowStart + 1}-${end} / ${compact(loaded)}` : "No bars";
+      windowMeta.title = loaded ? `${state.windowStart + 1}-${end} | ${loadedText}` : "No bars";
     }
 
     function movingAverage(bars, days) {
