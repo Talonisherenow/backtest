@@ -55,6 +55,23 @@ Sync missing data:
 backtest data sync --config configs/demo.yaml --metadata data/metadata.sqlite --bars-root data/bars
 ```
 
+Run a configured batch data sync job:
+
+```bash
+backtest data sync-job --job configs/data_jobs/crypto_bitget_core.yaml
+```
+
+The command prints a short summary and writes detailed artifacts:
+
+```text
+runs/crypto_market_data/bitget_core/summary.csv
+runs/crypto_market_data/bitget_core/summary.json
+```
+
+If any item fails, the command exits with code `1` after writing the summary.
+With `retry.continue_on_error: true`, remaining items still run before the final
+non-zero exit.
+
 Show cached inventory:
 
 ```bash

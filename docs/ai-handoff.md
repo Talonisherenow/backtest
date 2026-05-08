@@ -38,6 +38,7 @@ MarketDataProvider
 - CCXT 加密货币现货历史 OHLCV 接入；
 - `BTC/USDT` 这类 crypto spot symbol 和安全缓存路径；
 - 加密货币代表性周期 `4h`，以及 `60m -> CCXT 1h` 映射；
+- Market data sync jobs，把批量数据拉取沉淀为项目内 runner，而不是一次性终端脚本；
 - 通用 `Instrument`、`TradingRule`、`TargetPortfolioFrame`；
 - 通用 `OrderIntent`、`ExecutionReport`、`PortfolioState`；
 - 独立 `OrderPlanner`；
@@ -57,9 +58,11 @@ MarketDataProvider
 8. `docs/superpowers/plans/2026-05-07-universal-trading-architecture.md`
 9. `docs/superpowers/specs/2026-05-08-crypto-market-data-design.md`
 10. `docs/superpowers/plans/2026-05-08-crypto-market-data.md`
-11. `docs/ten-buy-signals-implementation.md`
-12. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
-13. 当前要改的代码和测试
+11. `docs/superpowers/specs/2026-05-09-market-data-sync-jobs-design.md`
+12. `docs/superpowers/plans/2026-05-09-market-data-sync-jobs.md`
+13. `docs/ten-buy-signals-implementation.md`
+14. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
+15. 当前要改的代码和测试
 
 旧设计文档在 `docs/superpowers/specs/` 下，可作为背景，但当前代码、测试和本文档优先级更高。
 
@@ -105,6 +108,7 @@ b6c701c feat: add ten buy signal backtest results
 - 先接 CCXT 历史行情，真实交易 API 适配器后续再做；
 - crypto 第一版只做现货 OHLCV，不做合约、实盘下单或 crypto 撮合器；
 - crypto 代表性默认研究周期是 `1d + 4h + 60m`，短线扩展 `15m + 5m`，`1m` 只在需要执行细节时拉；
+- 批量数据生产要走 `backtest data sync-job --job ...` 和 `MarketDataJobRunner`，不要把重要取数逻辑留在临时脚本里；
 - 多账户能力要保留口子，第一版默认单账户 `default`；
 - 订单、执行回报、组合状态、ledger 都必须带 `account_id`；
 - CLI 单次触发是默认运行形态，但 runner 边界要能被未来守护进程复用；
@@ -184,6 +188,8 @@ docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md 通�
 docs/superpowers/plans/2026-05-07-universal-trading-architecture.md 通用交易架构第一阶段执行计划
 docs/superpowers/specs/2026-05-08-crypto-market-data-design.md 加密货币历史行情接口设计
 docs/superpowers/plans/2026-05-08-crypto-market-data.md 加密货币历史行情接口执行计划
+docs/superpowers/specs/2026-05-09-market-data-sync-jobs-design.md 批量行情同步任务设计
+docs/superpowers/plans/2026-05-09-market-data-sync-jobs.md 批量行情同步任务执行计划
 docs/0504-十大买讯对应的量化公式.md              原始十大买讯公式
 docs/ten-buy-signals-implementation.md           十大买讯公式到代码的映射
 docs/2026-05-05-ten-buy-signals-backtest-handoff.md 本轮回测能力交接
@@ -325,6 +331,30 @@ backtest data inventory --metadata data/metadata.sqlite
 backtest data tasks --metadata data/metadata.sqlite
 backtest data retry --failed --metadata data/metadata.sqlite
 ```
+
+批量数据生产使用 data job：
+
+```bash
+backtest data sync-job --job configs/data_jobs/crypto_bitget_core.yaml
+```
+
+第一份已提交 job 配置：
+
+```text
+configs/data_jobs/crypto_bitget_core.yaml
+```
+
+它会展开 `BTC/USDT`、`ETH/USDT`、`SOL/USDT`、`BNB/USDT` 与 `1d`、`4h`、
+`60m`、`30m`、`15m`、`5m`、`1m` 的组合，复用 `DataSyncService` 执行每个
+item。运行结果写到：
+
+```text
+runs/crypto_market_data/bitget_core/summary.csv
+runs/crypto_market_data/bitget_core/summary.json
+```
+
+`data/crypto/` 和 `runs/crypto_market_data/` 是本地生成产物，除非用户明确要求，不要
+stage 或提交。
 
 `data sync` 当前支持：
 
@@ -846,6 +876,7 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 
 - 新增数据源：实现 `DataProvider.fetch_bars()`，不要把数据源逻辑写进 broker、metrics、reports。
 - 新增加密历史行情：优先扩展 `backtest/data/ccxt_provider.py`，用 fake exchange 测试，不在单元测试访问真实网络。
+- 新增批量数据任务：优先改 `backtest/data/jobs.py` 和 `backtest/cli/data.py`，继续复用 `DataSyncService`，不要复制 parquet 写入或 catalog coverage 逻辑。
 - 新增缓存行为：改 `ParquetBarStore`、`DataCatalog` 或 `DataSyncService`。
 - 新增信号格式：写新的 provider，但输出仍必须是 `SignalFrame`。
 - 新增策略：放到 `strategies/`，通过 Python signal provider 接入。
@@ -874,6 +905,8 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - crypto symbol 目前只支持简单现货 pair，如 `BTC/USDT`；不要悄悄把 `BTC/USDT:USDT` 合约 symbol 混进第一版。
 - crypto 缓存路径必须使用 `safe_symbol_path()`，不要直接把 `/` 写进 partition path。
 - crypto catalog source 必须带 exchange，例如 `ccxt:binance`，不要只写 `ccxt`。
+- 批量拉取、重试、summary 产物和定时任务入口必须走 data job runner；不要把这些能力退回一次性脚本。
+- 生成数据目录 `data/crypto/` 和运行产物目录 `runs/crypto_market_data/` 默认不提交。
 - crypto `amount` 是 `close * volume` 估算值，不能当成交易所精确成交额。
 - 当前 `BrokerEngine` 仍是 A 股撮合器；不要宣称 crypto 数据接入后就已经具备完整 crypto 回测。
 - 不要混淆 `SignalFrame`、`TargetPortfolioFrame`、`OrderIntent`、`ExecutionReport`：
@@ -898,6 +931,7 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - 本轮 30 case 是 100 支随机样本和 300 日窗口的探索结果，不是全市场最终结论。
 - 通用交易架构还停在合同、状态、规划器和 ledger 第一阶段，没有真实交易 API 适配器。
 - 尚未实现 `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`、实盘 runner、守护进程或 live CLI。
+- Market data sync jobs 当前是 CLI 触发和外部调度器友好入口，还没有项目内 daemon。
 - 多账户目前是模型和 ledger 层预留口子，还没有账户调度、跨账户汇总、权限隔离或账户级风控。
 - 当前已引入 `ccxt` 依赖用于历史行情，但没有任何交易所凭证管理或下单能力。
 - crypto 回测撮合仍未完成；后续需要 fractional quantity、T+0、crypto fee model 和 `ExecutionReport -> PortfolioState` accounting。

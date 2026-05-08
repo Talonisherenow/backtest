@@ -170,6 +170,32 @@ Sync flow:
 Use `backtest data retry --failed --metadata data/metadata.sqlite` to mark
 failed tasks for retry on the next matching sync.
 
+## Market Data Sync Jobs
+
+`backtest data sync` runs one backtest config's single `data.frequency`. For
+recurring data production, use a market data sync job:
+
+```bash
+backtest data sync-job --job configs/data_jobs/crypto_bitget_core.yaml
+```
+
+A data job expands `symbols x frequencies`, reuses `DataSyncService` for each
+item, applies the configured retry policy, and writes run artifacts to the
+configured `output_dir`:
+
+```text
+summary.csv
+summary.json
+```
+
+The first tracked job example is `configs/data_jobs/crypto_bitget_core.yaml`.
+It syncs Bitget spot OHLCV for `BTC/USDT`, `ETH/USDT`, `SOL/USDT`, and
+`BNB/USDT` across `1d`, `4h`, `60m`, `30m`, `15m`, `5m`, and `1m`.
+
+The CLI is designed for external schedulers. A cron or launchd task can call the
+same command repeatedly; source-aware catalog coverage prevents already cached
+ranges from being fetched again.
+
 ## Provider Notes
 
 `source: akshare` uses `AkShareProvider`, which accepts only `frequency: 1d`.
