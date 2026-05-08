@@ -52,13 +52,14 @@ MarketDataProvider
 3. `docs/data-contracts.md`
 4. `docs/data-ingestion.md`
 5. `docs/cli.md`
-6. `docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md`
-7. `docs/superpowers/plans/2026-05-07-universal-trading-architecture.md`
-8. `docs/superpowers/specs/2026-05-08-crypto-market-data-design.md`
-9. `docs/superpowers/plans/2026-05-08-crypto-market-data.md`
-10. `docs/ten-buy-signals-implementation.md`
-11. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
-12. 当前要改的代码和测试
+6. `docs/superpowers/specs/2026-05-09-kline-cache-viewer-design.md`
+7. `docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md`
+8. `docs/superpowers/plans/2026-05-07-universal-trading-architecture.md`
+9. `docs/superpowers/specs/2026-05-08-crypto-market-data-design.md`
+10. `docs/superpowers/plans/2026-05-08-crypto-market-data.md`
+11. `docs/ten-buy-signals-implementation.md`
+12. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
+13. 当前要改的代码和测试
 
 旧设计文档在 `docs/superpowers/specs/` 下，可作为背景，但当前代码、测试和本文档优先级更高。
 
@@ -75,6 +76,12 @@ feat/crypto-market-data
 和本轮能力直接相关的提交：
 
 ```text
+57f1276 fix: separate kline data status action
+576ce9b fix: make kline viewer controls responsive
+5148e59 fix: improve kline viewer data navigation
+f891957 fix: simplify kline viewer status layout
+05144f6 feat: add multi-frequency kline cache viewer
+133a833 docs: design kline cache viewer
 783bfff docs: plan crypto market data ingestion
 5b8f79b feat: support crypto symbols in market data cache
 d9de9fc feat: add ccxt crypto ohlcv provider
@@ -172,6 +179,7 @@ docs/signal-integration.md                       文件信号和 Python 策略�
 docs/metrics-extension.md                        内置指标和自定义指标
 docs/reports.md                                  报告产物结构
 docs/cli.md                                      当前 CLI 命令
+docs/superpowers/specs/2026-05-09-kline-cache-viewer-design.md K 线缓存查看器设计
 docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md 通用交易架构设计
 docs/superpowers/plans/2026-05-07-universal-trading-architecture.md 通用交易架构第一阶段执行计划
 docs/superpowers/specs/2026-05-08-crypto-market-data-design.md 加密货币历史行情接口设计
@@ -610,7 +618,7 @@ GUI、dashboard 或分析脚本应读取 JSON/Parquet，不要解析 `report.htm
 
 ## K 线查看器
 
-已新增静态 K 线查看器：
+已新增静态 K 线缓存查看器。它是一个自包含 HTML，不需要后端服务，生成时把所选缓存行情嵌入页面：
 
 ```text
 backtest/charts/kline_viewer.py
@@ -630,14 +638,42 @@ backtest chart viewer \
 
 能力：
 
-- 自包含 HTML，可直接 `file://` 打开；
-- 切换 symbol；
-- 搜索代码和名称；
-- 按板块过滤；
-- 可交互缩放；
+- 自包含 HTML，可直接 `file://` 打开，也可通过本地静态服务器预览；
+- 自动从 Parquet cache 发现已爬取 symbol、frequency、adjust、years、行数和首尾时间；
+- 同一 symbol 同一 frequency 的分散 year partition 会合并为一个序列展示，不按单文件拆开；
+- 支持多时间级别切换，未指定 `--frequency` 时会发现 root 下所有可用级别；
+- 支持 symbol 下拉、代码/名称搜索、Market / Board 过滤；
+- crypto spot 默认归类为 `Crypto / Spot`，真正缺少市场和板块信息的标的才归到 `Unknown`；
+- 顶部筛选区只放筛选和视图窗口控件，`Data Status` 是标题区右侧的独立全局入口；
+- `Data Status` 按钮显示 cached series 数量，点击后打开右侧抽屉；
+- Data Status 抽屉按 symbol 分组，每组列出该 symbol 已缓存的所有 frequency；
+- 抽屉行展示首尾时间、`loaded_rows / rows`、years、adjust，点击行会切到对应 symbol/frequency；
+- `Window` 下拉控制当前图表窗口大小：`100`、`300`、`1000`、`5000`、`All loaded`；
+- `Position` 滑条在已嵌入 bars 内前后移动，用于查看更早的已加载历史；
+- `--limit 0` 表示每个 symbol/frequency 嵌入全量缓存 bars；非零 limit 只嵌入最近 N 根；
+- 页面里只能浏览生成时已嵌入的 bars。若要看更早历史，必须用更大的 `--limit` 或 `--limit 0` 重新生成；
+- Plotly 图表可交互缩放；
 - 使用交易日类别轴，去掉周末/节假日空隙；
 - 图例不遮挡标题；
 - 价格纵轴保留 2 位小数。
+
+crypto 当前常用生成命令：
+
+```bash
+backtest chart viewer \
+  --bars-root data/crypto/bars \
+  --output runs/charts/crypto_kline_viewer.html \
+  --limit 5000 \
+  --adjust none
+```
+
+`--limit 5000` 是当前人工查看的折中：1m 等大数据级别仍可用 Position 看最近 5000 根内的早晚区间，HTML 文件也不会过大。需要完整历史时再用 `--limit 0`。
+
+设计细节记录在：
+
+```text
+docs/superpowers/specs/2026-05-09-kline-cache-viewer-design.md
+```
 
 ## 十大买讯能力
 
@@ -978,5 +1014,5 @@ visualization=true
 universal_contracts=true
 ledger_account_isolation=true
 crypto_market_data_targeted=59 passed, 2 warnings
-154 passed, 2 warnings
+159 passed, 2 warnings
 ```

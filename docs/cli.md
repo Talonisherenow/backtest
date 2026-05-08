@@ -102,7 +102,32 @@ backtest chart viewer \
 
 The output HTML embeds the selected cached bars, so it can be opened directly
 with `file://` and used to switch symbols, filter by board, search by code/name,
-and change the visible range.
+switch frequency, and move the visible window over the embedded bars.
+
+For crypto cache inspection, omit `--frequency` so the viewer discovers all
+cached timeframes under the root:
+
+```bash
+backtest chart viewer \
+  --bars-root data/crypto/bars \
+  --output runs/charts/crypto_kline_viewer.html \
+  --limit 5000 \
+  --adjust none
+```
+
+The viewer groups year-partitioned files for the same symbol/frequency into one
+series. The top bar contains symbol, market/board, frequency, window size, and
+position controls. The `Data Status` action is a separate title-area button that
+opens a right drawer grouped by symbol and frequency.
+
+`--limit` is the maximum embedded bars per symbol/frequency:
+
+- `--limit 300` keeps the output small for daily A-share inspection.
+- `--limit 5000` is useful for crypto intraday inspection while keeping the HTML
+  reasonably responsive.
+- `--limit 0` embeds all cached bars. This is the only way for a standalone
+  HTML page to browse the full historical cache, but it can create a very large
+  file.
 
 ## Validate
 
