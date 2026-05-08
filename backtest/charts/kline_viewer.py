@@ -429,21 +429,49 @@ HTML_TEMPLATE = """<!doctype html>
       padding: 12px;
       background: #fbfcfd;
     }
+    .status-symbol-group {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .status-symbol-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fafc;
+    }
+    .status-symbol-header strong,
+    .status-symbol-header small {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .status-symbol-header small {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
     .status-row {
       width: 100%;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 8px;
       text-align: left;
-      border: 1px solid var(--line);
-      border-radius: 7px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
       background: #fff;
       color: var(--text);
       padding: 10px;
-      margin-bottom: 8px;
       font: inherit;
       cursor: pointer;
     }
+    .status-row:last-child { border-bottom: 0; }
     .status-row.active {
       border-color: #9dc5ff;
       background: #eef6ff;
@@ -493,7 +521,7 @@ HTML_TEMPLATE = """<!doctype html>
       <div class="subtitle" id="datasetMeta"></div>
     </div>
     <div class="controls">
-      <label>Board
+      <label>Market / Board
         <select id="boardSelect"></select>
       </label>
       <label>Symbol
@@ -505,12 +533,6 @@ HTML_TEMPLATE = """<!doctype html>
       <label>Frequency
         <div class="range" id="frequencyButtons" aria-label="Frequency"></div>
       </label>
-      <div class="range" id="rangeButtons" aria-label="Range">
-        <button type="button" data-range="60">60D</button>
-        <button type="button" data-range="120">120D</button>
-        <button type="button" data-range="300" class="active">300D</button>
-        <button type="button" data-range="all">All</button>
-      </div>
       <button type="button" class="toolbar-button" id="dataStatusButton" aria-expanded="false">Data Status</button>
     </div>
   </header>
@@ -538,7 +560,6 @@ HTML_TEMPLATE = """<!doctype html>
       frequency: symbols[0]?.series?.[0]?.frequency || payload.frequency || "1d",
       board: "all",
       search: "",
-      range: "300",
       drawerOpen: false,
     };
 
@@ -546,7 +567,6 @@ HTML_TEMPLATE = """<!doctype html>
     const symbolSelect = document.getElementById("symbolSelect");
     const searchInput = document.getElementById("searchInput");
     const frequencyButtons = document.getElementById("frequencyButtons");
-    const rangeButtons = document.getElementById("rangeButtons");
     const dataStatusButton = document.getElementById("dataStatusButton");
     const closeDrawerButton = document.getElementById("closeDrawerButton");
     const drawerBackdrop = document.getElementById("drawerBackdrop");
@@ -558,11 +578,12 @@ HTML_TEMPLATE = """<!doctype html>
     const chart = document.getElementById("chart");
 
     function boardKey(item) {
-      return [item.exchange || "", item.board || ""].filter(Boolean).join(" / ") || "Unknown";
+      return [item.exchange || "", item.board || ""].filter(Boolean).join(" / ");
     }
 
     function optionLabel(item) {
-      return [item.symbol, item.name, boardKey(item)].filter(Boolean).join("  ");
+      const board = boardKey(item);
+      return [item.symbol, item.name, board].filter(Boolean).join("  ");
     }
 
     function seriesList(item) {
@@ -588,9 +609,9 @@ HTML_TEMPLATE = """<!doctype html>
     }
 
     function populateBoards() {
-      const boards = Array.from(new Set(symbols.map(boardKey))).sort();
+      const boards = Array.from(new Set(symbols.map(boardKey).filter(Boolean))).sort();
       boardSelect.innerHTML = [
-        `<option value="all">All boards (${symbols.length})</option>`,
+        `<option value="all">All symbols (${symbols.length})</option>`,
         ...boards.map((board) => {
           const count = symbols.filter((item) => boardKey(item) === board).length;
           return `<option value="${escapeHtml(board)}">${escapeHtml(board)} (${count})</option>`;
@@ -633,14 +654,6 @@ HTML_TEMPLATE = """<!doctype html>
       }).join("");
     }
 
-    function barsForRange(series) {
-      const bars = series?.bars || [];
-      if (state.range === "all") {
-        return bars;
-      }
-      return bars.slice(-Number(state.range));
-    }
-
     function movingAverage(bars, days) {
       return bars.map((_, index) => {
         if (index + 1 < days) {
@@ -663,7 +676,7 @@ HTML_TEMPLATE = """<!doctype html>
       summary.innerHTML = [
         metric("Symbol", `${item.symbol} ${item.name || ""}`),
         metric("Frequency", series?.frequency || state.frequency),
-        metric("Range", `${first.date} to ${last.date}`),
+        metric("Time Span", `${first.date} to ${last.date}`),
         metric("Close", fixed(last.close)),
         metric("Change", `${fixed(change)} (${fixed(changePct)}%)`),
         metric("Rows", compact(series?.rows || bars.length)),
@@ -696,7 +709,7 @@ HTML_TEMPLATE = """<!doctype html>
         chart.textContent = "Chart library failed to load";
         return;
       }
-      const bars = barsForRange(series);
+      const bars = series.bars || [];
       renderSummary(item, series, bars);
       const x = bars.map((bar) => bar.date);
       const upColor = "#d32f2f";
@@ -783,32 +796,42 @@ HTML_TEMPLATE = """<!doctype html>
     }
 
     function renderDataStatus() {
-      const rows = symbols.flatMap((item) => {
-        return seriesList(item).map((series) => ({ item, series }));
-      });
-      dataStatusMeta.textContent = `${symbols.length} symbols | ${rows.length} cached series`;
-      if (!rows.length) {
+      const totalSeries = symbols.reduce((count, item) => count + seriesList(item).length, 0);
+      dataStatusMeta.textContent = `${symbols.length} symbols | ${totalSeries} cached series`;
+      if (!totalSeries) {
         dataStatusList.innerHTML = `<div class="empty">No cached data</div>`;
         return;
       }
-      dataStatusList.innerHTML = rows.map(({ item, series }) => {
-        const active = item.symbol === state.symbol && series.frequency === state.frequency ? " active" : "";
-        const years = Array.isArray(series.years) ? series.years.join(", ") : "";
-        const range = [series.first_bar, series.last_bar].filter(Boolean).join(" to ");
-        const details = [
-          range,
-          `${compact(series.rows || 0)} rows`,
-          years ? `years ${years}` : "",
-          series.adjust ? `adjust ${series.adjust}` : "",
-        ].filter(Boolean).join(" | ");
+      dataStatusList.innerHTML = symbols.map((item) => {
+        const series = seriesList(item);
+        const rows = series.map((entry) => {
+          const active = item.symbol === state.symbol && entry.frequency === state.frequency ? " active" : "";
+          const years = Array.isArray(entry.years) ? entry.years.join(", ") : "";
+          const range = [entry.first_bar, entry.last_bar].filter(Boolean).join(" to ");
+          const details = [
+            range,
+            `${compact(entry.rows || 0)} rows`,
+            years ? `years ${years}` : "",
+            entry.adjust ? `adjust ${entry.adjust}` : "",
+          ].filter(Boolean).join(" | ");
+          return `
+            <button type="button" class="status-row${active}" data-symbol="${escapeHtml(item.symbol)}" data-frequency="${escapeHtml(entry.frequency)}">
+              <span>
+                <strong>${escapeHtml(entry.frequency)}</strong>
+                <small>${escapeHtml(details)}</small>
+              </span>
+              <span class="status-pill">${escapeHtml(entry.frequency)}</span>
+            </button>
+          `;
+        }).join("");
         return `
-          <button type="button" class="status-row${active}" data-symbol="${escapeHtml(item.symbol)}" data-frequency="${escapeHtml(series.frequency)}">
-            <span>
+          <section class="status-symbol-group">
+            <div class="status-symbol-header">
               <strong>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}</strong>
-              <small>${escapeHtml(details)}</small>
-            </span>
-            <span class="status-pill">${escapeHtml(series.frequency)}</span>
-          </button>
+              <small>${series.length} frequencies</small>
+            </div>
+            ${rows}
+          </section>
         `;
       }).join("");
     }
@@ -869,17 +892,6 @@ HTML_TEMPLATE = """<!doctype html>
       state.frequency = button.dataset.frequency;
       populateFrequencies();
       renderDataStatus();
-      render();
-    });
-    rangeButtons.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-range]");
-      if (!button) {
-        return;
-      }
-      state.range = button.dataset.range;
-      for (const child of rangeButtons.querySelectorAll("button")) {
-        child.classList.toggle("active", child === button);
-      }
       render();
     });
     dataStatusButton.addEventListener("click", () => toggleDataStatus());

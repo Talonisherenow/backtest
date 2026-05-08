@@ -118,6 +118,32 @@ def test_build_kline_payload_honors_frequency_filter_for_crypto_cache(
     assert [series["frequency"] for series in payload["symbols"][0]["series"]] == ["4h"]
 
 
+def test_build_kline_payload_combines_year_partitions_into_one_series(tmp_path: Path):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="1d",
+        adjust="none",
+        dates=["2024-12-31", "2025-01-01", "2025-01-02"],
+    )
+
+    payload = build_kline_payload(
+        bars_root, symbols=["BTC/USDT"], limit=10, frequency="1d", adjust="none"
+    )
+
+    series = payload["symbols"][0]["series"]
+    assert len(series) == 1
+    assert series[0]["frequency"] == "1d"
+    assert series[0]["rows"] == 3
+    assert series[0]["years"] == [2024, 2025]
+    assert [bar["date"] for bar in series[0]["bars"]] == [
+        "2024-12-31",
+        "2025-01-01",
+        "2025-01-02",
+    ]
+
+
 def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     payload = {
         "frequency": "1d",
@@ -179,3 +205,7 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "dataStatusDrawer" in html
     assert "toggleDataStatus" in html
     assert "seriesByFrequency" in html
+    assert "status-symbol-group" in html
+    assert "rangeButtons" not in html
+    assert "60D" not in html
+    assert "Unknown" not in html
