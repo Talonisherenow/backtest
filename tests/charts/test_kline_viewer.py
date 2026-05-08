@@ -236,6 +236,11 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "windowSlider" in html
     assert "updateWindowControls" in html
     assert "flex-wrap: wrap" in html
+    assert 'class="topbar-header"' in html
+    assert 'class="status-action" id="dataStatusButton"' in html
+    assert 'id="dataStatusButtonMeta"' in html
+    assert html.index('id="dataStatusButton"') < html.index('class="controls"')
+    assert "dataStatusButtonMeta.textContent" in html
     assert 'class="control control-position"' in html
     assert "windowMeta.title" in html
     assert "${state.windowStart + 1}-${end} / ${compact(loaded)}" in html

@@ -267,6 +267,15 @@ HTML_TEMPLATE = """<!doctype html>
       background: var(--surface);
       border-bottom: 1px solid var(--line);
     }
+    .topbar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .title-block {
+      min-width: 0;
+    }
     h1 {
       margin: 0;
       font-size: 20px;
@@ -397,6 +406,38 @@ HTML_TEMPLATE = """<!doctype html>
     .toolbar-button:hover {
       border-color: #b8c7d6;
       background: #f8fafc;
+    }
+    .status-action {
+      flex: 0 0 auto;
+      display: grid;
+      gap: 2px;
+      min-width: 158px;
+      min-height: 44px;
+      border: 1px solid #9dc5ff;
+      border-radius: 6px;
+      background: #eef6ff;
+      color: var(--text);
+      padding: 7px 12px;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 1px 0 rgba(21, 101, 192, 0.08);
+    }
+    .status-action:hover {
+      border-color: #6fa8ff;
+      background: #e4f0ff;
+    }
+    .status-action span {
+      font-size: 13px;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+    .status-action small {
+      color: var(--blue);
+      font-size: 11px;
+      line-height: 1.2;
+      font-weight: 700;
+      white-space: nowrap;
     }
     .summary {
       display: grid;
@@ -575,10 +616,16 @@ HTML_TEMPLATE = """<!doctype html>
       #chart { height: 640px; }
     }
     @media (max-width: 620px) {
+      .topbar-header {
+        display: grid;
+      }
       .control,
       .toolbar-button {
         flex-basis: 100%;
         max-width: none;
+      }
+      .status-action {
+        width: 100%;
       }
       .summary { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
       main { padding: 10px; }
@@ -590,9 +637,15 @@ HTML_TEMPLATE = """<!doctype html>
 <body>
   <script id="kline-payload" type="application/json">__KLINE_PAYLOAD__</script>
   <header class="topbar">
-    <div>
-      <h1>K-line Cache Viewer</h1>
-      <div class="subtitle" id="datasetMeta"></div>
+    <div class="topbar-header">
+      <div class="title-block">
+        <h1>K-line Cache Viewer</h1>
+        <div class="subtitle" id="datasetMeta"></div>
+      </div>
+      <button type="button" class="status-action" id="dataStatusButton" aria-expanded="false">
+        <span>Data Status</span>
+        <small id="dataStatusButtonMeta">Cached series</small>
+      </button>
     </div>
     <div class="controls">
       <label class="control control-board">Market / Board
@@ -622,7 +675,6 @@ HTML_TEMPLATE = """<!doctype html>
           <span id="windowMeta">Latest</span>
         </div>
       </label>
-      <button type="button" class="toolbar-button" id="dataStatusButton" aria-expanded="false">Data Status</button>
     </div>
   </header>
   <section class="summary" id="summary"></section>
@@ -662,6 +714,7 @@ HTML_TEMPLATE = """<!doctype html>
     const windowSlider = document.getElementById("windowSlider");
     const windowMeta = document.getElementById("windowMeta");
     const dataStatusButton = document.getElementById("dataStatusButton");
+    const dataStatusButtonMeta = document.getElementById("dataStatusButtonMeta");
     const closeDrawerButton = document.getElementById("closeDrawerButton");
     const drawerBackdrop = document.getElementById("drawerBackdrop");
     const dataStatusDrawer = document.getElementById("dataStatusDrawer");
@@ -937,6 +990,7 @@ HTML_TEMPLATE = """<!doctype html>
     function renderDataStatus() {
       const totalSeries = symbols.reduce((count, item) => count + seriesList(item).length, 0);
       dataStatusMeta.textContent = `${symbols.length} symbols | ${totalSeries} cached series`;
+      dataStatusButtonMeta.textContent = `${totalSeries} cached series`;
       if (!totalSeries) {
         dataStatusList.innerHTML = `<div class="empty">No cached data</div>`;
         return;
