@@ -3,6 +3,7 @@
 ## Components
 
 - `AkShareProvider` fetches daily A-share bars from AkShare.
+- `CCXTOHLCVProvider` fetches crypto spot OHLCV bars from CCXT exchanges.
 - `AkShareUniverseProvider` fetches the current all-board A-share stock
   universe from AkShare stock-list endpoints.
 - `DataSyncService` coordinates retries, missing range detection, provider
@@ -24,6 +25,21 @@ data/bars/
         year=2025/
           bars.parquet
 ```
+
+Symbols that are unsafe as path segments are percent-encoded in the partition
+path. For example, `BTC/USDT` is cached under:
+
+```text
+data/bars/
+  frequency=4h/
+    adjust=none/
+      symbol=BTC%2FUSDT/
+        year=2025/
+          bars.parquet
+```
+
+The Parquet rows and catalog records still use the normalized symbol
+`BTC/USDT`.
 
 `ParquetBarStore.write_bars()` validates input, groups by symbol, frequency,
 adjust mode, and year, merges with an existing partition if present, drops
@@ -121,6 +137,25 @@ Run sync to fetch missing data:
 backtest data sync --config configs/demo.yaml --metadata data/metadata.sqlite --bars-root data/bars
 ```
 
+For crypto spot data, use `source: ccxt`, set an explicit `exchange`, and keep
+`adjust: none`:
+
+```yaml
+data:
+  source: ccxt
+  exchange: binance
+  frequency: 4h
+  adjust: none
+  start_date: "2025-01-01"
+  end_date: "2025-01-31"
+  stock_pool:
+    symbols:
+      - BTC/USDT
+```
+
+The catalog source for this config is `ccxt:binance`, so data fetched from one
+exchange does not hide missing ranges for another exchange.
+
 Sync flow:
 
 1. Normalize symbols from the config stock pool.
@@ -137,6 +172,15 @@ failed tasks for retry on the next matching sync.
 
 ## Provider Notes
 
-The MVP supports `source: akshare` in `backtest data sync`. `AkShareProvider`
-accepts only `frequency: 1d`; other frequencies are reserved by the contract for
-future providers.
+`source: akshare` uses `AkShareProvider`, which accepts only `frequency: 1d`.
+
+`source: ccxt` uses `CCXTOHLCVProvider`, which fetches historical crypto spot
+OHLCV through CCXT. Supported internal frequencies are `1d`, `4h`, `60m`,
+`30m`, `15m`, `5m`, and `1m`; `60m` is requested from CCXT as `1h`. CCXT
+symbols must exist in `exchange.markets`, and the requested timeframe must be
+listed in `exchange.timeframes`.
+
+Crypto `amount` is estimated as `close * volume`. The provider drops the
+current incomplete candle by default. This is historical market data only; live
+trading, credentials, derivatives, WebSocket data, and crypto-specific broker
+simulation are not implemented in this phase.

@@ -79,7 +79,13 @@ Mark failed crawl tasks for retry:
 backtest data retry --failed --metadata data/metadata.sqlite
 ```
 
-`data sync` currently supports `source: akshare` only.
+`data sync` supports:
+
+- `source: akshare` for A-share daily bars.
+- `source: ccxt` for crypto spot historical OHLCV.
+
+Crypto configs must set `data.exchange`; the catalog source becomes
+`ccxt:<exchange>`.
 
 ## Chart
 
@@ -159,6 +165,46 @@ data:
   stock_pool:
     symbols_file: data/universe/sample_200_seed_42.txt
 ```
+
+Minimal crypto data sync shape:
+
+```yaml
+project:
+  name: crypto-demo
+data:
+  source: ccxt
+  exchange: binance
+  frequency: 4h
+  adjust: none
+  start_date: 2025-01-01
+  end_date: 2025-01-31
+  stock_pool:
+    symbols:
+      - BTC/USDT
+signals:
+  type: file
+  path: signals/demo.csv
+execution:
+  timing: next_open
+  initial_cash: 100000
+  commission_rate: 0.001
+  min_commission: 0
+  stamp_tax_rate: 0
+  transfer_fee_rate: 0
+  slippage_rate: 0.0005
+  board_lot_size: 1
+metrics:
+  builtin:
+    - total_return
+report:
+  output_dir: runs
+  html: true
+  charts: true
+```
+
+This fetches historical bars only. The current broker is still A-share oriented,
+so a crypto data config should not be read as a complete crypto backtest or live
+trading setup.
 
 `report.html` is always written by the current `FileReportWriter`. The `html`
 and `charts` flags are part of the config shape, but chart artifact generation

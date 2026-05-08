@@ -13,6 +13,10 @@ Bare six-digit symbols are inferred by exchange prefix:
 - `5`, `6`, and `9` prefixes become `.SH`.
 - Other prefixes become `.SZ`.
 
+Crypto spot symbols use CCXT unified symbols such as `BTC/USDT`, `ETH/USDT`,
+or `SOL/USDT`. They are normalized to uppercase. Contract-style symbols such as
+`BTC/USDT:USDT` are not part of the first crypto market data phase.
+
 ## Stock Pool
 
 Backtest configs can provide a stock pool inline:
@@ -54,7 +58,7 @@ adjust
 Allowed `frequency` values:
 
 ```text
-1d, 1m, 5m, 15m, 30m, 60m
+1d, 1m, 5m, 15m, 30m, 60m, 4h
 ```
 
 Allowed `adjust` values:
@@ -83,6 +87,14 @@ is_suspended
 limit_up
 limit_down
 ```
+
+Crypto OHLCV notes:
+
+- `date` is UTC and stored as timezone-naive pandas datetime.
+- `volume` is the CCXT returned volume, usually base asset quantity.
+- `amount` is estimated as `close * volume` in phase 1.
+- `adjust` must be `none`.
+- Internal `60m` maps to CCXT `1h` when fetched through `CCXTOHLCVProvider`.
 
 ## SignalFrame
 

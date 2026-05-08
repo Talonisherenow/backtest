@@ -4,8 +4,8 @@
 
 ## 一句话定位
 
-这是一个本地研究型 A 股回测 MVP，并已经在
-`feat/universal-trading-architecture` 分支上补了通用标的交易架构的第一阶段地基。它不是多用户服务，而是一个 Python package + CLI，用来做可复现的 A 股策略研究，并为后续接入港股、美股、加密货币和真实交易 API 预留统一合同：
+这是一个本地研究型 A 股回测 MVP，`main` 已合入通用标的交易架构第一阶段地基，当前
+`feat/crypto-market-data` 分支正在补加密货币历史行情接口。它不是多用户服务，而是一个 Python package + CLI，用来做可复现的策略研究，并为后续接入港股、美股、加密货币和真实交易 API 预留统一合同：
 
 ```text
 配置 YAML -> 数据缓存 -> 信号生成 -> 模拟撮合 -> 指标计算 -> 结构化报告/可视化
@@ -35,6 +35,9 @@ MarketDataProvider
 - 结构化回测报告；
 - 可复用 K 线查看器；
 - 十大买讯策略、固定持有期退出、30 个回测 case 和可视化结果页；
+- CCXT 加密货币现货历史 OHLCV 接入；
+- `BTC/USDT` 这类 crypto spot symbol 和安全缓存路径；
+- 加密货币代表性周期 `4h`，以及 `60m -> CCXT 1h` 映射；
 - 通用 `Instrument`、`TradingRule`、`TargetPortfolioFrame`；
 - 通用 `OrderIntent`、`ExecutionReport`、`PortfolioState`；
 - 独立 `OrderPlanner`；
@@ -51,9 +54,11 @@ MarketDataProvider
 5. `docs/cli.md`
 6. `docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md`
 7. `docs/superpowers/plans/2026-05-07-universal-trading-architecture.md`
-8. `docs/ten-buy-signals-implementation.md`
-9. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
-10. 当前要改的代码和测试
+8. `docs/superpowers/specs/2026-05-08-crypto-market-data-design.md`
+9. `docs/superpowers/plans/2026-05-08-crypto-market-data.md`
+10. `docs/ten-buy-signals-implementation.md`
+11. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
+12. 当前要改的代码和测试
 
 旧设计文档在 `docs/superpowers/specs/` 下，可作为背景，但当前代码、测试和本文档优先级更高。
 
@@ -62,14 +67,18 @@ MarketDataProvider
 截至 2026-05-08，当前工作分支是：
 
 ```text
-feat/universal-trading-architecture
+feat/crypto-market-data
 ```
 
-该分支从 `feat/a-share-backtest-mvp` 切出。A 股回测主能力仍来自原分支；本分支新增的是通用交易架构第一阶段地基，未接真实 API。
+该分支从已合并通用交易架构的 `main` 切出。A 股回测主能力仍可用；本分支新增的是 CCXT 加密货币历史行情接口，仍未接真实交易 API。
 
 和本轮能力直接相关的提交：
 
 ```text
+783bfff docs: plan crypto market data ingestion
+5b8f79b feat: support crypto symbols in market data cache
+d9de9fc feat: add ccxt crypto ohlcv provider
+29b218b feat: wire ccxt market data sync
 ee21167 feat: add universal instrument models
 0f8263d feat: add target portfolio frame contract
 237e6a6 feat: add order intent contracts
@@ -84,9 +93,11 @@ be19a89 feat: add all A-share universe sampling
 b6c701c feat: add ten buy signal backtest results
 ```
 
-本轮已经确认的产品和架构决策：
+近期已经确认的产品和架构决策：
 
-- 第一个真实 API 适配器优先接 `CCXT`，先服务加密货币交易闭环；
+- 先接 CCXT 历史行情，真实交易 API 适配器后续再做；
+- crypto 第一版只做现货 OHLCV，不做合约、实盘下单或 crypto 撮合器；
+- crypto 代表性默认研究周期是 `1d + 4h + 60m`，短线扩展 `15m + 5m`，`1m` 只在需要执行细节时拉；
 - 多账户能力要保留口子，第一版默认单账户 `default`；
 - 订单、执行回报、组合状态、ledger 都必须带 `account_id`；
 - CLI 单次触发是默认运行形态，但 runner 边界要能被未来守护进程复用；
@@ -134,7 +145,7 @@ Config -> BacktestEngine -> SignalProvider -> BrokerEngine -> Metrics -> Reports
 backtest/cli/          Typer CLI
 backtest/config/       YAML 加载和 Pydantic 配置模型
 backtest/core/         枚举、符号规范化、BarFrame/SignalFrame 校验
-backtest/data/         AkShare provider、行情缓存、元数据、股票池、同步服务
+backtest/data/         AkShare/CCXT provider、行情缓存、元数据、股票池、同步服务
 backtest/signals/      CSV/Parquet/Python 信号 provider
 backtest/broker/       账户、费用、滑点、执行循环、订单和成交结果
 backtest/planning/     TargetPortfolio -> OrderIntent 规划器
@@ -163,6 +174,8 @@ docs/reports.md                                  报告产物结构
 docs/cli.md                                      当前 CLI 命令
 docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md 通用交易架构设计
 docs/superpowers/plans/2026-05-07-universal-trading-architecture.md 通用交易架构第一阶段执行计划
+docs/superpowers/specs/2026-05-08-crypto-market-data-design.md 加密货币历史行情接口设计
+docs/superpowers/plans/2026-05-08-crypto-market-data.md 加密货币历史行情接口执行计划
 docs/0504-十大买讯对应的量化公式.md              原始十大买讯公式
 docs/ten-buy-signals-implementation.md           十大买讯公式到代码的映射
 docs/2026-05-05-ten-buy-signals-backtest-handoff.md 本轮回测能力交接
@@ -256,6 +269,19 @@ data/bars/
           bars.parquet
 ```
 
+加密货币 symbol 带 `/`，缓存路径会做 percent encoding：
+
+```text
+data/bars/
+  frequency=4h/
+    adjust=none/
+      symbol=BTC%2FUSDT/
+        year=2025/
+          bars.parquet
+```
+
+Parquet 行和 catalog 里的 symbol 仍是 `BTC/USDT`。
+
 读取示例：
 
 ```python
@@ -292,7 +318,27 @@ backtest data tasks --metadata data/metadata.sqlite
 backtest data retry --failed --metadata data/metadata.sqlite
 ```
 
-`data sync` 当前只支持 `source: akshare`，且 `AkShareProvider` 当前支持日线。
+`data sync` 当前支持：
+
+- `source: akshare`：A 股日线，provider 是 `AkShareProvider`；
+- `source: ccxt`：加密货币现货历史 OHLCV，provider 是 `CCXTOHLCVProvider`。
+
+crypto 配置必须显式设置 `data.exchange`，例如：
+
+```yaml
+data:
+  source: ccxt
+  exchange: binance
+  frequency: 4h
+  adjust: none
+  start_date: "2025-01-01"
+  end_date: "2025-01-31"
+  stock_pool:
+    symbols:
+      - BTC/USDT
+```
+
+catalog source 会写成 `ccxt:<exchange>`，例如 `ccxt:binance`，避免不同交易所缓存互相覆盖。
 
 ## 数据和信号契约
 
@@ -311,6 +357,22 @@ is_suspended, limit_up, limit_down
 ```
 
 所有行情写入前应通过 `validate_bar_frame()`，它会校验列、日期、symbol、枚举、数值、OHLC 合法性并排序。
+
+允许的频率：
+
+```text
+1d, 1m, 5m, 15m, 30m, 60m, 4h
+```
+
+crypto OHLCV 约定：
+
+- symbol 使用 CCXT unified spot symbol，例如 `BTC/USDT`；
+- `adjust` 必须是 `none`；
+- `date` 是 UTC 时间，保存为 timezone-naive pandas datetime；
+- `volume` 是 CCXT 返回的成交量，通常是 base asset 数量；
+- `amount` 第一版估算为 `close * volume`；
+- 内部 `60m` 请求 CCXT 时映射为 `1h`；
+- provider 默认丢弃当前未收盘 K 线。
 
 ### SignalFrame
 
@@ -482,9 +544,11 @@ params
 
 ```text
 1. DryRunExecutionAdapter
-2. CCXTAdapter
+2. CCXTExecutionAdapter
 3. 后续再评估 Longbridge / QMT / IBKR
 ```
+
+注意：当前已经有 `CCXTOHLCVProvider` 用于历史行情；这不是交易执行适配器。
 
 实盘运行形态约定：
 
@@ -710,7 +774,7 @@ PY
 ### 安装和测试
 
 ```bash
-python -m pip install -e ".[dev]"
+uv pip install --python .venv/bin/python -e ".[dev]"
 .venv/bin/python -m pytest
 git diff --check
 ```
@@ -745,6 +809,7 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 ## 安全扩展地图
 
 - 新增数据源：实现 `DataProvider.fetch_bars()`，不要把数据源逻辑写进 broker、metrics、reports。
+- 新增加密历史行情：优先扩展 `backtest/data/ccxt_provider.py`，用 fake exchange 测试，不在单元测试访问真实网络。
 - 新增缓存行为：改 `ParquetBarStore`、`DataCatalog` 或 `DataSyncService`。
 - 新增信号格式：写新的 provider，但输出仍必须是 `SignalFrame`。
 - 新增策略：放到 `strategies/`，通过 Python signal provider 接入。
@@ -769,10 +834,16 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - 指标不要去抓原始数据，也不要推断缓存路径，只消费回测结果上下文。
 - dashboard 和 GUI 读取结构化产物，不要 scrape `report.html`。
 - `source: akshare` 和日线是当前 MVP 约束，不是永久架构限制。
+- `source: ccxt` 只代表历史行情源；不要把 `CCXTOHLCVProvider` 当成实盘交易适配器。
+- crypto symbol 目前只支持简单现货 pair，如 `BTC/USDT`；不要悄悄把 `BTC/USDT:USDT` 合约 symbol 混进第一版。
+- crypto 缓存路径必须使用 `safe_symbol_path()`，不要直接把 `/` 写进 partition path。
+- crypto catalog source 必须带 exchange，例如 `ccxt:binance`，不要只写 `ccxt`。
+- crypto `amount` 是 `close * volume` 估算值，不能当成交易所精确成交额。
+- 当前 `BrokerEngine` 仍是 A 股撮合器；不要宣称 crypto 数据接入后就已经具备完整 crypto 回测。
 - 不要混淆 `SignalFrame`、`TargetPortfolioFrame`、`OrderIntent`、`ExecutionReport`：
   `SignalFrame` 是旧回测信号，`TargetPortfolioFrame` 是目标组合，`OrderIntent` 是下单意图，`ExecutionReport` 是执行事实。
 - 不要用 `OrderIntent` 更新仓位；只有 `ExecutionReport` 或回测撮合结果能驱动 `PortfolioState` 变化。
-- 不要宣称项目已经具备真实 API 交易能力；`CCXT` 只是下一阶段优先适配目标。
+- 不要宣称项目已经具备真实 API 交易能力；当前 CCXT 能力只是历史行情，交易执行适配器还没做。
 - 订单、执行回报、组合状态和 ledger 记录必须按账户隔离；第一版默认 `account_id="default"`，但接口不能写死只能单账户。
 - 标识符归一化规则不能随意改：`instrument_id` 大写；`client_order_id`、`account_id`、`strategy_id` 只去首尾空格并保留原始大小写。
 - 后续做多账户时，应扩展账户选择、账户级配置、跨账户汇总和执行路由；不要把多账户逻辑隐藏在全局变量里。
@@ -782,22 +853,26 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 ## 当前已知限制
 
 - `AkShareProvider` 只支持日线。
+- `CCXTOHLCVProvider` 只支持 crypto spot 历史 OHLCV，不支持合约、WebSocket、订单簿或逐笔成交。
 - `BrokerEngine` 只支持 `next_open`。
 - CLI run 的缓存行情加载还没接好。
 - 报告 HTML 总是写出，`report.html` 和 `report.charts` 开关还不完整。
 - 十大买讯部分条件是日线近似，尚无分钟级或事件数据。
 - 买讯 09 缺少真实板块成分数据。
 - 本轮 30 case 是 100 支随机样本和 300 日窗口的探索结果，不是全市场最终结论。
-- 通用交易架构还停在合同、状态、规划器和 ledger 第一阶段，没有真实 API 适配器。
+- 通用交易架构还停在合同、状态、规划器和 ledger 第一阶段，没有真实交易 API 适配器。
 - 尚未实现 `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`、实盘 runner、守护进程或 live CLI。
 - 多账户目前是模型和 ledger 层预留口子，还没有账户调度、跨账户汇总、权限隔离或账户级风控。
-- `CCXT` 是下一阶段优先方向，但当前代码尚未引入 `ccxt` 依赖，也没有任何交易所凭证管理。
+- 当前已引入 `ccxt` 依赖用于历史行情，但没有任何交易所凭证管理或下单能力。
+- crypto 回测撮合仍未完成；后续需要 fractional quantity、T+0、crypto fee model 和 `ExecutionReport -> PortfolioState` accounting。
 
 ## 当前交接验证命令
 
-这组命令可以快速确认旧回测产物和通用交易合同仍可用：
+这组命令可以快速确认旧回测产物、通用交易合同和 crypto 历史行情合同仍可用：
 
 ```bash
+uv pip install --python .venv/bin/python -e ".[dev]"
+
 .venv/bin/python - <<'PY'
 from pathlib import Path
 import json
@@ -880,6 +955,15 @@ print("universal_contracts=true")
 print("ledger_account_isolation=true")
 PY
 
+.venv/bin/python -m pytest \
+  tests/core/test_symbols.py \
+  tests/core/test_frames.py \
+  tests/data/test_store.py \
+  tests/data/test_ccxt_provider.py \
+  tests/config/test_config_loader.py \
+  tests/test_cli_commands.py \
+  -q
+
 git diff --check
 .venv/bin/python -m pytest
 ```
@@ -893,5 +977,6 @@ reports=30
 visualization=true
 universal_contracts=true
 ledger_account_isolation=true
-137 passed, 2 warnings
+crypto_market_data_targeted=59 passed, 2 warnings
+154 passed, 2 warnings
 ```
