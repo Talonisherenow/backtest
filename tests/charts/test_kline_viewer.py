@@ -232,6 +232,7 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "dataStatusDrawer" in html
     assert "toggleDataStatus" in html
     assert "seriesByFrequency" in html
+    assert "width: max-content" in html
     assert "windowSizeSelect" in html
     assert "windowSlider" in html
     assert "updateWindowControls" in html

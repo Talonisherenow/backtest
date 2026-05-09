@@ -319,8 +319,8 @@ HTML_TEMPLATE = """<!doctype html>
       max-width: 220px;
     }
     .control-frequency {
-      flex: 1 1 360px;
-      max-width: 460px;
+      flex: 0 1 auto;
+      max-width: 100%;
     }
     .control-window {
       flex: 0 0 140px;
@@ -342,6 +342,8 @@ HTML_TEMPLATE = """<!doctype html>
     }
     .range {
       display: flex;
+      width: max-content;
+      max-width: 100%;
       min-height: 36px;
       border: 1px solid var(--line);
       border-radius: 6px;
