@@ -391,6 +391,50 @@ def test_chart_viewer_cli_passes_frequency_and_adjust_options(tmp_path: Path, mo
     assert captured["output_path"] == output_path
 
 
+def test_chart_viewer_cli_passes_source_roots(tmp_path: Path, monkeypatch):
+    bitget_root = tmp_path / "bitget" / "bars"
+    binance_root = tmp_path / "binance" / "bars"
+    bitget_root.mkdir(parents=True)
+    binance_root.mkdir(parents=True)
+    output_path = tmp_path / "viewer.html"
+    captured = {}
+
+    def fake_build_kline_payload(**kwargs):
+        captured.update(kwargs)
+        return {"symbols": [{"symbol": "BTC/USDT"}]}
+
+    def fake_write_kline_viewer(payload, path):
+        captured["output_path"] = path
+        path.write_text("viewer", encoding="utf-8")
+
+    monkeypatch.setattr(chart_cli, "build_kline_payload", fake_build_kline_payload)
+    monkeypatch.setattr(chart_cli, "write_kline_viewer", fake_write_kline_viewer)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "chart",
+            "viewer",
+            "--source-root",
+            f"bitget={bitget_root}",
+            "--source-root",
+            f"binance={binance_root}",
+            "--output",
+            str(output_path),
+            "--adjust",
+            "none",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["source_roots"] == [
+        ("bitget", bitget_root),
+        ("binance", binance_root),
+    ]
+    assert captured["adjust"] == "none"
+    assert captured["output_path"] == output_path
+
+
 def test_data_sync_cli_reports_sync_errors(tmp_path: Path, monkeypatch):
     config_path = _write_config(tmp_path)
 

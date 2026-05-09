@@ -12,10 +12,13 @@ def viewer(
     bars_root: Path = typer.Option(
         Path("data/bars"),
         "--bars-root",
-        exists=True,
         file_okay=False,
-        readable=True,
         help="Root directory for cached market data",
+    ),
+    source_root: list[str] | None = typer.Option(
+        None,
+        "--source-root",
+        help="Source label and bars root in label=path form; repeat for multiple sources",
     ),
     universe_path: Path | None = typer.Option(
         None,
@@ -69,6 +72,7 @@ def viewer(
             frequency=None if not frequency else frequency[0],
             frequencies=list(frequency or []) or None,
             adjust=adjust,
+            source_roots=_parse_source_roots(source_root),
         )
         write_kline_viewer(payload, output_path)
     except Exception as exc:
@@ -84,3 +88,22 @@ def _read_symbols_file(path: Path) -> list[str]:
         for line in path.read_text(encoding="utf-8-sig").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
+
+
+def _parse_source_roots(values: list[str] | None) -> list[tuple[str, Path]] | None:
+    if not values:
+        return None
+
+    source_roots = []
+    for value in values:
+        if "=" not in value:
+            raise ValueError("--source-root must use label=path format")
+        label, raw_path = value.split("=", 1)
+        label = label.strip()
+        path = Path(raw_path).expanduser()
+        if not label:
+            raise ValueError("--source-root label must not be empty")
+        if not path.is_dir():
+            raise ValueError(f"--source-root path does not exist or is not a directory: {path}")
+        source_roots.append((label, path))
+    return source_roots

@@ -29,49 +29,60 @@ def build_kline_payload(
     frequency: str | None = "1d",
     frequencies: list[str] | None = None,
     adjust: str = "qfq",
+    source_roots: list[tuple[str, Path]] | None = None,
 ) -> dict[str, Any]:
     if limit < 0:
         raise ValueError("limit must be non-negative")
 
     normalized_symbols = [normalize_symbol(symbol) for symbol in symbols] if symbols else None
-    selected_frequencies = _resolve_frequencies(bars_root, frequency, frequencies, adjust)
-    requested_symbols = normalized_symbols or _discover_symbols(
-        bars_root, selected_frequencies, adjust
-    )
     metadata = _read_universe_metadata(universe_path)
+    roots = source_roots or [("default", bars_root)]
 
-    items = []
-    for symbol in requested_symbols:
-        series = []
-        for current_frequency in selected_frequencies:
-            entry = _read_symbol_series(bars_root, symbol, current_frequency, adjust, limit)
-            if entry is not None:
-                series.append(entry)
-        if not series:
+    sources = []
+    for source_id, source_root in roots:
+        source_id = _normalize_source_id(source_id)
+        selected_frequencies = _resolve_frequencies(source_root, frequency, frequencies, adjust)
+        requested_symbols = normalized_symbols or _discover_symbols(
+            source_root, selected_frequencies, adjust
+        )
+        items = _build_source_symbols(
+            source_root,
+            requested_symbols,
+            selected_frequencies,
+            adjust,
+            limit,
+            metadata,
+        )
+        if not items:
             continue
-        details = metadata.get(symbol, {})
-        items.append(
+        sources.append(
             {
-                "symbol": symbol,
-                "code": details.get("code", _symbol_code(symbol)),
-                "name": details.get("name", ""),
-                "exchange": _metadata_text(details, "exchange", _symbol_exchange(symbol)),
-                "board": _metadata_text(details, "board", _symbol_board(symbol)),
-                "industry": details.get("industry", ""),
-                "bars": series[0]["bars"],
-                "series": series,
+                "source_id": source_id,
+                "source_label": _source_label(source_id),
+                "frequency": selected_frequencies[0]
+                if len(selected_frequencies) == 1
+                else "multi",
+                "frequencies": selected_frequencies,
+                "symbols": sorted(items, key=lambda item: item["symbol"]),
             }
         )
 
-    if not items:
+    if not sources:
         raise ValueError("No cached K-line data found for the requested symbols")
 
+    primary = sources[0]
+    all_frequencies = _sort_frequencies(
+        [frequency for source in sources for frequency in source["frequencies"]]
+    )
     return {
-        "frequency": selected_frequencies[0] if len(selected_frequencies) == 1 else "multi",
-        "frequencies": selected_frequencies,
+        "source_id": primary["source_id"],
+        "source_label": primary["source_label"],
+        "frequency": primary["frequency"],
+        "frequencies": all_frequencies,
         "adjust": adjust,
         "limit": limit,
-        "symbols": sorted(items, key=lambda item: item["symbol"]),
+        "symbols": primary["symbols"],
+        "sources": sources,
     }
 
 
@@ -107,6 +118,39 @@ def _discover_frequencies(bars_root: Path, adjust: str) -> list[str]:
 
 def _sort_frequencies(frequencies: list[str]) -> list[str]:
     return sorted(set(frequencies), key=lambda value: (FREQUENCY_ORDER.get(value, 999), value))
+
+
+def _build_source_symbols(
+    bars_root: Path,
+    requested_symbols: list[str],
+    selected_frequencies: list[str],
+    adjust: str,
+    limit: int,
+    metadata: dict[str, dict[str, str]],
+) -> list[dict[str, Any]]:
+    items = []
+    for symbol in requested_symbols:
+        series = []
+        for current_frequency in selected_frequencies:
+            entry = _read_symbol_series(bars_root, symbol, current_frequency, adjust, limit)
+            if entry is not None:
+                series.append(entry)
+        if not series:
+            continue
+        details = metadata.get(symbol, {})
+        items.append(
+            {
+                "symbol": symbol,
+                "code": details.get("code", _symbol_code(symbol)),
+                "name": details.get("name", ""),
+                "exchange": _metadata_text(details, "exchange", _symbol_exchange(symbol)),
+                "board": _metadata_text(details, "board", _symbol_board(symbol)),
+                "industry": details.get("industry", ""),
+                "bars": series[0]["bars"],
+                "series": series,
+            }
+        )
+    return items
 
 
 def _discover_symbols(bars_root: Path, frequencies: list[str], adjust: str) -> list[str]:
@@ -232,6 +276,19 @@ def _symbol_board(symbol: str) -> str:
 def _metadata_text(details: dict[str, str], key: str, default: str) -> str:
     value = details.get(key, "")
     return value if value else default
+
+
+def _normalize_source_id(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("source id must not be empty")
+    return normalized
+
+
+def _source_label(source_id: str) -> str:
+    if source_id == "default":
+        return "Cache"
+    return source_id.replace("_", " ").replace("-", " ").title()
 
 
 HTML_TEMPLATE = """<!doctype html>
@@ -532,6 +589,30 @@ HTML_TEMPLATE = """<!doctype html>
       color: var(--muted);
       font-size: 12px;
     }
+    .source-switcher {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 12px 0;
+      background: #fbfcfd;
+    }
+    .source-switcher button {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--muted);
+      padding: 0 10px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .source-switcher button.active {
+      border-color: #9dc5ff;
+      background: #eef6ff;
+      color: var(--blue);
+    }
     .status-list {
       overflow: auto;
       padding: 12px;
@@ -692,15 +773,16 @@ HTML_TEMPLATE = """<!doctype html>
       </div>
       <button type="button" class="toolbar-button" id="closeDrawerButton">Close</button>
     </div>
+    <div class="source-switcher" id="sourceButtons" aria-label="Data source"></div>
     <div class="status-list" id="dataStatusList"></div>
   </aside>
   <script>
     const payload = JSON.parse(document.getElementById("kline-payload").textContent);
-    const symbols = payload.symbols || [];
-    const bySymbol = new Map(symbols.map((item) => [item.symbol, item]));
+    const sources = normalizeSources(payload);
     const state = {
-      symbol: symbols[0]?.symbol || "",
-      frequency: symbols[0]?.series?.[0]?.frequency || payload.frequency || "1d",
+      sourceId: sources[0]?.source_id || "default",
+      symbol: sources[0]?.symbols?.[0]?.symbol || "",
+      frequency: sources[0]?.symbols?.[0]?.series?.[0]?.frequency || payload.frequency || "1d",
       board: "all",
       search: "",
       windowSize: "300",
@@ -720,11 +802,41 @@ HTML_TEMPLATE = """<!doctype html>
     const closeDrawerButton = document.getElementById("closeDrawerButton");
     const drawerBackdrop = document.getElementById("drawerBackdrop");
     const dataStatusDrawer = document.getElementById("dataStatusDrawer");
+    const sourceButtons = document.getElementById("sourceButtons");
     const dataStatusList = document.getElementById("dataStatusList");
     const dataStatusMeta = document.getElementById("dataStatusMeta");
     const summary = document.getElementById("summary");
     const datasetMeta = document.getElementById("datasetMeta");
     const chart = document.getElementById("chart");
+
+    function normalizeSources(payload) {
+      if (Array.isArray(payload.sources) && payload.sources.length) {
+        return payload.sources;
+      }
+      return [{
+        source_id: payload.source_id || "default",
+        source_label: payload.source_label || "Cache",
+        frequency: payload.frequency || "1d",
+        frequencies: payload.frequencies || [payload.frequency || "1d"],
+        symbols: payload.symbols || [],
+      }];
+    }
+
+    function currentSource() {
+      return sources.find((source) => source.source_id === state.sourceId) || sources[0] || { symbols: [] };
+    }
+
+    function currentSymbols() {
+      return currentSource().symbols || [];
+    }
+
+    function currentBySymbol() {
+      return new Map(currentSymbols().map((item) => [item.symbol, item]));
+    }
+
+    function selectedItem() {
+      return currentBySymbol().get(state.symbol) || null;
+    }
 
     function boardKey(item) {
       return [item.exchange || "", item.board || ""].filter(Boolean).join(" / ") || "Unknown";
@@ -758,6 +870,7 @@ HTML_TEMPLATE = """<!doctype html>
     }
 
     function populateBoards() {
+      const symbols = currentSymbols();
       const boards = Array.from(new Set(symbols.map(boardKey).filter(Boolean))).sort();
       boardSelect.innerHTML = [
         `<option value="all">All symbols (${symbols.length})</option>`,
@@ -770,7 +883,7 @@ HTML_TEMPLATE = """<!doctype html>
 
     function filteredSymbols() {
       const query = state.search.trim().toLowerCase();
-      return symbols.filter((item) => {
+      return currentSymbols().filter((item) => {
         const matchesBoard = state.board === "all" || boardKey(item) === state.board;
         const target = `${item.symbol} ${item.name || ""} ${item.exchange || ""} ${item.board || ""}`.toLowerCase();
         return matchesBoard && (!query || target.includes(query));
@@ -789,14 +902,14 @@ HTML_TEMPLATE = """<!doctype html>
       }).join("");
       populateFrequencies();
       if (previousSymbol !== state.symbol) {
-        setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
+        setWindowToLatest(currentSeries(selectedItem()));
       }
       renderDataStatus();
       render();
     }
 
     function populateFrequencies() {
-      const item = bySymbol.get(state.symbol);
+      const item = selectedItem();
       const series = seriesList(item);
       if (!series.some((entry) => entry.frequency === state.frequency)) {
         state.frequency = series[0]?.frequency || "";
@@ -867,6 +980,7 @@ HTML_TEMPLATE = """<!doctype html>
       const change = last.close - first.close;
       const changePct = first.close ? (change / first.close) * 100 : 0;
       summary.innerHTML = [
+        metric("Source", currentSource().source_label || currentSource().source_id || "Cache"),
         metric("Symbol", `${item.symbol} ${item.name || ""}`),
         metric("Frequency", series?.frequency || state.frequency),
         metric("Time Span", `${first.date} to ${last.date}`),
@@ -881,7 +995,8 @@ HTML_TEMPLATE = """<!doctype html>
     }
 
     function render() {
-      const item = bySymbol.get(state.symbol);
+      updateDatasetMeta();
+      const item = selectedItem();
       if (!item) {
         chart.className = "empty";
         chart.textContent = "No matching symbol";
@@ -989,10 +1104,22 @@ HTML_TEMPLATE = """<!doctype html>
       Plotly.newPlot(chart, traces, layout, { responsive: true, displaylogo: false });
     }
 
+    function renderSourceButtons() {
+      sourceButtons.innerHTML = sources.map((source) => {
+        const active = source.source_id === state.sourceId ? " active" : "";
+        const count = (source.symbols || []).length;
+        const label = `${source.source_label || source.source_id} (${count})`;
+        return `<button type="button" class="${active.trim()}" data-source="${escapeHtml(source.source_id)}">${escapeHtml(label)}</button>`;
+      }).join("");
+    }
+
     function renderDataStatus() {
+      const source = currentSource();
+      const symbols = currentSymbols();
       const totalSeries = symbols.reduce((count, item) => count + seriesList(item).length, 0);
-      dataStatusMeta.textContent = `${symbols.length} symbols | ${totalSeries} cached series`;
-      dataStatusButtonMeta.textContent = `${totalSeries} cached series`;
+      renderSourceButtons();
+      dataStatusMeta.textContent = `${source.source_label || source.source_id} | ${symbols.length} symbols | ${totalSeries} cached series`;
+      dataStatusButtonMeta.textContent = `${source.source_label || source.source_id} | ${totalSeries} series`;
       if (!totalSeries) {
         dataStatusList.innerHTML = `<div class="empty">No cached data</div>`;
         return;
@@ -1010,7 +1137,7 @@ HTML_TEMPLATE = """<!doctype html>
             entry.adjust ? `adjust ${entry.adjust}` : "",
           ].filter(Boolean).join(" | ");
           return `
-            <button type="button" class="status-row${active}" data-symbol="${escapeHtml(item.symbol)}" data-frequency="${escapeHtml(entry.frequency)}">
+            <button type="button" class="status-row${active}" data-source="${escapeHtml(source.source_id)}" data-symbol="${escapeHtml(item.symbol)}" data-frequency="${escapeHtml(entry.frequency)}">
               <span>
                 <strong>${escapeHtml(entry.frequency)}</strong>
                 <small>${escapeHtml(details)}</small>
@@ -1029,6 +1156,21 @@ HTML_TEMPLATE = """<!doctype html>
           </section>
         `;
       }).join("");
+    }
+
+    function switchSource(sourceId) {
+      if (state.sourceId === sourceId) {
+        return;
+      }
+      state.sourceId = sourceId;
+      state.board = "all";
+      state.search = "";
+      searchInput.value = "";
+      populateBoards();
+      populateSymbols();
+      setWindowToLatest(currentSeries(selectedItem()));
+      renderDataStatus();
+      render();
     }
 
     function toggleDataStatus(open = !state.drawerOpen) {
@@ -1072,7 +1214,7 @@ HTML_TEMPLATE = """<!doctype html>
     symbolSelect.addEventListener("change", () => {
       state.symbol = symbolSelect.value;
       populateFrequencies();
-      setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
+      setWindowToLatest(currentSeries(selectedItem()));
       renderDataStatus();
       render();
     });
@@ -1087,13 +1229,13 @@ HTML_TEMPLATE = """<!doctype html>
       }
       state.frequency = button.dataset.frequency;
       populateFrequencies();
-      setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
+      setWindowToLatest(currentSeries(selectedItem()));
       renderDataStatus();
       render();
     });
     windowSizeSelect.addEventListener("change", () => {
       state.windowSize = windowSizeSelect.value;
-      setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
+      setWindowToLatest(currentSeries(selectedItem()));
       render();
     });
     windowSlider.addEventListener("input", () => {
@@ -1103,16 +1245,24 @@ HTML_TEMPLATE = """<!doctype html>
     dataStatusButton.addEventListener("click", () => toggleDataStatus());
     closeDrawerButton.addEventListener("click", () => toggleDataStatus(false));
     drawerBackdrop.addEventListener("click", () => toggleDataStatus(false));
+    sourceButtons.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-source]");
+      if (!button) {
+        return;
+      }
+      switchSource(button.dataset.source);
+    });
     dataStatusList.addEventListener("click", (event) => {
-      const row = event.target.closest("button[data-symbol][data-frequency]");
+      const row = event.target.closest("button[data-source][data-symbol][data-frequency]");
       if (!row) {
         return;
       }
+      state.sourceId = row.dataset.source;
       state.symbol = row.dataset.symbol;
       state.frequency = row.dataset.frequency;
       symbolSelect.value = state.symbol;
       populateFrequencies();
-      setWindowToLatest(currentSeries(bySymbol.get(state.symbol)));
+      setWindowToLatest(currentSeries(selectedItem()));
       toggleDataStatus(false);
       renderDataStatus();
       render();
@@ -1123,7 +1273,15 @@ HTML_TEMPLATE = """<!doctype html>
       }
     });
 
-    datasetMeta.textContent = `${symbols.length} symbols | ${(payload.frequencies || [payload.frequency]).join(", ")} | ${payload.adjust}`;
+    function updateDatasetMeta() {
+      const source = currentSource();
+      const symbols = currentSymbols();
+      const frequencies = source.frequencies || payload.frequencies || [payload.frequency];
+      datasetMeta.textContent = `Source: ${source.source_label || source.source_id} | ${symbols.length} symbols | ${frequencies.join(", ")} | ${payload.adjust}`;
+    }
+
+    updateDatasetMeta();
+    renderSourceButtons();
     populateBoards();
     populateSymbols();
   </script>

@@ -30,6 +30,10 @@ TIMEFRAME_MS_BY_FREQUENCY = {
     Frequency.DAILY: 24 * 60 * 60 * 1000,
 }
 
+HISTORICAL_OHLCV_LIMIT_BY_EXCHANGE = {
+    "bitget": 200,
+}
+
 
 class CCXTOHLCVProvider:
     def __init__(
@@ -131,7 +135,7 @@ class CCXTOHLCVProvider:
                 symbol,
                 timeframe=ccxt_timeframe,
                 since=since,
-                limit=self.limit,
+                limit=self._effective_limit(),
                 params={},
             )
             if not batch:
@@ -155,6 +159,12 @@ class CCXTOHLCVProvider:
             since = next_since
 
         return rows
+
+    def _effective_limit(self) -> int:
+        exchange_limit = HISTORICAL_OHLCV_LIMIT_BY_EXCHANGE.get(self.exchange_id)
+        if exchange_limit is None:
+            return self.limit
+        return min(self.limit, exchange_limit)
 
     def _row_from_candle(
         self, symbol: str, frequency: Frequency, candle: list[float]

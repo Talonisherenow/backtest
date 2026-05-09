@@ -21,8 +21,8 @@ adjust: none
 start_date: "2023-05-08"
 end_date: "2026-05-08"
 
-bars_root: data/crypto/bars
-metadata: data/crypto/metadata.sqlite
+bars_root: data/crypto/bitget/bars
+metadata: data/crypto/bitget/metadata.sqlite
 output_dir: runs/crypto_market_data/bitget_core
 
 retry:

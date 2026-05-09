@@ -65,6 +65,14 @@ retry:
     assert config.catalog_source == "ccxt:bitget"
 
 
+def test_tracked_bitget_job_config_uses_exchange_scoped_cache_root():
+    config = load_data_sync_job_config("configs/data_jobs/crypto_bitget_core.yaml")
+
+    assert config.exchange == "bitget"
+    assert config.bars_root == Path("data/crypto/bitget/bars")
+    assert config.metadata == Path("data/crypto/bitget/metadata.sqlite")
+
+
 def test_data_sync_job_config_requires_exchange_for_ccxt():
     with pytest.raises(ValueError, match="exchange is required"):
         DataSyncJobConfig(

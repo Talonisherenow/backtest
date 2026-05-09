@@ -39,6 +39,8 @@ MarketDataProvider
 - `BTC/USDT` 这类 crypto spot symbol 和安全缓存路径；
 - 加密货币代表性周期 `4h`，以及 `60m -> CCXT 1h` 映射；
 - Market data sync jobs，把批量数据拉取沉淀为项目内 runner，而不是一次性终端脚本；
+- Bitget 历史 OHLCV 请求会自动把 limit 限制到 200，避免 CCXT 分页时系统性跳过旧 K 线；
+- K 线查看器支持多个 `--source-root label=path`，可在 Data Status 里切换当前数据源；
 - 通用 `Instrument`、`TradingRule`、`TargetPortfolioFrame`；
 - 通用 `OrderIntent`、`ExecutionReport`、`PortfolioState`；
 - 独立 `OrderPlanner`；
@@ -351,6 +353,13 @@ item。运行结果写到：
 ```text
 runs/crypto_market_data/bitget_core/summary.csv
 runs/crypto_market_data/bitget_core/summary.json
+```
+
+Bitget job 使用 exchange-scoped cache root：
+
+```text
+data/crypto/bitget/bars
+data/crypto/bitget/metadata.sqlite
 ```
 
 `data/crypto/` 和 `runs/crypto_market_data/` 是本地生成产物，除非用户明确要求，不要
@@ -677,6 +686,9 @@ backtest chart viewer \
 - 顶部筛选区只放筛选和视图窗口控件，`Data Status` 是标题区右侧的独立全局入口；
 - `Data Status` 按钮显示 cached series 数量，点击后打开右侧抽屉；
 - Data Status 抽屉按 symbol 分组，每组列出该 symbol 已缓存的所有 frequency；
+- 可用多个 `--source-root label=path` 生成多数据源 viewer，Data Status 顶部会出现 source 切换入口；
+- 切换 source 后，主页面 symbol 和 frequency 控件只展示当前 source 下的数据；
+- 页面 header 和 summary 都会显示当前 source；
 - 抽屉行展示首尾时间、`loaded_rows / rows`、years、adjust，点击行会切到对应 symbol/frequency；
 - `Window` 下拉控制当前图表窗口大小：`100`、`300`、`1000`、`5000`、`All loaded`；
 - `Position` 滑条在已嵌入 bars 内前后移动，用于查看更早的已加载历史；
@@ -691,8 +703,19 @@ crypto 当前常用生成命令：
 
 ```bash
 backtest chart viewer \
-  --bars-root data/crypto/bars \
+  --bars-root data/crypto/bitget/bars \
   --output runs/charts/crypto_kline_viewer.html \
+  --limit 5000 \
+  --adjust none
+```
+
+多数据源 viewer 示例：
+
+```bash
+backtest chart viewer \
+  --source-root bitget=data/crypto/bitget/bars \
+  --source-root binance=data/crypto/binance/bars \
+  --output runs/charts/crypto_multi_source_viewer.html \
   --limit 5000 \
   --adjust none
 ```
@@ -906,6 +929,7 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - crypto 缓存路径必须使用 `safe_symbol_path()`，不要直接把 `/` 写进 partition path。
 - crypto catalog source 必须带 exchange，例如 `ccxt:binance`，不要只写 `ccxt`。
 - 批量拉取、重试、summary 产物和定时任务入口必须走 data job runner；不要把这些能力退回一次性脚本。
+- Bitget historical OHLCV 必须使用最多 200 根每页的有效 limit；不要把默认 1000 直接传给 Bitget 历史分页。
 - 生成数据目录 `data/crypto/` 和运行产物目录 `runs/crypto_market_data/` 默认不提交。
 - crypto `amount` 是 `close * volume` 估算值，不能当成交易所精确成交额。
 - 当前 `BrokerEngine` 仍是 A 股撮合器；不要宣称 crypto 数据接入后就已经具备完整 crypto 回测。

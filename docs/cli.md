@@ -126,11 +126,27 @@ cached timeframes under the root:
 
 ```bash
 backtest chart viewer \
-  --bars-root data/crypto/bars \
+  --bars-root data/crypto/bitget/bars \
   --output runs/charts/crypto_kline_viewer.html \
   --limit 5000 \
   --adjust none
 ```
+
+To inspect multiple cached sources in one HTML page, repeat `--source-root` with
+`label=path` values:
+
+```bash
+backtest chart viewer \
+  --source-root bitget=data/crypto/bitget/bars \
+  --source-root binance=data/crypto/binance/bars \
+  --output runs/charts/crypto_multi_source_viewer.html \
+  --limit 5000 \
+  --adjust none
+```
+
+The viewer shows the current source in the page header and summary. The Data
+Status drawer contains the source switcher; after switching source, the main
+symbol and frequency controls only show data from that source.
 
 The viewer groups year-partitioned files for the same symbol/frequency into one
 series. The top bar contains symbol, market/board, frequency, window size, and

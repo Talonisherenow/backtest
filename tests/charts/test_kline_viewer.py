@@ -100,6 +100,51 @@ def test_build_kline_payload_discovers_crypto_symbols_and_multiple_frequencies(
     ]
 
 
+def test_build_kline_payload_groups_multiple_source_roots(tmp_path: Path):
+    bitget_root = tmp_path / "bitget" / "bars"
+    binance_root = tmp_path / "binance" / "bars"
+    _write_cached_bars(
+        bitget_root,
+        "BTC/USDT",
+        frequency="1m",
+        adjust="none",
+        dates=["2025-01-01 00:00:00", "2025-01-01 00:01:00", "2025-01-01 00:02:00"],
+    )
+    _write_cached_bars(
+        binance_root,
+        "BTC/USDT",
+        frequency="1m",
+        adjust="none",
+        dates=["2025-01-01 00:00:00", "2025-01-01 00:01:00", "2025-01-01 00:02:00"],
+    )
+    _write_cached_bars(
+        binance_root,
+        "ETH/USDT",
+        frequency="1d",
+        adjust="none",
+        dates=["2025-01-01", "2025-01-02", "2025-01-03"],
+    )
+
+    payload = build_kline_payload(
+        bitget_root,
+        source_roots=[("bitget", bitget_root), ("binance", binance_root)],
+        frequency=None,
+        adjust="none",
+        limit=2,
+    )
+
+    assert [source["source_id"] for source in payload["sources"]] == ["bitget", "binance"]
+    assert payload["sources"][0]["source_label"] == "Bitget"
+    assert [item["symbol"] for item in payload["sources"][0]["symbols"]] == ["BTC/USDT"]
+    assert [item["symbol"] for item in payload["sources"][1]["symbols"]] == [
+        "BTC/USDT",
+        "ETH/USDT",
+    ]
+    assert payload["symbols"] == payload["sources"][0]["symbols"]
+    assert payload["source_id"] == "bitget"
+    assert payload["source_label"] == "Bitget"
+
+
 def test_build_kline_payload_honors_frequency_filter_for_crypto_cache(
     tmp_path: Path,
 ):
@@ -247,6 +292,9 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "${state.windowStart + 1}-${end} / ${compact(loaded)}" in html
     assert "loaded_rows" in html
     assert "status-symbol-group" in html
+    assert "sourceButtons" in html
+    assert "currentSource" in html
+    assert "Source" in html
     assert "rangeButtons" not in html
     assert "60D" not in html
     assert '|| "Unknown"' in html

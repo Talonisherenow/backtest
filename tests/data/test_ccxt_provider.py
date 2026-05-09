@@ -104,6 +104,52 @@ def test_ccxt_provider_maps_internal_sixty_minutes_to_ccxt_one_hour():
     assert exchange.calls[0]["timeframe"] == "1h"
 
 
+def test_ccxt_provider_caps_bitget_historical_ohlcv_limit_to_200():
+    exchange = FakeExchange(batches=[[]])
+    provider = CCXTOHLCVProvider(
+        exchange_id="bitget",
+        exchange=exchange,
+        limit=1000,
+        now_ms=lambda: _ms("2025-01-02T00:00:00"),
+    )
+
+    provider.fetch_bars(
+        BarRequest(
+            symbols=["BTC/USDT"],
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 1),
+            frequency=Frequency.MIN_1,
+            adjust=AdjustMode.NONE,
+            source="ccxt:bitget",
+        )
+    )
+
+    assert exchange.calls[0]["limit"] == 200
+
+
+def test_ccxt_provider_keeps_configured_limit_for_non_bitget_exchanges():
+    exchange = FakeExchange(batches=[[]])
+    provider = CCXTOHLCVProvider(
+        exchange_id="binance",
+        exchange=exchange,
+        limit=1000,
+        now_ms=lambda: _ms("2025-01-02T00:00:00"),
+    )
+
+    provider.fetch_bars(
+        BarRequest(
+            symbols=["BTC/USDT"],
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 1),
+            frequency=Frequency.MIN_1,
+            adjust=AdjustMode.NONE,
+            source="ccxt:binance",
+        )
+    )
+
+    assert exchange.calls[0]["limit"] == 1000
+
+
 def test_ccxt_provider_paginates_from_last_candle_timestamp():
     first_timestamp = _ms("2025-01-01T00:00:00")
     second_timestamp = _ms("2025-01-01T04:00:00")

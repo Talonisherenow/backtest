@@ -190,7 +190,13 @@ summary.json
 
 The first tracked job example is `configs/data_jobs/crypto_bitget_core.yaml`.
 It syncs Bitget spot OHLCV for `BTC/USDT`, `ETH/USDT`, `SOL/USDT`, and
-`BNB/USDT` across `1d`, `4h`, `60m`, `30m`, `15m`, `5m`, and `1m`.
+`BNB/USDT` across `1d`, `4h`, `60m`, `30m`, `15m`, `5m`, and `1m`. Its cache
+is exchange-scoped:
+
+```text
+bars_root: data/crypto/bitget/bars
+metadata: data/crypto/bitget/metadata.sqlite
+```
 
 The CLI is designed for external schedulers. A cron or launchd task can call the
 same command repeatedly; source-aware catalog coverage prevents already cached
@@ -205,6 +211,11 @@ OHLCV through CCXT. Supported internal frequencies are `1d`, `4h`, `60m`,
 `30m`, `15m`, `5m`, and `1m`; `60m` is requested from CCXT as `1h`. CCXT
 symbols must exist in `exchange.markets`, and the requested timeframe must be
 listed in `exchange.timeframes`.
+
+Bitget's spot historical candle endpoint is capped at 200 candles per request.
+`CCXTOHLCVProvider(exchange_id="bitget")` therefore caps its effective OHLCV
+limit to 200 even when the provider default is higher, avoiding systematic gaps
+when paginating older history through CCXT.
 
 Crypto `amount` is estimated as `close * volume`. The provider drops the
 current incomplete candle by default. This is historical market data only; live
