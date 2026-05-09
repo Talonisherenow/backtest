@@ -121,6 +121,45 @@ The output HTML embeds the selected cached bars, so it can be opened directly
 with `file://` and used to switch symbols, filter by board, search by code/name,
 switch frequency, and move the visible window over the embedded bars.
 
+Serve a dynamic local K-line viewer when the cache is still changing or when
+older windows should be loaded on demand:
+
+```bash
+backtest chart serve \
+  --bars-root data/crypto \
+  --adjust none \
+  --host 127.0.0.1 \
+  --port 8765 \
+  --window-size 5000
+```
+
+For the default crypto cache layout, the helper script starts the same service
+and opens it in the browser:
+
+```bash
+./scripts/start_crypto_viewer.sh
+```
+
+Open `http://127.0.0.1:8765/crypto_kline_viewer.html`. The served page first
+loads `/api/manifest` as a read-only local data index, then requests
+`/api/bars` for the selected source, symbol, frequency, and window. It reads the
+final `bars.parquet` files only; it does not write cache files, metadata, or
+crawl tasks, so it can run beside an active data sync job.
+
+When `--source-root` is omitted, `chart serve` and `chart viewer` auto-discover
+sources directly under `--bars-root` when they follow `<source>/bars` layout,
+for example:
+
+```text
+data/crypto/
+  bitget/bars/
+  binance/bars/
+  okx/bars/
+```
+
+Use explicit `--source-root label=path` only when the sources live outside that
+layout or when you want custom labels.
+
 For crypto cache inspection, omit `--frequency` so the viewer discovers all
 cached timeframes under the root:
 
@@ -149,9 +188,11 @@ Status drawer contains the source switcher; after switching source, the main
 symbol and frequency controls only show data from that source.
 
 The viewer groups year-partitioned files for the same symbol/frequency into one
-series. The top bar contains symbol, market/board, frequency, window size, and
-position controls. The `Data Status` action is a separate title-area button that
-opens a right drawer grouped by symbol and frequency.
+series. The top bar contains source/symbol/market/frequency filters. A separate
+time-window row contains window size, overlap ratio, row range,
+older/newer/latest navigation, jump-to-time, and the position slider. The
+`Data Status` action is a separate title-area button that opens a right drawer
+grouped by symbol and frequency.
 
 `--limit` is the maximum embedded bars per symbol/frequency:
 
@@ -161,6 +202,23 @@ opens a right drawer grouped by symbol and frequency.
 - `--limit 0` embeds all cached bars. This is the only way for a standalone
   HTML page to browse the full historical cache, but it can create a very large
   file.
+
+In dynamic `chart serve` mode, the default `--window-size` is the number of bars
+requested for the current selection. Use `Older`, `Newer`, `Latest`, the
+position slider, or `Jump to` to request a different local window without
+regenerating HTML. The service may prefetch a larger hidden buffer for smooth
+dragging, but `Position` still maps to the full local row index. `Overlap`
+controls the intersection between adjacent `Older`/`Newer` windows; the default
+is `80%`. With `Window = 5000` and `Overlap = 80%`, each click moves 1000 rows
+and leaves 4000 rows in common with the previous view.
+
+`Jump to` is anchored to the first visible K-line start time. When the user
+enters a non-boundary timestamp, the viewer uses the containing bar rather than
+the next bar; for example, `10:02` on `5m` data resolves to the `10:00` K-line.
+Frequency and window-size changes keep using the current `Jump to` value as the
+time anchor. If fewer than one window of bars exists after that anchor, the
+viewer shows the final full window and updates `Jump to` to that window's first
+bar.
 
 ## Validate
 

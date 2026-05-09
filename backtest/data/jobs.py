@@ -36,6 +36,7 @@ class DataSyncJobConfig(BaseModel):
     bars_root: Path = Path("data/bars")
     metadata: Path = Path("data/metadata.sqlite")
     output_dir: Path = Path("runs/data_jobs")
+    page_delay_seconds: float = Field(default=0.0, ge=0)
     retry: RetryConfig = Field(default_factory=RetryConfig)
 
     @field_validator("name")

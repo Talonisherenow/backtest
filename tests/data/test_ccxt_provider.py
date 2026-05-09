@@ -86,7 +86,7 @@ def test_ccxt_provider_fetches_ohlcv_as_bar_frame():
     assert exchange.calls[0]["limit"] == 2
 
 
-def test_ccxt_provider_maps_internal_sixty_minutes_to_ccxt_one_hour():
+def test_ccxt_provider_maps_internal_one_hour_to_ccxt_one_hour():
     exchange = FakeExchange(batches=[[]])
     provider = CCXTOHLCVProvider(exchange=exchange, now_ms=lambda: _ms("2025-01-02T00:00:00"))
 
@@ -95,13 +95,18 @@ def test_ccxt_provider_maps_internal_sixty_minutes_to_ccxt_one_hour():
             symbols=["BTC/USDT"],
             start_date=date(2025, 1, 1),
             end_date=date(2025, 1, 1),
-            frequency=Frequency.MIN_60,
+            frequency=Frequency.HOUR_1,
             adjust=AdjustMode.NONE,
             source="ccxt:binance",
         )
     )
 
     assert exchange.calls[0]["timeframe"] == "1h"
+
+
+def test_frequency_keeps_legacy_sixty_minute_alias():
+    assert Frequency("60m") is Frequency.HOUR_1
+    assert Frequency("60m").value == "1h"
 
 
 def test_ccxt_provider_caps_bitget_historical_ohlcv_limit_to_200():
@@ -179,6 +184,39 @@ def test_ccxt_provider_paginates_from_last_candle_timestamp():
 
     assert len(result) == 3
     assert exchange.calls[1]["since"] == third_timestamp
+
+
+def test_ccxt_provider_waits_between_paginated_requests():
+    first_timestamp = _ms("2025-01-01T00:00:00")
+    second_timestamp = _ms("2025-01-01T00:01:00")
+    sleep_calls: list[float] = []
+    exchange = FakeExchange(
+        batches=[
+            [[first_timestamp, 100.0, 110.0, 90.0, 105.0, 2.0]],
+            [[second_timestamp, 105.0, 115.0, 95.0, 110.0, 3.0]],
+            [],
+        ]
+    )
+    provider = CCXTOHLCVProvider(
+        exchange=exchange,
+        limit=1,
+        page_delay_seconds=0.25,
+        sleep=sleep_calls.append,
+        now_ms=lambda: _ms("2025-01-02T00:00:00"),
+    )
+
+    provider.fetch_bars(
+        BarRequest(
+            symbols=["BTC/USDT"],
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 1),
+            frequency=Frequency.MIN_1,
+            adjust=AdjustMode.NONE,
+            source="ccxt:binance",
+        )
+    )
+
+    assert sleep_calls == [0.25, 0.25]
 
 
 def test_ccxt_provider_drops_current_incomplete_candle():

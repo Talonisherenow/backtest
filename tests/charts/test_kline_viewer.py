@@ -279,6 +279,10 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "seriesByFrequency" in html
     assert "width: max-content" in html
     assert "windowSizeSelect" in html
+    assert "windowOverlapSelect" in html
+    assert "availableWindowRows" in html
+    assert "dynamicMode ? Number(series?.rows || embedded || 0) : embedded" in html
+    assert "pageStepSize" in html
     assert "windowSlider" in html
     assert "updateWindowControls" in html
     assert "flex-wrap: wrap" in html
@@ -287,9 +291,18 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert 'id="dataStatusButtonMeta"' in html
     assert html.index('id="dataStatusButton"') < html.index('class="controls"')
     assert "dataStatusButtonMeta.textContent" in html
-    assert 'class="control control-position"' in html
+    assert 'class="time-window" id="timeWindowBar"' in html
+    assert 'class="position-meta" id="windowMeta"' in html
+    assert 'class="position-control"' in html
+    assert 'id="windowRowsMeta"' in html
+    assert 'id="windowTimeMeta"' in html
+    assert 'id="olderPageButton"' in html
+    assert 'id="windowOverlapSelect"' in html
+    assert "Overlap" in html
+    assert '<option value="0.8" selected>80%</option>' in html
+    assert "default_window_overlap ?? 0.8" in html
     assert "windowMeta.title" in html
-    assert "${state.windowStart + 1}-${end} / ${compact(loaded)}" in html
+    assert "windowRowsMeta.textContent" in html
     assert "loaded_rows" in html
     assert "status-symbol-group" in html
     assert "sourceButtons" in html
@@ -297,4 +310,46 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "Source" in html
     assert "rangeButtons" not in html
     assert "60D" not in html
-    assert '|| "Unknown"' in html
+    assert '|| "Unclassified"' in html
+
+
+def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
+    output_path = tmp_path / "dynamic_viewer.html"
+
+    write_kline_viewer(
+        {"mode": "dynamic", "default_window_size": 5000, "adjust": "none"},
+        output_path,
+    )
+
+    html = output_path.read_text(encoding="utf-8")
+    assert 'mode": "dynamic"' not in html
+    assert '"mode":"dynamic"' in html
+    assert "loadManifest" in html
+    assert "/api/manifest" in html
+    assert "/api/bars" in html
+    assert "olderPageButton" in html
+    assert "newerPageButton" in html
+    assert "latestPageButton" in html
+    assert "jumpTimeInput" in html
+    assert 'type="datetime-local"' in html
+    assert "configureJumpControl" in html
+    assert "frequencyStepSeconds" in html
+    assert "toJumpInputValue" in html
+    assert "DYNAMIC_BUFFER_MULTIPLIER" in html
+    assert "bufferedWindowSize" in html
+    assert "globalWindowOffset" in html
+    assert "targetWindowOffset" in html
+    assert "targetBufferOffset" in html
+    assert "localWindowStartForTime" in html
+    assert "syncJumpInputToWindow" in html
+    assert "currentJumpStart" in html
+    assert "loadWindowForCurrentStart" in html
+    assert "windowOverlapRatio" in html
+    assert "pageStepSize" in html
+    assert "current - step" in html
+    assert "current + step" in html
+    assert "canRenderGlobalOffset" in html
+    assert "renderGlobalOffset" in html
+    assert "navigateToGlobalOffset" in html
+    assert "windowSlider.max = String(globalMaxStart)" in html
+    assert "Loaded" not in html

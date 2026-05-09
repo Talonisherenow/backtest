@@ -37,7 +37,7 @@ MarketDataProvider
 - 十大买讯策略、固定持有期退出、30 个回测 case 和可视化结果页；
 - CCXT 加密货币现货历史 OHLCV 接入；
 - `BTC/USDT` 这类 crypto spot symbol 和安全缓存路径；
-- 加密货币代表性周期 `4h`，以及 `60m -> CCXT 1h` 映射；
+- 加密货币代表性周期 `4h` 和 `1h`，旧 `60m` 输入会归一化为 `1h`；
 - Market data sync jobs，把批量数据拉取沉淀为项目内 runner，而不是一次性终端脚本；
 - Bitget 历史 OHLCV 请求会自动把 limit 限制到 200，避免 CCXT 分页时系统性跳过旧 K 线；
 - K 线查看器支持多个 `--source-root label=path`，可在 Data Status 里切换当前数据源；
@@ -109,7 +109,7 @@ b6c701c feat: add ten buy signal backtest results
 
 - 先接 CCXT 历史行情，真实交易 API 适配器后续再做；
 - crypto 第一版只做现货 OHLCV，不做合约、实盘下单或 crypto 撮合器；
-- crypto 代表性默认研究周期是 `1d + 4h + 60m`，短线扩展 `15m + 5m`，`1m` 只在需要执行细节时拉；
+- crypto 代表性默认研究周期是 `1d + 4h + 1h`，短线扩展 `15m + 5m`，`1m` 只在需要执行细节时拉；
 - 批量数据生产要走 `backtest data sync-job --job ...` 和 `MarketDataJobRunner`，不要把重要取数逻辑留在临时脚本里；
 - 多账户能力要保留口子，第一版默认单账户 `default`；
 - 订单、执行回报、组合状态、ledger 都必须带 `account_id`；
@@ -347,7 +347,7 @@ configs/data_jobs/crypto_bitget_core.yaml
 ```
 
 它会展开 `BTC/USDT`、`ETH/USDT`、`SOL/USDT`、`BNB/USDT` 与 `1d`、`4h`、
-`60m`、`30m`、`15m`、`5m`、`1m` 的组合，复用 `DataSyncService` 执行每个
+`1h`、`30m`、`15m`、`5m`、`1m` 的组合，复用 `DataSyncService` 执行每个
 item。运行结果写到：
 
 ```text
@@ -360,6 +360,7 @@ Bitget job 使用 exchange-scoped cache root：
 ```text
 data/crypto/bitget/bars
 data/crypto/bitget/metadata.sqlite
+page_delay_seconds: 0.35
 ```
 
 `data/crypto/` 和 `runs/crypto_market_data/` 是本地生成产物，除非用户明确要求，不要
@@ -408,7 +409,7 @@ is_suspended, limit_up, limit_down
 允许的频率：
 
 ```text
-1d, 1m, 5m, 15m, 30m, 60m, 4h
+1d, 1m, 5m, 15m, 30m, 1h, 4h
 ```
 
 crypto OHLCV 约定：
@@ -418,7 +419,7 @@ crypto OHLCV 约定：
 - `date` 是 UTC 时间，保存为 timezone-naive pandas datetime；
 - `volume` 是 CCXT 返回的成交量，通常是 base asset 数量；
 - `amount` 第一版估算为 `close * volume`；
-- 内部 `60m` 请求 CCXT 时映射为 `1h`；
+- `1h` 是标准一小时频率；旧 `60m` 输入会归一化为 `1h`；
 - provider 默认丢弃当前未收盘 K 线。
 
 ### SignalFrame
@@ -657,14 +658,21 @@ GUI、dashboard 或分析脚本应读取 JSON/Parquet，不要解析 `report.htm
 
 ## K 线查看器
 
-已新增静态 K 线缓存查看器。它是一个自包含 HTML，不需要后端服务，生成时把所选缓存行情嵌入页面：
+已新增 K 线缓存查看器，包含两种形态：
+
+- `backtest chart viewer` 生成自包含静态 HTML，适合 `file://` 打开和归档；
+- `backtest chart serve` 启动只读本地服务，适合数据仍在补齐、需要按 symbol/frequency 动态读取本地窗口时使用。
 
 ```text
 backtest/charts/kline_viewer.py
+backtest/charts/kline_service.py
+backtest/charts/kline_server.py
 tests/charts/test_kline_viewer.py
+tests/charts/test_kline_service.py
+tests/charts/test_kline_cli.py
 ```
 
-CLI：
+静态 HTML CLI：
 
 ```bash
 backtest chart viewer \
@@ -675,25 +683,46 @@ backtest chart viewer \
   --limit 300
 ```
 
+动态本地服务 CLI：
+
+```bash
+backtest chart serve \
+  --bars-root data/crypto \
+  --adjust none \
+  --host 127.0.0.1 \
+  --port 8765 \
+  --window-size 5000
+```
+
 能力：
 
 - 自包含 HTML，可直接 `file://` 打开，也可通过本地静态服务器预览；
+- 动态服务模式页面通过 `/api/manifest` 获取本地全量数据索引，通过 `/api/bars` 按当前 source/symbol/frequency/window 拉取窗口数据；
+- 动态服务只读最终 `bars.parquet` 文件，不写入 cache、metadata 或 crawl_tasks，可和正在运行的数据爬取任务并行；
+- `chart viewer` 和 `chart serve` 在未传 `--source-root` 时会自动扫描 `--bars-root` 下的 `<source>/bars` 目录，例如 `data/crypto/bitget/bars` 会识别为 `Bitget`；
+- 如果 source 不在统一父目录下，或需要自定义 label，可继续显式传多个 `--source-root label=path`；
 - 自动从 Parquet cache 发现已爬取 symbol、frequency、adjust、years、行数和首尾时间；
 - 同一 symbol 同一 frequency 的分散 year partition 会合并为一个序列展示，不按单文件拆开；
 - 支持多时间级别切换，未指定 `--frequency` 时会发现 root 下所有可用级别；
 - 支持 symbol 下拉、代码/名称搜索、Market / Board 过滤；
-- crypto spot 默认归类为 `Crypto / Spot`，真正缺少市场和板块信息的标的才归到 `Unknown`；
-- 顶部筛选区只放筛选和视图窗口控件，`Data Status` 是标题区右侧的独立全局入口；
+- crypto spot 默认归类为 `Crypto / Spot`，真正缺少市场和板块信息的标的才归到 `Unclassified`；
+- 顶部筛选区只放 Market / Board、Symbol、Search、Frequency 这类筛选项，`Data Status` 是标题区右侧的独立全局入口；
+- `Window`、`Overlap`、当前 rows 范围、`Older`、`Newer`、`Latest`、`Jump to` 和 `Position` 滑条放在单独的时间窗口工具条；
 - `Data Status` 按钮显示 cached series 数量，点击后打开右侧抽屉；
 - Data Status 抽屉按 symbol 分组，每组列出该 symbol 已缓存的所有 frequency；
 - 可用多个 `--source-root label=path` 生成多数据源 viewer，Data Status 顶部会出现 source 切换入口；
 - 切换 source 后，主页面 symbol 和 frequency 控件只展示当前 source 下的数据；
 - 页面 header 和 summary 都会显示当前 source；
-- 抽屉行展示首尾时间、`loaded_rows / rows`、years、adjust，点击行会切到对应 symbol/frequency；
-- `Window` 下拉控制当前图表窗口大小：`100`、`300`、`1000`、`5000`、`All loaded`；
-- `Position` 滑条在已嵌入 bars 内前后移动，用于查看更早的已加载历史；
+- 抽屉行展示首尾时间、rows、years、adjust，点击行会切到对应 symbol/frequency；
+- `Window` 下拉控制当前图表窗口大小：`100`、`300`、`1000`、`5000`、`All available`；
+- `Overlap` 下拉控制相邻 `Older`/`Newer` 窗口的交集，默认 80%；例如 `Window=5000`、`Overlap=80%` 时，每次点击移动 1000 根，保留 4000 根重叠；
+- `Position` 滑条在静态模式里于已嵌入 bars 内前后移动，在动态模式里映射到当前 symbol/frequency 的全量本地 row offset；
+- 动态模式会在后台多预取一段隐藏 buffer 来保证拖动流畅，但这个 buffer 不是用户可见的翻页单位；
+- 动态模式下 `Older`/`Newer` 按 `window size * (1 - overlap)` 移动可见窗口，`Latest` 回到最新窗口；
+- `Jump to` 输入框始终同步为当前可见窗口第一根 K 线开始时间；输入非 K 线边界时间时定位到包含该时间的 bar，例如 `5m` 输入 `10:02` 会落到 `10:00`；切换 frequency/window size 继续以当前 `Jump to` 为锚点，如果目标之后不足一个 window，就展示最后完整 window 并把 `Jump to` 改成实际窗口首根时间；
 - `--limit 0` 表示每个 symbol/frequency 嵌入全量缓存 bars；非零 limit 只嵌入最近 N 根；
 - 页面里只能浏览生成时已嵌入的 bars。若要看更早历史，必须用更大的 `--limit` 或 `--limit 0` 重新生成；
+- 动态服务不需要重新生成 HTML；补完 parquet 后刷新页面或切换选择即可读取最新落盘数据；
 - Plotly 图表可交互缩放；
 - 使用交易日类别轴，去掉周末/节假日空隙；
 - 图例不遮挡标题；
@@ -718,6 +747,22 @@ backtest chart viewer \
   --output runs/charts/crypto_multi_source_viewer.html \
   --limit 5000 \
   --adjust none
+```
+
+默认启动动态 crypto viewer 的脚本：
+
+```bash
+./scripts/start_crypto_viewer.sh
+```
+
+脚本默认读取 `data/crypto`，优先使用 `uv run backtest`，没有 `uv` 时使用已安装的
+`backtest` 命令；端口占用时会探测 `/api/manifest`，只有确认已有服务是 K-line
+viewer 才直接打开。
+
+日常运维说明文档：
+
+```text
+docs/market-data-operations.md
 ```
 
 `--limit 5000` 是当前人工查看的折中：1m 等大数据级别仍可用 Position 看最近 5000 根内的早晚区间，HTML 文件也不会过大。需要完整历史时再用 `--limit 0`。
@@ -930,6 +975,8 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - crypto catalog source 必须带 exchange，例如 `ccxt:binance`，不要只写 `ccxt`。
 - 批量拉取、重试、summary 产物和定时任务入口必须走 data job runner；不要把这些能力退回一次性脚本。
 - Bitget historical OHLCV 必须使用最多 200 根每页的有效 limit；不要把默认 1000 直接传给 Bitget 历史分页。
+- Bitget 大范围 `1m`、`5m` 补数容易触发 429；data job 可用 `page_delay_seconds`
+  在每个 CCXT OHLCV 分页之间节流。
 - 生成数据目录 `data/crypto/` 和运行产物目录 `runs/crypto_market_data/` 默认不提交。
 - crypto `amount` 是 `close * volume` 估算值，不能当成交易所精确成交额。
 - 当前 `BrokerEngine` 仍是 A 股撮合器；不要宣称 crypto 数据接入后就已经具备完整 crypto 回测。

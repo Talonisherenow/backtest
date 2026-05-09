@@ -115,19 +115,20 @@ symbols:
 frequencies:
   - 1d
   - 4h
-  - 60m
+  - 1h
   - 30m
   - 15m
   - 5m
   - 1m
 
 adjust: none
-start_date: "2023-05-08"
+start_date: "2023-05-09"
 end_date: "2026-05-08"
 
-bars_root: data/crypto/bars
-metadata: data/crypto/metadata.sqlite
+bars_root: data/crypto/bitget/bars
+metadata: data/crypto/bitget/metadata.sqlite
 output_dir: runs/crypto_market_data/bitget_core
+page_delay_seconds: 0.35
 
 retry:
   max_attempts: 5
@@ -149,6 +150,7 @@ start_date / end_date        同步日期范围
 bars_root                    parquet 行情缓存根目录
 metadata                     SQLite metadata 路径
 output_dir                   job 结果输出目录
+page_delay_seconds           CCXT OHLCV 分页请求之间的等待时间
 retry.max_attempts           单个 item 最大尝试次数
 retry.request_delay_seconds  每个 item 执行前后的基础间隔
 retry.failure_cooldown_seconds 失败后下一次重试前等待时间
@@ -259,7 +261,7 @@ symbol + frequency + adjust + source + start_date + end_date
 例如：
 
 ```text
-BTC/USDT 1m none ccxt:bitget 2023-05-08..2026-05-08
+BTC/USDT 1m none ccxt:bitget 2023-05-09..2026-05-08
 ```
 
 ### 6.4 JobItemResult

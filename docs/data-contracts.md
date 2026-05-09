@@ -58,7 +58,7 @@ adjust
 Allowed `frequency` values:
 
 ```text
-1d, 1m, 5m, 15m, 30m, 60m, 4h
+1d, 1m, 5m, 15m, 30m, 1h, 4h
 ```
 
 Allowed `adjust` values:
@@ -94,7 +94,8 @@ Crypto OHLCV notes:
 - `volume` is the CCXT returned volume, usually base asset quantity.
 - `amount` is estimated as `close * volume` in phase 1.
 - `adjust` must be `none`.
-- Internal `60m` maps to CCXT `1h` when fetched through `CCXTOHLCVProvider`.
+- `1h` is the canonical one-hour frequency. Legacy `60m` inputs are normalized
+  to `1h` for compatibility.
 
 ## SignalFrame
 

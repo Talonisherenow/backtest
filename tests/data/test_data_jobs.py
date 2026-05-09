@@ -30,6 +30,7 @@ symbols:
   - ETH/USDT
 frequencies:
   - 1d
+  - 1h
   - 4h
 adjust: none
 start_date: "2025-01-01"
@@ -37,6 +38,7 @@ end_date: "2025-01-31"
 bars_root: data/crypto/bars
 metadata: data/crypto/metadata.sqlite
 output_dir: runs/crypto_market_data/bitget_core
+page_delay_seconds: 0.25
 retry:
   max_attempts: 5
   request_delay_seconds: 0.5
@@ -51,13 +53,14 @@ retry:
     assert config.source == "ccxt"
     assert config.exchange == "bitget"
     assert config.symbols == ["BTC/USDT", "ETH/USDT"]
-    assert config.frequencies == [Frequency.DAILY, Frequency.HOUR_4]
+    assert config.frequencies == [Frequency.DAILY, Frequency.HOUR_1, Frequency.HOUR_4]
     assert config.adjust == AdjustMode.NONE
     assert config.start_date == date(2025, 1, 1)
     assert config.end_date == date(2025, 1, 31)
     assert config.bars_root == Path("data/crypto/bars")
     assert config.metadata == Path("data/crypto/metadata.sqlite")
     assert config.output_dir == Path("runs/crypto_market_data/bitget_core")
+    assert config.page_delay_seconds == 0.25
     assert config.retry.max_attempts == 5
     assert config.retry.request_delay_seconds == 0.5
     assert config.retry.failure_cooldown_seconds == 30
@@ -69,8 +72,33 @@ def test_tracked_bitget_job_config_uses_exchange_scoped_cache_root():
     config = load_data_sync_job_config("configs/data_jobs/crypto_bitget_core.yaml")
 
     assert config.exchange == "bitget"
+    assert Frequency.HOUR_1 in config.frequencies
     assert config.bars_root == Path("data/crypto/bitget/bars")
     assert config.metadata == Path("data/crypto/bitget/metadata.sqlite")
+    assert config.page_delay_seconds > 0
+
+
+def test_data_sync_job_config_accepts_legacy_sixty_minute_frequency(tmp_path: Path):
+    job_path = _write_job_config(
+        tmp_path,
+        """
+name: crypto-legacy-frequency
+source: ccxt
+exchange: bitget
+symbols:
+  - BTC/USDT
+frequencies:
+  - 60m
+adjust: none
+start_date: "2025-01-01"
+end_date: "2025-01-02"
+""",
+    )
+
+    config = load_data_sync_job_config(job_path)
+
+    assert config.frequencies == [Frequency.HOUR_1]
+    assert config.frequencies[0].value == "1h"
 
 
 def test_data_sync_job_config_requires_exchange_for_ccxt():

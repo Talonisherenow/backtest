@@ -268,6 +268,7 @@ end_date: "2025-01-31"
 bars_root: {tmp_path / "bars"}
 metadata: {tmp_path / "metadata.sqlite"}
 output_dir: {tmp_path / "job-output"}
+page_delay_seconds: 0.25
 retry:
   max_attempts: 1
   continue_on_error: {str(failed_continue).lower()}
@@ -282,8 +283,9 @@ def test_data_sync_job_cli_uses_ccxt_provider_and_runner(tmp_path: Path, monkeyp
     captured = {}
 
     class FakeCCXTProvider:
-        def __init__(self, exchange_id: str) -> None:
+        def __init__(self, exchange_id: str, page_delay_seconds: float = 0.0) -> None:
             self.exchange_id = exchange_id
+            self.page_delay_seconds = page_delay_seconds
 
     class NoopSyncService:
         def __init__(self, provider, store, catalog, tasks) -> None:
@@ -317,6 +319,7 @@ def test_data_sync_job_cli_uses_ccxt_provider_and_runner(tmp_path: Path, monkeyp
     assert "Data job crypto-job complete" in result.output
     assert "success=1 failed=0 rows=7" in result.output
     assert captured["provider"].exchange_id == "bitget"
+    assert captured["provider"].page_delay_seconds == 0.25
     assert captured["store_root"] == tmp_path / "bars"
     assert captured["config"].catalog_source == "ccxt:bitget"
 

@@ -1,3 +1,4 @@
+import time
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -15,7 +16,7 @@ CCXT_TIMEFRAME_BY_FREQUENCY = {
     Frequency.MIN_5: "5m",
     Frequency.MIN_15: "15m",
     Frequency.MIN_30: "30m",
-    Frequency.MIN_60: "1h",
+    Frequency.HOUR_1: "1h",
     Frequency.HOUR_4: "4h",
     Frequency.DAILY: "1d",
 }
@@ -25,7 +26,7 @@ TIMEFRAME_MS_BY_FREQUENCY = {
     Frequency.MIN_5: 5 * 60 * 1000,
     Frequency.MIN_15: 15 * 60 * 1000,
     Frequency.MIN_30: 30 * 60 * 1000,
-    Frequency.MIN_60: 60 * 60 * 1000,
+    Frequency.HOUR_1: 60 * 60 * 1000,
     Frequency.HOUR_4: 4 * 60 * 60 * 1000,
     Frequency.DAILY: 24 * 60 * 60 * 1000,
 }
@@ -42,16 +43,20 @@ class CCXTOHLCVProvider:
         *,
         exchange: Any | None = None,
         limit: int = 1000,
+        page_delay_seconds: float = 0.0,
         drop_incomplete: bool = True,
         now_ms: Callable[[], int] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.exchange_id = exchange_id.strip().lower()
         if not self.exchange_id:
             raise ValueError("exchange_id must not be empty")
         self.exchange = exchange
         self.limit = limit
+        self.page_delay_seconds = page_delay_seconds
         self.drop_incomplete = drop_incomplete
         self.now_ms = now_ms or self._system_now_ms
+        self.sleep = sleep
 
     def fetch_bars(self, request: BarRequest) -> pd.DataFrame:
         if request.adjust != AdjustMode.NONE:
@@ -157,6 +162,8 @@ class CCXTOHLCVProvider:
             if next_since <= since:
                 raise ValueError("CCXT OHLCV pagination did not advance")
             since = next_since
+            if self.page_delay_seconds:
+                self.sleep(self.page_delay_seconds)
 
         return rows
 

@@ -44,13 +44,21 @@ def _catalog_source(config: BacktestConfig) -> str:
     raise ValueError(f"Unsupported data source: {config.data.source}")
 
 
-def _provider_for_source(source: str, exchange: str | None):
+def _provider_for_source(
+    source: str,
+    exchange: str | None,
+    *,
+    page_delay_seconds: float = 0.0,
+):
     if source == "akshare":
         return AkShareProvider()
     if source == "ccxt":
         if not exchange:
             raise ValueError("exchange is required when source=ccxt")
-        return CCXTOHLCVProvider(exchange_id=exchange)
+        return CCXTOHLCVProvider(
+            exchange_id=exchange,
+            page_delay_seconds=page_delay_seconds,
+        )
     raise ValueError(f"Unsupported data source: {source}")
 
 
@@ -171,7 +179,11 @@ def sync_job(
         metadata = _metadata_store(config.metadata)
         catalog = DataCatalog(metadata)
         service = DataSyncService(
-            provider=_provider_for_source(config.source, config.exchange),
+            provider=_provider_for_source(
+                config.source,
+                config.exchange,
+                page_delay_seconds=config.page_delay_seconds,
+            ),
             store=ParquetBarStore(config.bars_root),
             catalog=catalog,
             tasks=CrawlTaskManager(metadata),

@@ -15,6 +15,7 @@ FREQUENCY_ORDER = {
     "5m": 20,
     "15m": 30,
     "30m": 40,
+    "1h": 50,
     "60m": 50,
     "4h": 60,
     "1d": 70,
@@ -88,9 +89,13 @@ def build_kline_payload(
 
 def write_kline_viewer(payload: dict[str, Any], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_kline_viewer_html(payload), encoding="utf-8")
+
+
+def render_kline_viewer_html(payload: dict[str, Any]) -> str:
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     safe_payload = payload_json.replace("</", "<\\/")
-    output_path.write_text(HTML_TEMPLATE.replace("__KLINE_PAYLOAD__", safe_payload), encoding="utf-8")
+    return HTML_TEMPLATE.replace("__KLINE_PAYLOAD__", safe_payload)
 
 
 def _resolve_frequencies(
@@ -379,13 +384,6 @@ HTML_TEMPLATE = """<!doctype html>
       flex: 0 1 auto;
       max-width: 100%;
     }
-    .control-window {
-      flex: 0 0 140px;
-    }
-    .control-position {
-      flex: 1 1 300px;
-      max-width: 400px;
-    }
     select, input {
       min-height: 36px;
       width: 100%;
@@ -426,7 +424,7 @@ HTML_TEMPLATE = """<!doctype html>
     }
     .window-position {
       display: grid;
-      grid-template-columns: minmax(120px, 1fr) minmax(70px, auto);
+      grid-template-columns: minmax(140px, 1fr) minmax(190px, 260px);
       gap: 8px;
       align-items: center;
       min-width: 0;
@@ -446,6 +444,83 @@ HTML_TEMPLATE = """<!doctype html>
       font-size: 12px;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .time-window {
+      display: grid;
+      grid-template-columns: minmax(120px, 160px) minmax(94px, 116px) auto minmax(170px, 220px) auto minmax(330px, 1fr);
+      gap: 10px;
+      align-items: end;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .position-meta {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .position-meta strong,
+    .position-meta span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .position-meta strong {
+      font-size: 13px;
+      line-height: 1.2;
+    }
+    .position-meta span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .window-actions {
+      display: flex;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .window-actions button {
+      min-width: 62px;
+      border: 0;
+      border-right: 1px solid var(--line);
+      background: transparent;
+      color: var(--text);
+      padding: 0 10px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .window-actions button:last-child { border-right: 0; }
+    .window-actions button:disabled,
+    .mini-button:disabled {
+      color: #a7b1ba;
+      cursor: not-allowed;
+      background: #f8fafc;
+    }
+    .jump-control {
+      min-width: 0;
+    }
+    .overlap-control {
+      min-width: 0;
+    }
+    .position-control {
+      min-width: 0;
+    }
+    .mini-button {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 12px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
       white-space: nowrap;
     }
     .toolbar-button {
@@ -531,7 +606,7 @@ HTML_TEMPLATE = """<!doctype html>
     }
     #chart {
       width: 100%;
-      height: calc(100vh - 202px);
+      height: calc(100vh - 262px);
       min-height: 560px;
       background: var(--surface);
       border: 1px solid var(--line);
@@ -687,14 +762,37 @@ HTML_TEMPLATE = """<!doctype html>
       font-size: 12px;
       font-weight: 700;
     }
+    @media (max-width: 1180px) {
+      .time-window {
+        grid-template-columns: minmax(120px, 170px) minmax(94px, 116px) auto minmax(170px, 1fr) auto;
+      }
+      .position-control {
+        grid-column: 1 / -1;
+      }
+      .window-position {
+        grid-template-columns: minmax(220px, 1fr) minmax(300px, 360px);
+      }
+    }
     @media (max-width: 980px) {
       .control-board,
       .control-symbol,
       .control-search,
-      .control-frequency,
-      .control-position {
+      .control-frequency {
         max-width: none;
       }
+      .time-window {
+        grid-template-columns: minmax(120px, 170px) minmax(94px, 116px) minmax(180px, 1fr) auto;
+      }
+      .window-actions {
+        grid-column: 3 / -1;
+      }
+      .jump-control {
+        grid-column: 1 / -2;
+      }
+      .time-window .mini-button {
+        grid-column: -2 / -1;
+      }
+      .position-control { grid-column: 1 / -1; }
       .summary { grid-template-columns: repeat(3, minmax(90px, 1fr)); }
       #chart { height: 640px; }
     }
@@ -709,6 +807,17 @@ HTML_TEMPLATE = """<!doctype html>
       }
       .status-action {
         width: 100%;
+      }
+      .time-window {
+        grid-template-columns: 1fr;
+      }
+      .window-actions,
+      .jump-control,
+      .time-window .mini-button {
+        grid-column: auto;
+      }
+      .window-actions button {
+        flex: 1 1 0;
       }
       .summary { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
       main { padding: 10px; }
@@ -743,19 +852,42 @@ HTML_TEMPLATE = """<!doctype html>
       <label class="control control-frequency">Frequency
         <div class="range" id="frequencyButtons" aria-label="Frequency"></div>
       </label>
-      <label class="control control-window">Window
+    </div>
+    <div class="time-window" id="timeWindowBar">
+      <label>Window
         <select id="windowSizeSelect">
           <option value="100">100 bars</option>
-          <option value="300" selected>300 bars</option>
+          <option value="300">300 bars</option>
           <option value="1000">1000 bars</option>
           <option value="5000">5000 bars</option>
-          <option value="all">All loaded</option>
+          <option value="all">All available</option>
         </select>
       </label>
-      <label class="control control-position">Position
+      <label class="overlap-control">Overlap
+        <select id="windowOverlapSelect">
+          <option value="0">0%</option>
+          <option value="0.1">10%</option>
+          <option value="0.2">20%</option>
+          <option value="0.5">50%</option>
+          <option value="0.8" selected>80%</option>
+        </select>
+      </label>
+      <div class="window-actions" aria-label="Window navigation">
+        <button type="button" id="olderPageButton">Older</button>
+        <button type="button" id="newerPageButton">Newer</button>
+        <button type="button" id="latestPageButton">Latest</button>
+      </div>
+      <label class="jump-control">Jump to
+        <input id="jumpTimeInput" type="datetime-local" autocomplete="off">
+      </label>
+      <button type="button" class="mini-button" id="jumpTimeButton">Go</button>
+      <label class="position-control">Position
         <div class="window-position">
           <input id="windowSlider" type="range" min="0" max="0" value="0">
-          <span id="windowMeta">Latest</span>
+          <div class="position-meta" id="windowMeta">
+            <strong id="windowRowsMeta">Rows</strong>
+            <span id="windowTimeMeta">Latest window</span>
+          </div>
         </div>
       </label>
     </div>
@@ -778,16 +910,22 @@ HTML_TEMPLATE = """<!doctype html>
   </aside>
   <script>
     const payload = JSON.parse(document.getElementById("kline-payload").textContent);
-    const sources = normalizeSources(payload);
+    const dynamicMode = payload.mode === "dynamic";
+    const DYNAMIC_BUFFER_MULTIPLIER = 3;
+    let sources = normalizeSources(payload);
     const state = {
       sourceId: sources[0]?.source_id || "default",
       symbol: sources[0]?.symbols?.[0]?.symbol || "",
       frequency: sources[0]?.symbols?.[0]?.series?.[0]?.frequency || payload.frequency || "1d",
       board: "all",
       search: "",
-      windowSize: "300",
+      windowSize: String(payload.default_window_size || payload.limit || 300),
+      windowOverlap: String(payload.default_window_overlap ?? 0.8),
       windowStart: 0,
       drawerOpen: false,
+      loading: false,
+      error: "",
+      seriesData: null,
     };
 
     const boardSelect = document.getElementById("boardSelect");
@@ -795,8 +933,16 @@ HTML_TEMPLATE = """<!doctype html>
     const searchInput = document.getElementById("searchInput");
     const frequencyButtons = document.getElementById("frequencyButtons");
     const windowSizeSelect = document.getElementById("windowSizeSelect");
+    const windowOverlapSelect = document.getElementById("windowOverlapSelect");
     const windowSlider = document.getElementById("windowSlider");
     const windowMeta = document.getElementById("windowMeta");
+    const windowRowsMeta = document.getElementById("windowRowsMeta");
+    const windowTimeMeta = document.getElementById("windowTimeMeta");
+    const olderPageButton = document.getElementById("olderPageButton");
+    const newerPageButton = document.getElementById("newerPageButton");
+    const latestPageButton = document.getElementById("latestPageButton");
+    const jumpTimeInput = document.getElementById("jumpTimeInput");
+    const jumpTimeButton = document.getElementById("jumpTimeButton");
     const dataStatusButton = document.getElementById("dataStatusButton");
     const dataStatusButtonMeta = document.getElementById("dataStatusButtonMeta");
     const closeDrawerButton = document.getElementById("closeDrawerButton");
@@ -839,7 +985,7 @@ HTML_TEMPLATE = """<!doctype html>
     }
 
     function boardKey(item) {
-      return [item.exchange || "", item.board || ""].filter(Boolean).join(" / ") || "Unknown";
+      return [item.exchange || "", item.board || ""].filter(Boolean).join(" / ") || "Unclassified";
     }
 
     function optionLabel(item) {
@@ -862,11 +1008,30 @@ HTML_TEMPLATE = """<!doctype html>
     }
 
     function currentSeries(item) {
+      if (!item) {
+        return null;
+      }
       const byFrequency = seriesByFrequency(item);
       if (!byFrequency.has(state.frequency)) {
         state.frequency = seriesList(item)[0]?.frequency || "";
       }
       return byFrequency.get(state.frequency) || seriesList(item)[0] || null;
+    }
+
+    function isSeriesDataCurrent() {
+      return Boolean(
+        state.seriesData
+        && state.seriesData.source_id === state.sourceId
+        && state.seriesData.symbol === state.symbol
+        && state.seriesData.frequency === state.frequency
+      );
+    }
+
+    function activeSeries(item) {
+      if (dynamicMode && isSeriesDataCurrent()) {
+        return state.seriesData;
+      }
+      return currentSeries(item);
     }
 
     function populateBoards() {
@@ -879,6 +1044,10 @@ HTML_TEMPLATE = """<!doctype html>
           return `<option value="${escapeHtml(board)}">${escapeHtml(board)} (${count})</option>`;
         }),
       ].join("");
+      if (state.board !== "all" && !boards.includes(state.board)) {
+        state.board = "all";
+      }
+      boardSelect.value = state.board;
     }
 
     function filteredSymbols() {
@@ -901,11 +1070,12 @@ HTML_TEMPLATE = """<!doctype html>
         return `<option value="${escapeHtml(item.symbol)}"${selected}>${escapeHtml(optionLabel(item))}</option>`;
       }).join("");
       populateFrequencies();
-      if (previousSymbol !== state.symbol) {
+      if (previousSymbol !== state.symbol || dynamicMode) {
+        state.seriesData = null;
+      }
+      if (!dynamicMode && previousSymbol !== state.symbol) {
         setWindowToLatest(currentSeries(selectedItem()));
       }
-      renderDataStatus();
-      render();
     }
 
     function populateFrequencies() {
@@ -928,6 +1098,143 @@ HTML_TEMPLATE = """<!doctype html>
       return Math.min(Number(state.windowSize), loaded);
     }
 
+    function availableWindowRows(series) {
+      const embedded = (series?.bars || []).length;
+      return dynamicMode ? Number(series?.rows || embedded || 0) : embedded;
+    }
+
+    function requestedWindowSize(series) {
+      const total = availableWindowRows(series);
+      if (state.windowSize === "all") {
+        return Math.max(1, total);
+      }
+      return Math.max(1, Number(state.windowSize) || 300);
+    }
+
+    function bufferedWindowSize(series) {
+      const total = availableWindowRows(series);
+      const visibleSize = requestedWindowSize(series);
+      if (state.windowSize === "all") {
+        return Math.max(1, total);
+      }
+      return Math.max(1, Math.min(total || visibleSize, visibleSize * DYNAMIC_BUFFER_MULTIPLIER));
+    }
+
+    function loadLimit(series) {
+      return state.windowSize === "all" ? 0 : bufferedWindowSize(series);
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function windowOverlapRatio() {
+      const value = Number(state.windowOverlap);
+      return Number.isFinite(value) ? clamp(value, 0, 0.9) : 0.8;
+    }
+
+    function pageStepSize(series) {
+      const size = requestedWindowSize(series);
+      if (state.windowSize === "all") {
+        return size;
+      }
+      return Math.max(1, Math.round(size * (1 - windowOverlapRatio())));
+    }
+
+    function globalWindowOffset(series) {
+      if (!dynamicMode) {
+        return state.windowStart;
+      }
+      return Number(series?.offset || 0) + state.windowStart;
+    }
+
+    function globalMaxWindowOffset(series) {
+      const total = availableWindowRows(series);
+      const visibleSize = requestedWindowSize(series);
+      return Math.max(0, total - visibleSize);
+    }
+
+    function targetBufferOffset(targetWindowOffset, series) {
+      const visibleSize = requestedWindowSize(series);
+      const bufferSize = bufferedWindowSize(series);
+      const total = availableWindowRows(series);
+      const maxBufferOffset = Math.max(0, total - bufferSize);
+      const centeredOffset = targetWindowOffset - Math.floor((bufferSize - visibleSize) / 2);
+      return clamp(centeredOffset, 0, maxBufferOffset);
+    }
+
+    function canRenderGlobalOffset(targetWindowOffset, series) {
+      if (!dynamicMode || !series) {
+        return false;
+      }
+      const visibleSize = Math.min(requestedWindowSize(series), (series.bars || []).length);
+      const bufferOffset = Number(series.offset || 0);
+      const maxLocalStart = Math.max(0, (series.bars || []).length - visibleSize);
+      return targetWindowOffset >= bufferOffset && targetWindowOffset <= bufferOffset + maxLocalStart;
+    }
+
+    function renderGlobalOffset(targetWindowOffset, series) {
+      const visibleSize = Math.min(requestedWindowSize(series), (series?.bars || []).length);
+      const maxLocalStart = Math.max(0, (series?.bars || []).length - visibleSize);
+      state.windowStart = clamp(targetWindowOffset - Number(series?.offset || 0), 0, maxLocalStart);
+      render();
+    }
+
+    function sortableTimeValue(value) {
+      const text = String(value || "").trim().replace(" ", "T");
+      if (!text) {
+        return "";
+      }
+      if (text.length === 10) {
+        return `${text}T00:00:00`;
+      }
+      if (text.includes("T") && text.length === 16) {
+        return `${text}:00`;
+      }
+      return text;
+    }
+
+    function localWindowStartForTime(series, start) {
+      const bars = series?.bars || [];
+      const visibleSize = Math.min(requestedWindowSize(series), bars.length);
+      const maxLocalStart = Math.max(0, bars.length - visibleSize);
+      const target = sortableTimeValue(start);
+      let index = 0;
+      for (let cursor = 0; cursor < bars.length; cursor += 1) {
+        if (sortableTimeValue(bars[cursor].date) > target) {
+          break;
+        }
+        index = cursor;
+      }
+      return clamp(index, 0, maxLocalStart);
+    }
+
+    function firstVisibleBarDate(series) {
+      const bars = series?.bars || [];
+      if (!bars.length) {
+        return "";
+      }
+      const size = dynamicMode
+        ? Math.min(requestedWindowSize(series), bars.length)
+        : windowSizeValue(series);
+      const maxStart = Math.max(0, bars.length - size);
+      return bars[clamp(state.windowStart, 0, maxStart)]?.date || "";
+    }
+
+    function currentJumpStart() {
+      return jumpTimeInput.value.trim() || firstVisibleBarDate(activeSeries(selectedItem()));
+    }
+
+    function syncJumpInputToWindow(series, bars) {
+      configureJumpControl(series);
+      if (bars.length) {
+        const daily = (series?.frequency || state.frequency) === "1d";
+        jumpTimeInput.value = toJumpInputValue(bars[0].date, daily);
+      } else if (!state.loading) {
+        jumpTimeInput.value = "";
+      }
+    }
+
     function setWindowToLatest(series) {
       const loaded = (series?.bars || []).length;
       const size = windowSizeValue(series);
@@ -936,6 +1243,15 @@ HTML_TEMPLATE = """<!doctype html>
 
     function visibleBars(series) {
       const bars = series?.bars || [];
+      if (dynamicMode) {
+        const size = Math.min(requestedWindowSize(series), bars.length);
+        const maxStart = Math.max(0, bars.length - size);
+        state.windowStart = clamp(state.windowStart, 0, maxStart);
+        if (size >= bars.length) {
+          return bars;
+        }
+        return bars.slice(state.windowStart, state.windowStart + size);
+      }
       const size = windowSizeValue(series);
       const maxStart = Math.max(0, bars.length - size);
       state.windowStart = Math.min(Math.max(0, state.windowStart), maxStart);
@@ -946,18 +1262,75 @@ HTML_TEMPLATE = """<!doctype html>
     }
 
     function updateWindowControls(series, bars) {
-      const loaded = (series?.bars || []).length;
-      const total = Number(series?.rows || loaded);
-      const size = windowSizeValue(series);
-      const maxStart = Math.max(0, loaded - size);
+      const loaded = bars.length;
+      const bufferCount = (series?.bars || []).length;
+      const total = availableWindowRows(series) || bufferCount || loaded || 0;
+      const size = dynamicMode
+        ? Math.min(requestedWindowSize(series), Math.max(1, bufferCount || total))
+        : windowSizeValue(series);
+      const offset = globalWindowOffset(series);
+      const globalMaxStart = dynamicMode ? globalMaxWindowOffset(series) : Math.max(0, total - size);
       windowSizeSelect.value = state.windowSize;
-      windowSlider.max = String(maxStart);
-      windowSlider.value = String(state.windowStart);
-      windowSlider.disabled = maxStart === 0;
-      const end = Math.min(loaded, state.windowStart + bars.length);
-      const loadedText = total === loaded ? `${compact(loaded)} bars loaded` : `${compact(loaded)} / ${compact(total)} bars loaded`;
-      windowMeta.textContent = loaded ? `${state.windowStart + 1}-${end} / ${compact(loaded)}` : "No bars";
-      windowMeta.title = loaded ? `${state.windowStart + 1}-${end} | ${loadedText}` : "No bars";
+      windowOverlapSelect.value = state.windowOverlap;
+      windowOverlapSelect.disabled = state.loading || globalMaxStart === 0;
+      windowSlider.max = String(globalMaxStart);
+      windowSlider.value = String(Math.min(offset, globalMaxStart));
+      windowSlider.disabled = state.loading || globalMaxStart === 0;
+      const startRow = dynamicMode
+        ? (loaded ? offset + 1 : 0)
+        : (loaded ? state.windowStart + 1 : 0);
+      const endRow = dynamicMode
+        ? (loaded ? offset + loaded : 0)
+        : (loaded ? Math.min(bufferCount, state.windowStart + bars.length) : 0);
+      const totalLabel = compact(total);
+      windowRowsMeta.textContent = loaded ? `Rows ${startRow}-${endRow} / ${totalLabel}` : (total ? `Rows 0 / ${compact(total)}` : "No bars");
+      windowTimeMeta.textContent = loaded
+        ? `${bars[0].date} to ${bars[bars.length - 1].date}`
+        : [series?.first_bar, series?.last_bar].filter(Boolean).join(" to ") || "No window selected";
+      windowMeta.title = [windowRowsMeta.textContent, windowTimeMeta.textContent].filter(Boolean).join(" | ");
+      syncJumpInputToWindow(series, bars);
+      olderPageButton.disabled = state.loading || !loaded || offset <= 0;
+      newerPageButton.disabled = state.loading || !loaded || offset >= globalMaxStart;
+      latestPageButton.disabled = state.loading || !loaded || offset >= globalMaxStart;
+      jumpTimeButton.disabled = state.loading || !total;
+    }
+
+    function configureJumpControl(series) {
+      const frequency = series?.frequency || state.frequency;
+      const daily = frequency === "1d";
+      jumpTimeInput.type = daily ? "date" : "datetime-local";
+      jumpTimeInput.step = String(frequencyStepSeconds(frequency));
+      jumpTimeInput.min = toJumpInputValue(series?.first_bar || "", daily);
+      jumpTimeInput.max = toJumpInputValue(series?.last_bar || "", daily);
+      jumpTimeInput.title = [series?.first_bar, series?.last_bar].filter(Boolean).join(" to ");
+    }
+
+    function frequencyStepSeconds(frequency) {
+      const steps = {
+        "1m": 60,
+        "5m": 300,
+        "15m": 900,
+        "30m": 1800,
+        "1h": 3600,
+        "60m": 3600,
+        "4h": 14400,
+        "1d": 86400,
+      };
+      return steps[frequency] || 60;
+    }
+
+    function toJumpInputValue(value, daily) {
+      if (!value) {
+        return "";
+      }
+      const text = String(value);
+      if (daily) {
+        return text.slice(0, 10);
+      }
+      if (text.includes("T")) {
+        return text.slice(0, 16);
+      }
+      return `${text.slice(0, 10)}T00:00`;
     }
 
     function movingAverage(bars, days) {
@@ -986,7 +1359,6 @@ HTML_TEMPLATE = """<!doctype html>
         metric("Time Span", `${first.date} to ${last.date}`),
         metric("Close", fixed(last.close)),
         metric("Change", `${fixed(change)} (${fixed(changePct)}%)`),
-        metric("Loaded", `${compact(series?.loaded_rows || bars.length)} / ${compact(series?.rows || bars.length)}`),
       ].join("");
     }
 
@@ -1003,11 +1375,19 @@ HTML_TEMPLATE = """<!doctype html>
         renderSummary(null, null, []);
         return;
       }
-      const series = currentSeries(item);
+      const series = activeSeries(item);
       if (!series) {
         chart.className = "empty";
         chart.textContent = "No data for selected frequency";
         renderSummary(item, null, []);
+        return;
+      }
+      if (dynamicMode && !isSeriesDataCurrent()) {
+        const bars = [];
+        chart.className = "empty";
+        chart.textContent = state.error || (state.loading ? "Loading data..." : "No window loaded");
+        updateWindowControls(series, bars);
+        renderSummary(item, series, bars);
         return;
       }
       chart.className = "";
@@ -1132,7 +1512,7 @@ HTML_TEMPLATE = """<!doctype html>
           const range = [entry.first_bar, entry.last_bar].filter(Boolean).join(" to ");
           const details = [
             range,
-            `${compact(entry.loaded_rows || (entry.bars || []).length)} / ${compact(entry.rows || 0)} loaded`,
+            `${compact(entry.rows || (entry.bars || []).length)} rows`,
             years ? `years ${years}` : "",
             entry.adjust ? `adjust ${entry.adjust}` : "",
           ].filter(Boolean).join(" | ");
@@ -1165,12 +1545,11 @@ HTML_TEMPLATE = """<!doctype html>
       state.sourceId = sourceId;
       state.board = "all";
       state.search = "";
+      state.seriesData = null;
       searchInput.value = "";
       populateBoards();
       populateSymbols();
-      setWindowToLatest(currentSeries(selectedItem()));
-      renderDataStatus();
-      render();
+      loadLatestOrRender();
     }
 
     function toggleDataStatus(open = !state.drawerOpen) {
@@ -1189,6 +1568,9 @@ HTML_TEMPLATE = """<!doctype html>
 
     function compact(value) {
       const number = Number(value);
+      if (!Number.isFinite(number)) {
+        return "0";
+      }
       if (number >= 100000000) {
         return `${fixed(number / 100000000)}B`;
       }
@@ -1207,40 +1589,258 @@ HTML_TEMPLATE = """<!doctype html>
         .replaceAll("'", "&#39;");
     }
 
+    function ensureWindowOption() {
+      if (!Array.from(windowSizeSelect.options).some((option) => option.value === state.windowSize)) {
+        windowSizeSelect.insertAdjacentHTML(
+          "beforeend",
+          `<option value="${escapeHtml(state.windowSize)}">${escapeHtml(state.windowSize)} bars</option>`
+        );
+      }
+      windowSizeSelect.value = state.windowSize;
+    }
+
+    function ensureWindowOverlapOption() {
+      state.windowOverlap = String(windowOverlapRatio());
+      if (!Array.from(windowOverlapSelect.options).some((option) => option.value === state.windowOverlap)) {
+        windowOverlapSelect.insertAdjacentHTML(
+          "beforeend",
+          `<option value="${escapeHtml(state.windowOverlap)}">${escapeHtml(formatPercent(windowOverlapRatio()))}</option>`
+        );
+      }
+      windowOverlapSelect.value = state.windowOverlap;
+    }
+
+    function formatPercent(value) {
+      return `${Math.round(Number(value) * 100)}%`;
+    }
+
+    async function loadManifest() {
+      state.loading = true;
+      state.error = "";
+      chart.className = "empty";
+      chart.textContent = "Loading local data index...";
+      try {
+        const response = await fetch("/api/manifest", { cache: "no-store" });
+        const manifest = await response.json();
+        if (!response.ok || manifest.error) {
+          throw new Error(manifest.error || `Manifest request failed: ${response.status}`);
+        }
+        sources = normalizeSources(manifest);
+        if (!sources.some((source) => source.source_id === state.sourceId)) {
+          state.sourceId = sources[0]?.source_id || "default";
+        }
+        state.board = "all";
+        state.search = "";
+        searchInput.value = "";
+        state.symbol = currentSymbols()[0]?.symbol || "";
+        state.frequency = seriesList(selectedItem())[0]?.frequency || manifest.frequency || "1d";
+        state.seriesData = null;
+        populateBoards();
+        populateSymbols();
+        renderDataStatus();
+        await loadCurrentBars({ anchor: "latest" });
+      } catch (error) {
+        state.error = error instanceof Error ? error.message : String(error);
+        state.loading = false;
+        render();
+      }
+    }
+
+    async function loadCurrentBars({ offset = null, start = "", anchor = "latest" } = {}) {
+      if (!dynamicMode) {
+        render();
+        return;
+      }
+      const item = selectedItem();
+      const metadata = currentSeries(item);
+      if (!item || !metadata) {
+        state.seriesData = null;
+        state.loading = false;
+        render();
+        return;
+      }
+      state.loading = true;
+      state.error = "";
+      render();
+      const params = new URLSearchParams({
+        source_id: state.sourceId,
+        symbol: item.symbol,
+        frequency: metadata.frequency,
+        limit: String(loadLimit(metadata)),
+      });
+      if (metadata.adjust || payload.adjust) {
+        params.set("adjust", metadata.adjust || payload.adjust);
+      }
+      if (start) {
+        params.set("start", start);
+      } else if (offset !== null && offset !== undefined) {
+        params.set("offset", String(targetBufferOffset(Number(offset), metadata)));
+      } else {
+        params.set("anchor", anchor);
+      }
+      try {
+        const response = await fetch(`/api/bars?${params.toString()}`, { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || result.error) {
+          throw new Error(result.error || `Bars request failed: ${response.status}`);
+        }
+        state.seriesData = result;
+        const visibleSize = Math.min(requestedWindowSize(result), (result.bars || []).length);
+        const maxLocalStart = Math.max(0, (result.bars || []).length - visibleSize);
+        if (start) {
+          state.windowStart = localWindowStartForTime(result, start);
+        } else if (offset !== null && offset !== undefined) {
+          state.windowStart = clamp(Number(offset) - Number(result.offset || 0), 0, maxLocalStart);
+        } else {
+          state.windowStart = maxLocalStart;
+        }
+        state.loading = false;
+        renderDataStatus();
+        render();
+      } catch (error) {
+        state.error = error instanceof Error ? error.message : String(error);
+        state.seriesData = null;
+        state.loading = false;
+        render();
+      }
+    }
+
+    function loadLatestOrRender() {
+      renderDataStatus();
+      if (dynamicMode) {
+        loadCurrentBars({ anchor: "latest" });
+      } else {
+        setWindowToLatest(currentSeries(selectedItem()));
+        render();
+      }
+    }
+
+    function navigateToGlobalOffset(targetWindowOffset) {
+      if (!dynamicMode) {
+        state.windowStart = targetWindowOffset;
+        render();
+        return;
+      }
+      const series = activeSeries(selectedItem());
+      if (canRenderGlobalOffset(targetWindowOffset, series)) {
+        renderGlobalOffset(targetWindowOffset, series);
+      } else {
+        loadCurrentBars({ offset: targetWindowOffset });
+      }
+    }
+
+    function loadWindowForStart(start) {
+      if (!start) {
+        loadLatestOrRender();
+        return;
+      }
+      if (dynamicMode) {
+        loadCurrentBars({ start });
+        return;
+      }
+      const series = currentSeries(selectedItem());
+      state.windowStart = localWindowStartForTime(series, start);
+      render();
+    }
+
+    function loadWindowForCurrentStart() {
+      loadWindowForStart(currentJumpStart());
+    }
+
+    function pageOffset(direction) {
+      const series = activeSeries(selectedItem());
+      const total = availableWindowRows(series);
+      const size = requestedWindowSize(series);
+      const step = pageStepSize(series);
+      const maxStart = Math.max(0, total - size);
+      const current = dynamicMode ? globalWindowOffset(series) : state.windowStart;
+      return direction === "older"
+        ? Math.max(0, current - step)
+        : Math.min(maxStart, current + step);
+    }
+
+    function jumpToTime() {
+      const raw = jumpTimeInput.value.trim();
+      if (!raw) {
+        return;
+      }
+      loadWindowForStart(raw);
+    }
+
     boardSelect.addEventListener("change", () => {
       state.board = boardSelect.value;
       populateSymbols();
+      loadLatestOrRender();
     });
     symbolSelect.addEventListener("change", () => {
       state.symbol = symbolSelect.value;
+      state.seriesData = null;
       populateFrequencies();
-      setWindowToLatest(currentSeries(selectedItem()));
-      renderDataStatus();
-      render();
+      loadLatestOrRender();
     });
     searchInput.addEventListener("input", () => {
       state.search = searchInput.value;
       populateSymbols();
+      loadLatestOrRender();
     });
     frequencyButtons.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-frequency]");
       if (!button) {
         return;
       }
+      const start = currentJumpStart();
       state.frequency = button.dataset.frequency;
+      state.seriesData = null;
       populateFrequencies();
-      setWindowToLatest(currentSeries(selectedItem()));
-      renderDataStatus();
-      render();
+      loadWindowForStart(start);
     });
     windowSizeSelect.addEventListener("change", () => {
       state.windowSize = windowSizeSelect.value;
-      setWindowToLatest(currentSeries(selectedItem()));
+      loadWindowForCurrentStart();
+    });
+    windowOverlapSelect.addEventListener("change", () => {
+      state.windowOverlap = windowOverlapSelect.value;
       render();
     });
     windowSlider.addEventListener("input", () => {
-      state.windowStart = Number(windowSlider.value);
-      render();
+      const targetWindowOffset = Number(windowSlider.value);
+      if (dynamicMode) {
+        const series = activeSeries(selectedItem());
+        if (canRenderGlobalOffset(targetWindowOffset, series)) {
+          renderGlobalOffset(targetWindowOffset, series);
+        } else {
+          const size = requestedWindowSize(series);
+          const total = Number(series?.rows || 0);
+          windowRowsMeta.textContent = total
+            ? `Rows ${targetWindowOffset + 1}-${Math.min(total, targetWindowOffset + size)} / ${compact(total)}`
+            : `Offset ${targetWindowOffset}`;
+          windowTimeMeta.textContent = "Release to load window";
+        }
+        return;
+      }
+      navigateToGlobalOffset(targetWindowOffset);
+    });
+    windowSlider.addEventListener("change", () => {
+      if (dynamicMode) {
+        const targetWindowOffset = Number(windowSlider.value);
+        const series = activeSeries(selectedItem());
+        if (!canRenderGlobalOffset(targetWindowOffset, series)) {
+          loadCurrentBars({ offset: targetWindowOffset });
+        }
+      }
+    });
+    olderPageButton.addEventListener("click", () => {
+      navigateToGlobalOffset(pageOffset("older"));
+    });
+    newerPageButton.addEventListener("click", () => {
+      navigateToGlobalOffset(pageOffset("newer"));
+    });
+    latestPageButton.addEventListener("click", () => loadLatestOrRender());
+    jumpTimeButton.addEventListener("click", jumpToTime);
+    jumpTimeInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        jumpToTime();
+      }
     });
     dataStatusButton.addEventListener("click", () => toggleDataStatus());
     closeDrawerButton.addEventListener("click", () => toggleDataStatus(false));
@@ -1260,12 +1860,15 @@ HTML_TEMPLATE = """<!doctype html>
       state.sourceId = row.dataset.source;
       state.symbol = row.dataset.symbol;
       state.frequency = row.dataset.frequency;
-      symbolSelect.value = state.symbol;
+      state.board = "all";
+      state.search = "";
+      state.seriesData = null;
+      searchInput.value = "";
+      populateBoards();
+      populateSymbols();
       populateFrequencies();
-      setWindowToLatest(currentSeries(selectedItem()));
       toggleDataStatus(false);
-      renderDataStatus();
-      render();
+      loadLatestOrRender();
     });
     window.addEventListener("resize", () => {
       if (chart.data) {
@@ -1277,13 +1880,23 @@ HTML_TEMPLATE = """<!doctype html>
       const source = currentSource();
       const symbols = currentSymbols();
       const frequencies = source.frequencies || payload.frequencies || [payload.frequency];
-      datasetMeta.textContent = `Source: ${source.source_label || source.source_id} | ${symbols.length} symbols | ${frequencies.join(", ")} | ${payload.adjust}`;
+      const mode = dynamicMode ? "dynamic" : "static";
+      datasetMeta.textContent = `Source: ${source.source_label || source.source_id} | ${symbols.length} symbols | ${frequencies.join(", ")} | ${payload.adjust} | ${mode}`;
     }
 
+    ensureWindowOption();
+    ensureWindowOverlapOption();
     updateDatasetMeta();
     renderSourceButtons();
     populateBoards();
     populateSymbols();
+    if (dynamicMode) {
+      loadManifest();
+    } else {
+      setWindowToLatest(currentSeries(selectedItem()));
+      renderDataStatus();
+      render();
+    }
   </script>
 </body>
 </html>

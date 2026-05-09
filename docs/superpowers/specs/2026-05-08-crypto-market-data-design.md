@@ -22,7 +22,7 @@
 - 通过 CCXT 获取加密货币现货历史 OHLCV。
 - 继续复用现有 `DataProvider -> DataSyncService -> ParquetBarStore -> DataCatalog` 链路。
 - 支持 `BTC/USDT`、`ETH/USDT` 这类 CCXT unified symbol。
-- 支持加密货币代表性周期：`1d`、`4h`、`60m`、`30m`、`15m`、`5m`、`1m`。
+- 支持加密货币代表性周期：`1d`、`4h`、`1h`、`30m`、`15m`、`5m`、`1m`。
 - 加密货币缓存使用 `adjust=none`。
 - 缓存 catalog 的 `source` 使用 `ccxt:<exchange>`，避免不同交易所数据互相覆盖。
 - 对当前未收盘的最后一根 K 线默认丢弃，避免回测使用未完成数据。
@@ -44,14 +44,14 @@
 ```text
 1d   长期趋势、跨市场比较、低频策略
 4h   加密货币波段策略代表性周期
-60m  短中期策略主力周期，在 CCXT 请求时映射为 1h
+1h   短中期策略主力周期
 15m  日内策略和短线信号
 5m   更细的执行择时分析
 1m   支持但不建议默认大范围拉取
 ```
 
-系统已有 `1d`、`1m`、`5m`、`15m`、`30m`、`60m`。本次新增 `4h`，并在 CCXT
-provider 内把内部 `60m` 映射为 CCXT 的 `1h`。
+系统已有 `1d`、`1m`、`5m`、`15m`、`30m`。本次新增 `1h` 和 `4h`。旧的
+`60m` 输入保留兼容，会归一化为标准 `1h`。
 
 CCXT 官方文档说明：OHLCV 使用 `fetchOHLCV` / `fetch_ohlcv`；交易所是否支持 K
 线由 `has['fetchOHLCV']` 判断；可用周期看 `exchange.timeframes`；`since` 是 UTC
@@ -102,7 +102,7 @@ date, symbol, open, high, low, close, volume, amount, frequency, adjust
 - `symbol`：如 `BTC/USDT`。
 - `volume`：CCXT 返回的成交量，通常是 base asset 数量。
 - `amount`：第一版用 `close * volume` 估算 quote notional，不宣称是交易所精确成交额。
-- `frequency`：系统内部频率，例如 `60m`、`4h`。
+- `frequency`：系统内部频率，例如 `1h`、`4h`。
 - `adjust`：固定为 `none`。
 
 ### 4.3 缓存路径
@@ -232,4 +232,3 @@ ExecutionReport -> PortfolioState accounting
 - provider 对不支持 OHLCV、不存在 symbol、不支持周期、非 `adjust=none` 给出明确错误。
 - CLI 对 `source=ccxt` 选择 CCXT provider，并以 `ccxt:<exchange>` 写 catalog source。
 - A 股现有测试保持通过。
-

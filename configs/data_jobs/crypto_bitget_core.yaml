@@ -11,19 +11,20 @@ symbols:
 frequencies:
   - 1d
   - 4h
-  - 60m
+  - 1h
   - 30m
   - 15m
   - 5m
   - 1m
 
 adjust: none
-start_date: "2023-05-08"
+start_date: "2023-05-09"
 end_date: "2026-05-08"
 
 bars_root: data/crypto/bitget/bars
 metadata: data/crypto/bitget/metadata.sqlite
 output_dir: runs/crypto_market_data/bitget_core
+page_delay_seconds: 0.35
 
 retry:
   max_attempts: 5
