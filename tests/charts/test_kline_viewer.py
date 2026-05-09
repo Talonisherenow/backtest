@@ -6,12 +6,20 @@ from backtest.charts.kline_viewer import build_kline_payload, write_kline_viewer
 from backtest.data.store import ParquetBarStore
 
 
-def _write_cached_bars(bars_root: Path, symbol: str) -> None:
+def _write_cached_bars(
+    bars_root: Path,
+    symbol: str,
+    *,
+    frequency: str = "1d",
+    adjust: str = "qfq",
+    dates: list[str] | None = None,
+) -> None:
+    dates = dates or ["2025-01-02", "2025-01-03", "2025-01-06"]
     store = ParquetBarStore(bars_root)
     store.write_bars(
         pd.DataFrame(
             {
-                "date": pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"]),
+                "date": pd.to_datetime(dates),
                 "symbol": [symbol, symbol, symbol],
                 "open": [10.0, 10.5, 10.8],
                 "high": [11.0, 11.2, 11.4],
@@ -19,8 +27,8 @@ def _write_cached_bars(bars_root: Path, symbol: str) -> None:
                 "close": [10.5, 10.8, 11.0],
                 "volume": [1000, 1200, 1400],
                 "amount": [10500.0, 12960.0, 15400.0],
-                "frequency": ["1d", "1d", "1d"],
-                "adjust": ["qfq", "qfq", "qfq"],
+                "frequency": [frequency, frequency, frequency],
+                "adjust": [adjust, adjust, adjust],
             }
         )
     )
@@ -51,6 +59,162 @@ def test_build_kline_payload_reads_cached_bars_and_universe_metadata(tmp_path: P
     assert first["bars"][-1]["close"] == 11.0
 
 
+def test_build_kline_payload_discovers_crypto_symbols_and_multiple_frequencies(
+    tmp_path: Path,
+):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="1d",
+        adjust="none",
+        dates=["2025-01-01", "2025-01-02", "2025-01-03"],
+    )
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="4h",
+        adjust="none",
+        dates=["2025-01-02 00:00:00", "2025-01-02 04:00:00", "2025-01-02 08:00:00"],
+    )
+
+    payload = build_kline_payload(
+        bars_root, symbols=["BTC/USDT"], limit=2, frequency=None, adjust="none"
+    )
+
+    item = payload["symbols"][0]
+    assert item["symbol"] == "BTC/USDT"
+    assert item["exchange"] == "Crypto"
+    assert item["board"] == "Spot"
+    assert [series["frequency"] for series in item["series"]] == ["4h", "1d"]
+    assert item["series"][0]["first_bar"] == "2025-01-02T00:00:00"
+    assert item["series"][0]["last_bar"] == "2025-01-02T08:00:00"
+    assert item["series"][0]["bars"][-1]["date"] == "2025-01-02T08:00:00"
+    assert item["series"][1]["rows"] == 3
+    assert item["series"][1]["years"] == [2025]
+    assert item["series"][1]["first_bar"] == "2025-01-01"
+    assert item["series"][1]["last_bar"] == "2025-01-03"
+    assert [bar["date"] for bar in item["series"][1]["bars"]] == [
+        "2025-01-02",
+        "2025-01-03",
+    ]
+
+
+def test_build_kline_payload_groups_multiple_source_roots(tmp_path: Path):
+    bitget_root = tmp_path / "bitget" / "bars"
+    binance_root = tmp_path / "binance" / "bars"
+    _write_cached_bars(
+        bitget_root,
+        "BTC/USDT",
+        frequency="1m",
+        adjust="none",
+        dates=["2025-01-01 00:00:00", "2025-01-01 00:01:00", "2025-01-01 00:02:00"],
+    )
+    _write_cached_bars(
+        binance_root,
+        "BTC/USDT",
+        frequency="1m",
+        adjust="none",
+        dates=["2025-01-01 00:00:00", "2025-01-01 00:01:00", "2025-01-01 00:02:00"],
+    )
+    _write_cached_bars(
+        binance_root,
+        "ETH/USDT",
+        frequency="1d",
+        adjust="none",
+        dates=["2025-01-01", "2025-01-02", "2025-01-03"],
+    )
+
+    payload = build_kline_payload(
+        bitget_root,
+        source_roots=[("bitget", bitget_root), ("binance", binance_root)],
+        frequency=None,
+        adjust="none",
+        limit=2,
+    )
+
+    assert [source["source_id"] for source in payload["sources"]] == ["bitget", "binance"]
+    assert payload["sources"][0]["source_label"] == "Bitget"
+    assert [item["symbol"] for item in payload["sources"][0]["symbols"]] == ["BTC/USDT"]
+    assert [item["symbol"] for item in payload["sources"][1]["symbols"]] == [
+        "BTC/USDT",
+        "ETH/USDT",
+    ]
+    assert payload["symbols"] == payload["sources"][0]["symbols"]
+    assert payload["source_id"] == "bitget"
+    assert payload["source_label"] == "Bitget"
+
+
+def test_build_kline_payload_honors_frequency_filter_for_crypto_cache(
+    tmp_path: Path,
+):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(bars_root, "BTC/USDT", frequency="1d", adjust="none")
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="4h",
+        adjust="none",
+        dates=["2025-01-02 00:00:00", "2025-01-02 04:00:00", "2025-01-02 08:00:00"],
+    )
+
+    payload = build_kline_payload(
+        bars_root, symbols=["BTC/USDT"], limit=2, frequency="4h", adjust="none"
+    )
+
+    assert [series["frequency"] for series in payload["symbols"][0]["series"]] == ["4h"]
+
+
+def test_build_kline_payload_combines_year_partitions_into_one_series(tmp_path: Path):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="1d",
+        adjust="none",
+        dates=["2024-12-31", "2025-01-01", "2025-01-02"],
+    )
+
+    payload = build_kline_payload(
+        bars_root, symbols=["BTC/USDT"], limit=10, frequency="1d", adjust="none"
+    )
+
+    series = payload["symbols"][0]["series"]
+    assert len(series) == 1
+    assert series[0]["frequency"] == "1d"
+    assert series[0]["rows"] == 3
+    assert series[0]["years"] == [2024, 2025]
+    assert [bar["date"] for bar in series[0]["bars"]] == [
+        "2024-12-31",
+        "2025-01-01",
+        "2025-01-02",
+    ]
+
+
+def test_build_kline_payload_limit_zero_embeds_all_cached_bars(tmp_path: Path):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="1d",
+        adjust="none",
+        dates=["2025-01-01", "2025-01-02", "2025-01-03"],
+    )
+
+    payload = build_kline_payload(
+        bars_root, symbols=["BTC/USDT"], limit=0, frequency="1d", adjust="none"
+    )
+
+    series = payload["symbols"][0]["series"][0]
+    assert series["rows"] == 3
+    assert series["loaded_rows"] == 3
+    assert [bar["date"] for bar in series["bars"]] == [
+        "2025-01-01",
+        "2025-01-02",
+        "2025-01-03",
+    ]
+
+
 def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     payload = {
         "frequency": "1d",
@@ -61,6 +225,28 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
                 "name": "平安银行",
                 "exchange": "SZ",
                 "board": "主板",
+                "series": [
+                    {
+                        "frequency": "1d",
+                        "adjust": "qfq",
+                        "rows": 1,
+                        "loaded_rows": 1,
+                        "first_bar": "2025-01-02",
+                        "last_bar": "2025-01-02",
+                        "years": [2025],
+                        "bars": [
+                            {
+                                "date": "2025-01-02",
+                                "open": 10.0,
+                                "high": 11.0,
+                                "low": 9.8,
+                                "close": 10.5,
+                                "volume": 1000,
+                                "amount": 10500.0,
+                            }
+                        ],
+                    }
+                ],
                 "bars": [
                     {
                         "date": "2025-01-02",
@@ -87,3 +273,83 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "title: {" not in html
     assert 'yanchor: "bottom"' in html
     assert 'tickformat: ".2f"' in html
+    assert "frequencyButtons" in html
+    assert "dataStatusDrawer" in html
+    assert "toggleDataStatus" in html
+    assert "seriesByFrequency" in html
+    assert "width: max-content" in html
+    assert "windowSizeSelect" in html
+    assert "windowOverlapSelect" in html
+    assert "availableWindowRows" in html
+    assert "dynamicMode ? Number(series?.rows || embedded || 0) : embedded" in html
+    assert "pageStepSize" in html
+    assert "windowSlider" in html
+    assert "updateWindowControls" in html
+    assert "flex-wrap: wrap" in html
+    assert 'class="topbar-header"' in html
+    assert 'class="status-action" id="dataStatusButton"' in html
+    assert 'id="dataStatusButtonMeta"' in html
+    assert html.index('id="dataStatusButton"') < html.index('class="controls"')
+    assert "dataStatusButtonMeta.textContent" in html
+    assert 'class="time-window" id="timeWindowBar"' in html
+    assert 'class="position-meta" id="windowMeta"' in html
+    assert 'class="position-control"' in html
+    assert 'id="windowRowsMeta"' in html
+    assert 'id="windowTimeMeta"' in html
+    assert 'id="olderPageButton"' in html
+    assert 'id="windowOverlapSelect"' in html
+    assert "Overlap" in html
+    assert '<option value="0.8" selected>80%</option>' in html
+    assert "default_window_overlap ?? 0.8" in html
+    assert "windowMeta.title" in html
+    assert "windowRowsMeta.textContent" in html
+    assert "loaded_rows" in html
+    assert "status-symbol-group" in html
+    assert "sourceButtons" in html
+    assert "currentSource" in html
+    assert "Source" in html
+    assert "rangeButtons" not in html
+    assert "60D" not in html
+    assert '|| "Unclassified"' in html
+
+
+def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
+    output_path = tmp_path / "dynamic_viewer.html"
+
+    write_kline_viewer(
+        {"mode": "dynamic", "default_window_size": 5000, "adjust": "none"},
+        output_path,
+    )
+
+    html = output_path.read_text(encoding="utf-8")
+    assert 'mode": "dynamic"' not in html
+    assert '"mode":"dynamic"' in html
+    assert "loadManifest" in html
+    assert "/api/manifest" in html
+    assert "/api/bars" in html
+    assert "olderPageButton" in html
+    assert "newerPageButton" in html
+    assert "latestPageButton" in html
+    assert "jumpTimeInput" in html
+    assert 'type="datetime-local"' in html
+    assert "configureJumpControl" in html
+    assert "frequencyStepSeconds" in html
+    assert "toJumpInputValue" in html
+    assert "DYNAMIC_BUFFER_MULTIPLIER" in html
+    assert "bufferedWindowSize" in html
+    assert "globalWindowOffset" in html
+    assert "targetWindowOffset" in html
+    assert "targetBufferOffset" in html
+    assert "localWindowStartForTime" in html
+    assert "syncJumpInputToWindow" in html
+    assert "currentJumpStart" in html
+    assert "loadWindowForCurrentStart" in html
+    assert "windowOverlapRatio" in html
+    assert "pageStepSize" in html
+    assert "current - step" in html
+    assert "current + step" in html
+    assert "canRenderGlobalOffset" in html
+    assert "renderGlobalOffset" in html
+    assert "navigateToGlobalOffset" in html
+    assert "windowSlider.max = String(globalMaxStart)" in html
+    assert "Loaded" not in html

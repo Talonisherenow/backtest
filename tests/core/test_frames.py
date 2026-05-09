@@ -30,6 +30,21 @@ def test_validate_bar_frame_normalizes_columns_and_symbols():
     assert str(result.loc[0, "date"].date()) == "2025-01-02"
 
 
+def test_validate_bar_frame_accepts_crypto_pair_and_four_hour_frequency():
+    raw = _valid_bar_frame(
+        date=["2025-01-02 04:00:00"],
+        symbol=["btc/usdt"],
+        frequency=["4h"],
+        adjust=["none"],
+    )
+
+    result = validate_bar_frame(raw)
+
+    assert result.loc[0, "symbol"] == "BTC/USDT"
+    assert result.loc[0, "frequency"] == "4h"
+    assert result.loc[0, "adjust"] == "none"
+
+
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [

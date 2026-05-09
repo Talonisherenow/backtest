@@ -2,7 +2,7 @@ from datetime import date
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backtest.core.enums import AdjustMode, ExecutionTiming, Frequency
 from backtest.core.symbols import normalize_symbol
@@ -26,11 +26,28 @@ class StockPoolConfig(BaseModel):
 
 class DataConfig(BaseModel):
     source: str = "akshare"
+    exchange: str | None = None
     frequency: Frequency = Frequency.DAILY
     adjust: AdjustMode = AdjustMode.QFQ
     start_date: date
     end_date: date
     stock_pool: StockPoolConfig
+
+    @field_validator("source")
+    @classmethod
+    def normalize_source(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("data.source must not be empty")
+        return normalized
+
+    @field_validator("exchange")
+    @classmethod
+    def normalize_exchange(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
 
     @model_validator(mode="after")
     def validate_dates(self) -> "DataConfig":

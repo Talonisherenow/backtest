@@ -1,4 +1,12 @@
 .DS_Store
 .idea/
+.superpowers/
 __pycache__/
 *.py[cod]
+*.egg-info/
+uv.lock
+data/crypto/
+runs/crypto_market_data/
+runs/charts/*.log
+runs/charts/crypto_*.html
+runs/charts/*_kline_300d.*

@@ -67,3 +67,43 @@ def test_parquet_store_deduplicates_new_partition_writes_keeping_last(
 
     assert len(loaded) == 1
     assert loaded.loc[0, "close"] == 11.0
+
+
+def test_parquet_store_encodes_crypto_symbol_paths_and_reads_full_intraday_end_date(
+    tmp_path: Path,
+):
+    store = ParquetBarStore(tmp_path / "bars")
+    bars = pd.DataFrame(
+        {
+            "date": pd.to_datetime(
+                [
+                    "2025-01-02 00:00:00",
+                    "2025-01-02 04:00:00",
+                    "2025-01-02 08:00:00",
+                ]
+            ),
+            "symbol": ["BTC/USDT", "BTC/USDT", "BTC/USDT"],
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [1.0, 2.0, 3.0],
+            "amount": [100.5, 203.0, 307.5],
+            "frequency": ["4h", "4h", "4h"],
+            "adjust": ["none", "none", "none"],
+        }
+    )
+
+    written = store.write_bars(bars)
+    loaded = store.read_bars(
+        symbols=["BTC/USDT"],
+        start_date=pd.Timestamp("2025-01-02").date(),
+        end_date=pd.Timestamp("2025-01-02").date(),
+        frequency=Frequency.HOUR_4,
+        adjust=AdjustMode.NONE,
+    )
+
+    assert written
+    assert "symbol=BTC%2FUSDT" in written[0].parts
+    assert len(loaded) == 3
+    assert loaded["symbol"].unique().tolist() == ["BTC/USDT"]

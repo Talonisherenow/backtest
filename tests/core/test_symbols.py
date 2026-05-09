@@ -1,6 +1,6 @@
 import pytest
 
-from backtest.core.symbols import normalize_symbol
+from backtest.core.symbols import normalize_symbol, safe_symbol_path, symbol_from_safe_path
 
 
 @pytest.mark.parametrize(
@@ -23,5 +23,21 @@ def test_normalize_symbol_accepts_common_a_share_forms(raw, expected):
 
 
 def test_normalize_symbol_rejects_invalid_code():
-    with pytest.raises(ValueError, match="Unsupported A share symbol"):
+    with pytest.raises(ValueError, match="Unsupported symbol"):
         normalize_symbol("ABC123")
+
+
+def test_normalize_symbol_accepts_crypto_spot_pair():
+    assert normalize_symbol("btc/usdt") == "BTC/USDT"
+
+
+def test_normalize_symbol_rejects_contract_style_crypto_pair():
+    with pytest.raises(ValueError, match="Unsupported symbol"):
+        normalize_symbol("BTC/USDT:USDT")
+
+
+def test_crypto_symbol_path_round_trip():
+    encoded = safe_symbol_path("BTC/USDT")
+
+    assert encoded == "BTC%2FUSDT"
+    assert symbol_from_safe_path(encoded) == "BTC/USDT"

@@ -44,6 +44,39 @@ Direct cached-bar loading for CLI backtest runs is still a wiring point in this
 MVP, so the command currently exits with a cached-bar loading message instead of
 running end to end. Engine-level tests exercise backtests with explicit bar data.
 
+## Crypto Data And Viewer
+
+Run the configured Bitget crypto data job:
+
+```bash
+uv run backtest data sync-job --job configs/data_jobs/crypto_bitget_core.yaml
+```
+
+Check crawl tasks and cached inventory:
+
+```bash
+uv run backtest data tasks --metadata data/crypto/bitget/metadata.sqlite
+uv run backtest data inventory --metadata data/crypto/bitget/metadata.sqlite
+```
+
+Start the dynamic local K-line viewer:
+
+```bash
+./scripts/start_crypto_viewer.sh
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8765/
+```
+
+The helper defaults to `data/crypto`, auto-discovers source directories such as
+`data/crypto/bitget/bars`, and opens the page on macOS. If the viewer is already
+running on port `8765`, it opens the existing page.
+
+Detailed operating notes are in [Market data operations](docs/market-data-operations.md).
+
 ## Current Scope
 
 - Daily A-share bars first, with frequency-aware contracts for future minute data.
@@ -59,6 +92,7 @@ running end to end. Engine-level tests exercise backtests with explicit bar data
 
 - [Architecture](docs/architecture.md)
 - [Data ingestion](docs/data-ingestion.md)
+- [Market data operations](docs/market-data-operations.md)
 - [Data contracts](docs/data-contracts.md)
 - [Signal integration](docs/signal-integration.md)
 - [Metrics extension](docs/metrics-extension.md)

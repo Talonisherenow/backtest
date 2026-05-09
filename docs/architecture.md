@@ -71,6 +71,8 @@ API adapters.
 ## Current MVP Limitations
 
 - `AkShareProvider` supports daily bars only.
+- `CCXTOHLCVProvider` supports crypto spot historical OHLCV only; it is not a
+  live trading adapter.
 - `BrokerEngine` supports `next_open` execution only.
 - The run CLI is present as `backtest run --config ...`; current engine tests
   use `bars_override`, and direct cached-bar loading for CLI execution is still a
