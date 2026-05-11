@@ -5,6 +5,7 @@ import pandas as pd
 
 from backtest.core.enums import AdjustMode, Frequency
 from backtest.core.frames import BAR_COLUMNS, validate_bar_frame
+from backtest.core.symbols import normalize_symbol, safe_symbol_path
 
 
 class ParquetBarStore:
@@ -18,7 +19,7 @@ class ParquetBarStore:
             self.root
             / f"frequency={frequency.value}"
             / f"adjust={adjust.value}"
-            / f"symbol={symbol}"
+            / f"symbol={safe_symbol_path(symbol)}"
             / f"year={year}"
             / "bars.parquet"
         )
@@ -52,8 +53,9 @@ class ParquetBarStore:
         frequency: Frequency,
         adjust: AdjustMode,
     ) -> pd.DataFrame:
+        normalized_symbols = [normalize_symbol(symbol) for symbol in symbols]
         frames: list[pd.DataFrame] = []
-        for symbol in symbols:
+        for symbol in normalized_symbols:
             for year in range(start_date.year, end_date.year + 1):
                 path = self.partition_path(symbol, frequency, adjust, year)
                 if path.exists():
@@ -62,9 +64,10 @@ class ParquetBarStore:
             return pd.DataFrame(columns=BAR_COLUMNS)
         result = pd.concat(frames, ignore_index=True)
         result["date"] = pd.to_datetime(result["date"])
+        end_exclusive = pd.Timestamp(end_date) + pd.Timedelta(days=1)
         mask = (
-            result["symbol"].isin(symbols)
+            result["symbol"].isin(normalized_symbols)
             & (result["date"] >= pd.Timestamp(start_date))
-            & (result["date"] <= pd.Timestamp(end_date))
+            & (result["date"] < end_exclusive)
         )
         return result.loc[mask].sort_values(["symbol", "date"]).reset_index(drop=True)

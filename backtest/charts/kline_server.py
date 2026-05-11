@@ -13,65 +13,70 @@ from backtest.charts.kline_viewer import render_kline_viewer_html
 def serve_kline_viewer(
     *,
     sources: list[KlineSource] | None = None,
-    bars_root: str | Path = "data/bars",
+    bars_root: Path | str = Path("data/bars"),
     host: str = "127.0.0.1",
     port: int = 8765,
     adjust: str = "qfq",
     universe_path: Path | None = None,
+    source_roots: list[tuple[str, Path]] | None = None,
     frequencies: list[str] | None = None,
     symbols: list[str] | None = None,
-    default_window_size: int = 300,
+    default_window_size: int = 5000,
 ) -> None:
-    service_sources = sources or [
-        KlineSource(
-            source_id="default",
-            source_label="Cache",
-            bars_root=Path(bars_root),
-            adjust=adjust,
-            universe_path=universe_path,
-            frequencies=frequencies,
-            symbols=symbols,
-        )
-    ]
-    service = KlineCacheService(sources=service_sources)
-    payload = {"mode": "dynamic", "default_window_size": default_window_size}
+    service = KlineCacheService(
+        bars_root=Path(bars_root),
+        sources=sources,
+        adjust=adjust,
+        universe_path=universe_path,
+        source_roots=source_roots,
+        frequencies=frequencies,
+        symbols=symbols,
+    )
+    payload = {
+        "mode": "dynamic",
+        "adjust": adjust,
+        "default_window_size": default_window_size,
+    }
     html = render_kline_viewer_html(payload).encode("utf-8")
 
     class KlineViewerHandler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
+        def do_GET(self) -> None:  # noqa: N802 - stdlib hook
             parsed = urlparse(self.path)
-            if parsed.path in {"/", "/kline_viewer.html", "/crypto_kline_viewer.html"}:
+            if parsed.path in {"/", "/kline", "/crypto_kline_viewer.html", "/kline_viewer.html"}:
                 self._send_bytes(html, "text/html; charset=utf-8")
                 return
             if parsed.path == "/api/manifest":
                 self._send_json(service.manifest(default_window_size=default_window_size))
                 return
             if parsed.path == "/api/bars":
-                self._handle_bars(parse_qs(parsed.query))
+                self._handle_bars(parsed.query)
                 return
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
         def log_message(self, format: str, *args: object) -> None:
             return
 
-        def _handle_bars(self, params: dict[str, list[str]]) -> None:
+        def _handle_bars(self, query: str) -> None:
+            params = parse_qs(query)
             try:
+                symbol = self._required(params, "symbol")
+                frequency = self._required(params, "frequency")
                 result = service.bars(
-                    source_id=self._required(params, "source_id"),
-                    symbol=unquote(self._required(params, "symbol")),
-                    frequency=self._required(params, "frequency"),
+                    source_id=self._optional(params, "source_id"),
+                    symbol=unquote(symbol),
+                    frequency=frequency,
                     adjust=self._optional(params, "adjust"),
-                    limit=self._int_param(params, "limit", 300),
+                    limit=self._int_param(params, "limit", default_window_size),
                     offset=self._optional_int(params, "offset"),
                     start=self._optional(params, "start"),
-                    anchor=self._optional(params, "anchor", "latest") or "latest",
+                    anchor=self._optional(params, "anchor"),
                 )
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
                 return
             self._send_json(result)
 
-        def _send_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
+        def _send_json(self, payload: object, status: HTTPStatus = HTTPStatus.OK) -> None:
             body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             self._send_bytes(body, "application/json; charset=utf-8", status=status)
 
@@ -79,6 +84,7 @@ def serve_kline_viewer(
             self,
             body: bytes,
             content_type: str,
+            *,
             status: HTTPStatus = HTTPStatus.OK,
         ) -> None:
             self.send_response(status)
@@ -96,28 +102,22 @@ def serve_kline_viewer(
             return value
 
         @staticmethod
-        def _optional(params: dict[str, list[str]], name: str, default: str | None = None) -> str | None:
+        def _optional(params: dict[str, list[str]], name: str) -> str | None:
             values = params.get(name)
-            if not values:
-                return default
-            return values[0]
+            return values[0] if values else None
 
         @staticmethod
         def _int_param(params: dict[str, list[str]], name: str, default: int) -> int:
             value = KlineViewerHandler._optional(params, name)
-            if value is None:
-                return default
-            return int(value)
+            return int(value) if value not in {None, ""} else default
 
         @staticmethod
         def _optional_int(params: dict[str, list[str]], name: str) -> int | None:
             value = KlineViewerHandler._optional(params, name)
-            if value is None:
-                return None
-            return int(value)
+            return int(value) if value not in {None, ""} else None
 
     server = ThreadingHTTPServer((host, port), KlineViewerHandler)
-    print(f"Serving K-line viewer at http://{host}:{port}")
+    print(f"Serving K-line viewer at http://{host}:{port}/kline")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

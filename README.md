@@ -141,8 +141,8 @@ Serve only the dynamic K-line viewer:
 
 ```bash
 uv run backtest chart serve \
-  --a-share-bars-root data/bars \
-  --bitget-bars-root data/crypto/bitget/bars \
+  --bars-root data/crypto \
+  --adjust none \
   --host 127.0.0.1 \
   --port 8765
 ```
@@ -150,11 +150,35 @@ uv run backtest chart serve \
 Static HTML chart commands still exist for debugging or snapshot artifacts, but
 they are no longer the normal strategy-results workflow.
 
+## Crypto Data And Viewer
+
+Run the configured Bitget crypto data job:
+
+```bash
+uv run backtest data sync-job --job configs/data_jobs/crypto_bitget_core.yaml
+```
+
+Check crawl tasks and cached inventory:
+
+```bash
+uv run backtest data tasks --metadata data/crypto/bitget/metadata.sqlite
+uv run backtest data inventory --metadata data/crypto/bitget/metadata.sqlite
+```
+
+Start the dynamic local K-line viewer with the helper from `main`:
+
+```bash
+./scripts/start_crypto_viewer.sh
+```
+
+Detailed operating notes are in [Market data operations](docs/market-data-operations.md).
+
 ## Current Scope
 
 - Daily A-share bars first, with frequency-aware contracts for future minute data.
 - AkShare data provider for ingestion.
 - Parquet bar cache plus SQLite metadata for catalog and crawl task state.
+- CCXT crypto spot historical OHLCV ingestion and source-aware cache viewer.
 - File and Python signal providers converted to a validated legacy
   `SignalFrame`.
 - New strategy-planning path:

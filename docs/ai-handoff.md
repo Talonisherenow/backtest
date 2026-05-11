@@ -60,6 +60,10 @@ Future TradingRuntime
 - 动态 Strategy Results、Strategy Account Viewer 和 Order Drilldown 视图；
 - 动态 K-line viewer 服务；
 - 统一 Chart Workbench 服务，入口为 `backtest chart serve-workbench`；
+- CCXT 加密货币现货历史 OHLCV 接入；
+- `BTC/USDT` 这类 crypto spot symbol 和安全缓存路径；
+- Market data sync jobs，把批量数据拉取沉淀为项目内 runner；
+- K 线查看器支持多个 source root，可在 Data Status 中切换数据源；
 - `SignalScoreFrame`、`SignalGenerator`、`StrategyPlanner` 和 `SignalEvaluator`；
 - `PortfolioAllocator`，把信号评分转换为 `TargetPortfolioFrame`；
 - `BacktestRunner`、`ExecutionBackend`、`LegacyBrokerExecutionBackend` 和 `NativeSimulationBackend`；
@@ -81,10 +85,13 @@ Future TradingRuntime
 7. `docs/superpowers/plans/2026-05-07-universal-trading-architecture.md`
 8. `docs/superpowers/specs/2026-05-10-strategy-planning-architecture-design.md`
 9. `docs/superpowers/specs/2026-05-10-backtest-runtime-dual-backend-design.md`
-10. `docs/ten-buy-signals-implementation.md`
-11. `docs/2026-05-11-strategy-planning-architecture-handoff.md`
-12. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
-13. 当前要改的代码和测试
+10. `docs/market-data-operations.md`
+11. `docs/superpowers/specs/2026-05-08-crypto-market-data-design.md`
+12. `docs/superpowers/specs/2026-05-09-market-data-sync-jobs-design.md`
+13. `docs/ten-buy-signals-implementation.md`
+14. `docs/2026-05-11-strategy-planning-architecture-handoff.md`
+15. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
+16. 当前要改的代码和测试
 
 旧设计文档在 `docs/superpowers/specs/` 下，可作为背景；当前代码、测试、
 `docs/architecture.md`、`docs/data-contracts.md` 和本文档优先级更高。
@@ -97,13 +104,9 @@ Future TradingRuntime
 feat/strategy-planning-architecture
 ```
 
-该分支建立在此前 A 股回测 MVP 和通用交易合同地基之上。本分支新增的是策略规划层、新 runtime/backtest backend 层和动态 chart workbench，未接真实 API。
-
-重要：当前本地 `main` 已前进到 `fc7db17`，包含 crypto market data 和动态 K-line
-相关改动；本分支 `HEAD` 仍在 `c224156`。因此直接查看 `git diff main` 会混入
-`main` 新增文件在本分支中缺失造成的删除/回退噪声。合入前必须先 merge 或 rebase
-`main`，重点处理 `backtest/charts/kline_*`、`backtest/cli/chart.py`、
-`backtest/cli/data.py`、`backtest/data/*`、相关 docs 和 tests 的重叠。
+该分支建立在此前 A 股回测 MVP、通用交易合同地基和 `main` 的 crypto market data
+能力之上。本分支新增的是策略规划层、新 runtime/backtest backend 层和动态 chart
+workbench；CCXT 当前只用于历史行情获取，未接真实下单 API。
 
 本轮最新 hand-off 总结：
 
@@ -128,8 +131,8 @@ be19a89 feat: add all A-share universe sampling
 b6c701c feat: add ten buy signal backtest results
 ```
 
-当前分支新增的策略规划和 runtime 代码可能还未提交，先以 `git status --short`
-和测试结果为准。
+当前分支已经包含策略规划、runtime 和 chart workbench 的实现；继续工作前仍然先以
+`git status --short` 和测试结果为准。
 
 本轮已经确认的产品和架构决策：
 
@@ -939,7 +942,8 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - 不要混淆 `SignalFrame`、`TargetPortfolioFrame`、`OrderIntent`、`ExecutionReport`：
   `SignalFrame` 是旧回测信号，`TargetPortfolioFrame` 是目标组合，`OrderIntent` 是下单意图，`ExecutionReport` 是执行事实。
 - 不要用 `OrderIntent` 更新仓位；只有 `ExecutionReport` 或回测撮合结果能驱动 `PortfolioState` 变化。
-- 不要宣称项目已经具备真实 API 交易能力；`CCXT` 只是下一阶段优先适配目标。
+- 不要宣称项目已经具备真实 API 交易能力；当前 `CCXT` 能力只用于历史 OHLCV
+  数据抓取，不是下单或账户适配器。
 - 订单、执行回报、组合状态和 ledger 记录必须按账户隔离；第一版默认 `account_id="default"`，但接口不能写死只能单账户。
 - 标识符归一化规则不能随意改：`instrument_id` 大写；`client_order_id`、`account_id`、`strategy_id` 只去首尾空格并保留原始大小写。
 - 后续做多账户时，应扩展账户选择、账户级配置、跨账户汇总和执行路由；不要把多账户逻辑隐藏在全局变量里。
@@ -949,6 +953,7 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 ## 当前已知限制
 
 - `AkShareProvider` 只支持日线。
+- `CCXTOHLCVProvider` 只支持 crypto spot 历史 OHLCV；它不是 live trading adapter。
 - legacy `BrokerEngine` 只支持 `next_open`。
 - `NativeSimulationBackend` 当前也按 A 股 `next_open` 语义实现，用于和 legacy backend 做 parity。
 - CLI run 的缓存行情加载还没接好。
@@ -959,7 +964,7 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - 通用交易架构已经有策略规划层和回测 runtime 双后端，但没有真实 API 适配器。
 - 尚未实现 live `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`、实盘 runner、守护进程或 live CLI。
 - 多账户目前是模型和 ledger 层预留口子，还没有账户调度、跨账户汇总、权限隔离或账户级风控。
-- `CCXT` 是下一阶段优先方向，但当前代码尚未引入 `ccxt` 依赖，也没有任何交易所凭证管理。
+- 项目已经引入 `ccxt` 依赖用于行情拉取，但还没有任何交易所凭证管理或真实交易执行。
 
 ## 当前交接验证命令
 

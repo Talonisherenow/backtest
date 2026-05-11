@@ -1,4 +1,5 @@
 import re
+from urllib.parse import quote, unquote
 
 
 def normalize_symbol(raw: str) -> str:
@@ -20,8 +21,19 @@ def normalize_symbol(raw: str) -> str:
             suffix = "SZ"
         return f"{value}.{suffix}"
 
-    raise ValueError(f"Unsupported A share symbol: {raw}")
+    if re.fullmatch(r"[A-Z0-9]+/[A-Z0-9]+", value):
+        return value
+
+    raise ValueError(f"Unsupported symbol: {raw}")
 
 
 def akshare_symbol(symbol: str) -> str:
     return normalize_symbol(symbol).split(".")[0]
+
+
+def safe_symbol_path(symbol: str) -> str:
+    return quote(normalize_symbol(symbol), safe=".-_")
+
+
+def symbol_from_safe_path(value: str) -> str:
+    return normalize_symbol(unquote(value))

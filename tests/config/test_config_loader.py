@@ -140,6 +140,53 @@ report:
     assert config.data.stock_pool.symbols_file == symbols_path
 
 
+def test_load_config_accepts_ccxt_crypto_data_config(tmp_path: Path):
+    config_path = tmp_path / "crypto.yaml"
+    config_path.write_text(
+        """
+project:
+  name: crypto-demo
+data:
+  source: ccxt
+  exchange: BINANCE
+  frequency: 4h
+  adjust: none
+  start_date: "2025-01-01"
+  end_date: "2025-01-31"
+  stock_pool:
+    symbols:
+      - "btc/usdt"
+signals:
+  type: file
+  path: signals/demo.csv
+execution:
+  timing: next_open
+  initial_cash: 100000
+  commission_rate: 0.001
+  min_commission: 0
+  stamp_tax_rate: 0
+  slippage_rate: 0.0005
+  board_lot_size: 1
+metrics:
+  builtin:
+    - total_return
+report:
+  output_dir: runs
+  html: true
+  charts: true
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.data.source == "ccxt"
+    assert config.data.exchange == "binance"
+    assert config.data.frequency.value == "4h"
+    assert config.data.adjust.value == "none"
+    assert config.data.stock_pool.symbols == ["BTC/USDT"]
+
+
 def test_load_config_rejects_end_before_start(tmp_path: Path):
     config_path = tmp_path / "bad.yaml"
     config_path.write_text(

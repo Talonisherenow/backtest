@@ -6,11 +6,11 @@ import typer
 from backtest.charts.kline_server import serve_kline_viewer
 from backtest.charts.kline_service import KlineSource
 from backtest.charts.kline_viewer import build_kline_payload, write_kline_viewer
-from backtest.charts.strategy_results_server import serve_strategy_results
 from backtest.charts.strategy_results_catalog import (
     build_strategy_results_catalog_payload,
     write_strategy_results_catalog,
 )
+from backtest.charts.strategy_results_server import serve_strategy_results
 from backtest.charts.workbench_server import serve_chart_workbench
 
 app = typer.Typer(help="Build local charting pages from cached market data")
@@ -21,10 +21,13 @@ def viewer(
     bars_root: Path = typer.Option(
         Path("data/bars"),
         "--bars-root",
-        exists=True,
         file_okay=False,
-        readable=True,
         help="Root directory for cached market data",
+    ),
+    source_root: list[str] | None = typer.Option(
+        None,
+        "--source-root",
+        help="Source label and bars root in label=path form; repeat for multiple sources",
     ),
     universe_path: Path | None = typer.Option(
         None,
@@ -39,7 +42,18 @@ def viewer(
         "--output",
         help="Output HTML path",
     ),
-    limit: int = typer.Option(300, "--limit", min=1, help="Maximum bars per symbol"),
+    limit: int = typer.Option(
+        300,
+        "--limit",
+        min=0,
+        help="Maximum bars per symbol/frequency to embed; 0 embeds all cached bars",
+    ),
+    frequency: list[str] | None = typer.Option(
+        None,
+        "--frequency",
+        help="Optional frequency filter; repeat for multiple frequencies",
+    ),
+    adjust: str = typer.Option("qfq", "--adjust", help="Adjust mode to read from cache"),
     symbols_file: Path | None = typer.Option(
         None,
         "--symbols-file",
@@ -64,6 +78,10 @@ def viewer(
             universe_path=universe_path,
             symbols=selected_symbols or None,
             limit=limit,
+            frequency=None if not frequency else frequency[0],
+            frequencies=list(frequency or []) or None,
+            adjust=adjust,
+            source_roots=_resolve_source_roots(bars_root, source_root),
         )
         write_kline_viewer(payload, output_path)
     except Exception as exc:
@@ -89,7 +107,7 @@ def strategy_results(
         help="Output HTML path",
     ),
 ) -> None:
-    """Build a strategy results catalog from backtest summary files."""
+    """Build a static strategy results catalog from backtest summary files."""
     try:
         frames = [pd.read_csv(path) for path in summary or []]
         payload = build_strategy_results_catalog_payload(summary_frames=frames)
@@ -173,11 +191,11 @@ def serve_workbench(
     include_a_share: bool = typer.Option(True, "--include-a-share/--no-a-share", help="Include A-share source"),
     host: str = typer.Option("127.0.0.1", "--host", help="Bind host"),
     port: int = typer.Option(8767, "--port", min=1, max=65535, help="Bind port"),
-    default_window_size: int = typer.Option(300, "--window-size", min=1, help="Initial visible K-line window"),
+    window_size: int = typer.Option(300, "--window-size", min=1, help="Initial visible K-line window"),
 ) -> None:
     """Serve strategy results and K-line viewer from one local process."""
     try:
-        kline_sources = _build_kline_sources(
+        kline_sources = _build_workbench_kline_sources(
             bars_root=bars_root,
             adjust=adjust,
             bitget_bars_root=bitget_bars_root,
@@ -198,72 +216,138 @@ def serve_workbench(
         bars_root=a_share_bars_root,
         host=host,
         port=port,
-        default_window_size=default_window_size,
+        default_window_size=window_size,
     )
 
 
 @app.command("serve")
 def serve(
-    bars_root: Path | None = typer.Option(
-        None,
+    bars_root: Path = typer.Option(
+        Path("data/bars"),
         "--bars-root",
         file_okay=False,
-        help="Legacy source root option; resolves data/crypto to data/crypto/bitget/bars when present",
+        help="Root directory for cached market data",
     ),
-    adjust: str | None = typer.Option(
+    source_root: list[str] | None = typer.Option(
         None,
-        "--adjust",
-        help="Legacy adjust mode for the primary source",
+        "--source-root",
+        help="Source label and bars root in label=path form; repeat for multiple sources",
     ),
-    bitget_bars_root: Path = typer.Option(
-        Path("data/crypto/bitget/bars"),
-        "--bitget-bars-root",
-        file_okay=False,
-        help="Root directory for cached Bitget crypto bars",
-    ),
-    a_share_bars_root: Path = typer.Option(
-        Path("data/bars"),
-        "--a-share-bars-root",
-        file_okay=False,
-        help="Root directory for cached A-share bars",
-    ),
-    a_share_universe: Path | None = typer.Option(
-        Path("data/universe/a_share_all_20260504.csv"),
-        "--a-share-universe",
+    universe_path: Path | None = typer.Option(
+        None,
+        "--universe",
+        exists=True,
         dir_okay=False,
-        help="Optional A-share universe CSV used for symbol names and board labels",
+        readable=True,
+        help="Optional universe CSV used for symbol names and board labels",
     ),
-    include_bitget: bool = typer.Option(True, "--include-bitget/--no-bitget", help="Include Bitget source"),
-    include_a_share: bool = typer.Option(True, "--include-a-share/--no-a-share", help="Include A-share source"),
-    host: str = typer.Option("127.0.0.1", "--host", help="Bind host"),
-    port: int = typer.Option(8765, "--port", min=1, max=65535, help="Bind port"),
-    default_window_size: int = typer.Option(300, "--window-size", min=1, help="Initial visible K-line window"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host interface to bind"),
+    port: int = typer.Option(8765, "--port", min=1, max=65535, help="Port to bind"),
+    window_size: int = typer.Option(
+        5000,
+        "--window-size",
+        min=1,
+        help="Default number of bars loaded for each selected symbol/frequency",
+    ),
+    frequency: list[str] | None = typer.Option(
+        None,
+        "--frequency",
+        help="Optional frequency filter; repeat for multiple frequencies",
+    ),
+    adjust: str = typer.Option("qfq", "--adjust", help="Adjust mode to read from cache"),
+    symbols_file: Path | None = typer.Option(
+        None,
+        "--symbols-file",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Optional text file with one symbol per line",
+    ),
+    symbol: list[str] | None = typer.Option(
+        None,
+        "--symbol",
+        help="Optional symbol filter; repeat for multiple symbols",
+    ),
 ) -> None:
-    """Serve a dynamic K-line viewer for local cached market data."""
+    """Serve a dynamic local K-line viewer that reads parquet data on demand."""
     try:
-        sources = _build_kline_sources(
+        selected_symbols = list(symbol or [])
+        if symbols_file is not None:
+            selected_symbols.extend(_read_symbols_file(symbols_file))
+        serve_kline_viewer(
             bars_root=bars_root,
+            universe_path=universe_path,
+            source_roots=_resolve_source_roots(bars_root, source_root),
+            host=host,
+            port=port,
+            default_window_size=window_size,
+            frequencies=list(frequency or []) or None,
             adjust=adjust,
-            bitget_bars_root=bitget_bars_root,
-            a_share_bars_root=a_share_bars_root,
-            a_share_universe=a_share_universe,
-            include_bitget=include_bitget,
-            include_a_share=include_a_share,
+            symbols=selected_symbols or None,
         )
     except Exception as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
 
-    typer.echo(f"Starting K-line viewer with {len(sources)} sources at http://{host}:{port}")
-    serve_kline_viewer(
-        sources=sources,
-        host=host,
-        port=port,
-        default_window_size=default_window_size,
-    )
+
+def _read_symbols_file(path: Path) -> list[str]:
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8-sig").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
 
 
-def _build_kline_sources(
+def _parse_source_roots(values: list[str] | None) -> list[tuple[str, Path]] | None:
+    if not values:
+        return None
+
+    source_roots = []
+    for value in values:
+        if "=" not in value:
+            raise ValueError("--source-root must use label=path format")
+        label, raw_path = value.split("=", 1)
+        label = label.strip()
+        path = Path(raw_path).expanduser()
+        if not label:
+            raise ValueError("--source-root label must not be empty")
+        if not path.is_dir():
+            raise ValueError(f"--source-root path does not exist or is not a directory: {path}")
+        source_roots.append((label, path))
+    return source_roots
+
+
+def _resolve_source_roots(
+    bars_root: Path,
+    values: list[str] | None,
+) -> list[tuple[str, Path]] | None:
+    parsed = _parse_source_roots(values)
+    if parsed is not None:
+        return parsed
+    return _discover_source_roots(bars_root)
+
+
+def _discover_source_roots(bars_root: Path) -> list[tuple[str, Path]] | None:
+    if not bars_root.is_dir():
+        return None
+
+    discovered = []
+    for child in sorted(bars_root.iterdir(), key=lambda path: path.name):
+        if not child.is_dir() or child.name == "bars":
+            continue
+        candidate = child / "bars"
+        if _looks_like_bars_root(candidate):
+            discovered.append((child.name, candidate))
+    return discovered or None
+
+
+def _looks_like_bars_root(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    return any(child.is_dir() and child.name.startswith("frequency=") for child in path.iterdir())
+
+
+def _build_workbench_kline_sources(
     *,
     bars_root: Path | None,
     adjust: str | None,
@@ -293,14 +377,6 @@ def _build_kline_sources(
     if not sources:
         raise ValueError("At least one data source must be enabled")
     return sources
-
-
-def _read_symbols_file(path: Path) -> list[str]:
-    return [
-        line.strip()
-        for line in path.read_text(encoding="utf-8-sig").splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
 
 
 def _ensure_dir(path: Path) -> None:

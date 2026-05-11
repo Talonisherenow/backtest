@@ -154,6 +154,8 @@ broker or exchange API adapters instead of either backtest backend.
 ## Current MVP Limitations
 
 - `AkShareProvider` supports daily bars only.
+- `CCXTOHLCVProvider` supports crypto spot historical OHLCV only; it is not a
+  live trading adapter.
 - Legacy `BrokerEngine` supports `next_open` execution only.
 - `NativeSimulationBackend` currently mirrors the same A-share `next_open`
   semantics so parity with the legacy backend can be tested during migration.
