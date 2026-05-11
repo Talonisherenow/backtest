@@ -58,9 +58,20 @@ def build_kline_payload(
 
 def write_kline_viewer(payload: dict[str, Any], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_kline_viewer_html(payload), encoding="utf-8")
+
+
+def render_kline_viewer_html(payload: dict[str, Any]) -> str:
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     safe_payload = payload_json.replace("</", "<\\/")
-    output_path.write_text(HTML_TEMPLATE.replace("__KLINE_PAYLOAD__", safe_payload), encoding="utf-8")
+    return _viewer_template().replace("__KLINE_PAYLOAD__", safe_payload)
+
+
+def _viewer_template() -> str:
+    template_path = Path(__file__).with_name("kline_viewer_template.html")
+    if template_path.exists():
+        return template_path.read_text(encoding="utf-8")
+    return HTML_TEMPLATE
 
 
 def _discover_symbols(bars_root: Path, frequency: str, adjust: str) -> list[str]:
@@ -114,8 +125,10 @@ def _read_symbol_bars(
 
 
 def _bar_to_json(row: pd.Series) -> dict[str, Any]:
+    timestamp = pd.Timestamp(row["date"])
+    date_value = timestamp.isoformat() if timestamp.time().isoformat() != "00:00:00" else timestamp.date().isoformat()
     return {
-        "date": pd.Timestamp(row["date"]).date().isoformat(),
+        "date": date_value,
         "open": float(row["open"]),
         "high": float(row["high"]),
         "low": float(row["low"]),

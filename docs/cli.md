@@ -83,6 +83,79 @@ backtest data retry --failed --metadata data/metadata.sqlite
 
 ## Chart
 
+### Combined Workbench
+
+Serve the Strategy Results viewer and the K-line viewer from one local process:
+
+```bash
+backtest chart serve-workbench \
+  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --a-share-bars-root data/bars \
+  --bitget-bars-root data/crypto/bitget/bars \
+  --host 127.0.0.1 \
+  --port 8767
+```
+
+Open:
+
+```text
+http://127.0.0.1:8767/
+```
+
+Routes:
+
+- `/strategy-results` shows strategies and available backtest results.
+- `/strategy-results/account?case_id=...` shows account-level equity, cash,
+  return, holdings, and the full order list for a run.
+- `/strategy-results/drilldown?case_id=...#symbol=...&order_id=...` shows a
+  symbol-level K-line chart with executable buy/sell markers and symbol orders.
+- `/kline` shows the cached K-line viewer across configured data sources.
+
+This is the preferred interactive workflow. It reads result files and cached
+bars on demand; no HTML generation step is required after running backtests.
+
+### Dynamic Strategy Results
+
+Serve only the dynamic Strategy Results viewer:
+
+```bash
+backtest chart serve-results \
+  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --bars-root data/bars \
+  --host 127.0.0.1 \
+  --port 8766
+```
+
+Open:
+
+```text
+http://127.0.0.1:8766/strategy-results
+```
+
+### Dynamic K-line Viewer
+
+Serve only the dynamic K-line viewer:
+
+```bash
+backtest chart serve \
+  --a-share-bars-root data/bars \
+  --bitget-bars-root data/crypto/bitget/bars \
+  --host 127.0.0.1 \
+  --port 8765
+```
+
+Open:
+
+```text
+http://127.0.0.1:8765/kline
+```
+
+The dynamic K-line viewer keeps the original bar-window interaction model:
+symbol/source/frequency selection, search, older/newer/latest navigation,
+jump-to-time, and slider position.
+
+### Static K-line Snapshot
+
 Build a reusable static K-line browser page from cached bars:
 
 ```bash
@@ -97,6 +170,19 @@ backtest chart viewer \
 The output HTML embeds the selected cached bars, so it can be opened directly
 with `file://` and used to switch symbols, filter by board, search by code/name,
 and change the visible range.
+
+### Static Strategy Results Snapshot
+
+Build a static Strategy Results catalog from one or more summary CSV files:
+
+```bash
+backtest chart strategy-results \
+  --summary runs/ten_buy_signals/new_runtime_native_20260510/summary.csv \
+  --output runs/charts/strategy_results_index.html
+```
+
+This command is useful for debugging or archived snapshots. The normal workflow
+is `backtest chart serve-workbench`, which does not write HTML artifacts.
 
 ## Validate
 

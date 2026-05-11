@@ -4,6 +4,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from backtest.cli import chart as chart_cli
 from backtest.cli import data as data_cli
 from backtest.cli.app import app
 from backtest.core.enums import AdjustMode, Frequency
@@ -375,6 +376,177 @@ def test_chart_viewer_cli_writes_static_html(tmp_path: Path):
     html = output_path.read_text(encoding="utf-8")
     assert "000001.SZ" in html
     assert "600000.SH" not in html
+
+
+def test_chart_serve_results_cli_starts_strategy_results_server(tmp_path: Path, monkeypatch):
+    results_root = tmp_path / "runs"
+    bars_root = tmp_path / "bars"
+    results_root.mkdir()
+    bars_root.mkdir()
+    captured = {}
+
+    def fake_serve_strategy_results(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(chart_cli, "serve_strategy_results", fake_serve_strategy_results)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "chart",
+            "serve-results",
+            "--results-root",
+            str(results_root),
+            "--bars-root",
+            str(bars_root),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "9878",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Starting strategy results viewer" in result.output
+    assert captured["results_roots"] == [results_root]
+    assert captured["bars_root"] == bars_root
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 9878
+
+
+def test_chart_serve_cli_includes_bitget_and_a_share_sources(tmp_path: Path, monkeypatch):
+    bitget_root = tmp_path / "crypto" / "bitget" / "bars"
+    a_share_root = tmp_path / "bars"
+    universe_path = tmp_path / "a_share_all.csv"
+    bitget_root.mkdir(parents=True)
+    a_share_root.mkdir(parents=True)
+    universe_path.write_text(
+        "symbol,code,name,exchange,board,list_date,industry\n"
+        "000001.SZ,000001,平安银行,SZ,主板,1991-04-03,J 金融业\n",
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_serve_kline_viewer(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(chart_cli, "serve_kline_viewer", fake_serve_kline_viewer)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "chart",
+            "serve",
+            "--bitget-bars-root",
+            str(bitget_root),
+            "--a-share-bars-root",
+            str(a_share_root),
+            "--a-share-universe",
+            str(universe_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "9876",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Starting K-line viewer" in result.output
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 9876
+    assert [source.source_id for source in captured["sources"]] == ["bitget", "a_share"]
+    assert captured["sources"][0].adjust == "none"
+    assert captured["sources"][1].adjust == "qfq"
+
+
+def test_chart_serve_cli_keeps_legacy_bars_root_options(tmp_path: Path, monkeypatch):
+    legacy_root = tmp_path / "crypto"
+    bitget_root = legacy_root / "bitget" / "bars"
+    a_share_root = tmp_path / "bars"
+    bitget_root.mkdir(parents=True)
+    a_share_root.mkdir(parents=True)
+    captured = {}
+
+    def fake_serve_kline_viewer(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(chart_cli, "serve_kline_viewer", fake_serve_kline_viewer)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "chart",
+            "serve",
+            "--bars-root",
+            str(legacy_root),
+            "--adjust",
+            "none",
+            "--a-share-bars-root",
+            str(a_share_root),
+            "--port",
+            "9877",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert [source.source_id for source in captured["sources"]] == ["bitget", "a_share"]
+    assert captured["sources"][0].bars_root == bitget_root
+    assert captured["sources"][0].adjust == "none"
+
+
+def test_chart_serve_workbench_cli_starts_combined_server(tmp_path: Path, monkeypatch):
+    results_root = tmp_path / "runs"
+    bitget_root = tmp_path / "crypto" / "bitget" / "bars"
+    a_share_root = tmp_path / "bars"
+    universe_path = tmp_path / "a_share_all.csv"
+    results_root.mkdir()
+    bitget_root.mkdir(parents=True)
+    a_share_root.mkdir(parents=True)
+    universe_path.write_text(
+        "symbol,code,name,exchange,board,list_date,industry\n"
+        "000001.SZ,000001,平安银行,SZ,主板,1991-04-03,J 金融业\n",
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def fake_serve_chart_workbench(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(chart_cli, "serve_chart_workbench", fake_serve_chart_workbench)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "chart",
+            "serve-workbench",
+            "--results-root",
+            str(results_root),
+            "--bitget-bars-root",
+            str(bitget_root),
+            "--a-share-bars-root",
+            str(a_share_root),
+            "--a-share-universe",
+            str(universe_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "9879",
+            "--window-size",
+            "250",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Starting chart workbench" in result.output
+    assert captured["results_roots"] == [results_root]
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 9879
+    assert captured["default_window_size"] == 250
+    assert [source.source_id for source in captured["kline_sources"]] == ["bitget", "a_share"]
+    assert captured["kline_sources"][0].bars_root == bitget_root
+    assert captured["kline_sources"][0].adjust == "none"
+    assert captured["kline_sources"][1].bars_root == a_share_root
+    assert captured["kline_sources"][1].adjust == "qfq"
 
 
 def test_crawl_task_manager_mark_retrying_accepts_integer_task_id():

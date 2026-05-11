@@ -4,19 +4,39 @@
 
 ## 一句话定位
 
-这是一个本地研究型 A 股回测 MVP，并已经在
-`feat/universal-trading-architecture` 分支上补了通用标的交易架构的第一阶段地基。它不是多用户服务，而是一个 Python package + CLI，用来做可复现的 A 股策略研究，并为后续接入港股、美股、加密货币和真实交易 API 预留统一合同：
+这是一个本地研究型 A 股回测 MVP。当前
+`feat/strategy-planning-architecture` 分支正在把系统从 legacy
+`BacktestEngine -> SignalProvider -> BrokerEngine` 逐步升级到新的
+`StrategyPlanner -> BacktestRunner -> ExecutionBackend` 架构。它不是多用户服务，而是一个 Python package + CLI，用来做可复现的 A 股策略研究，并为后续接入港股、美股、加密货币和真实交易 API 预留统一合同：
 
 ```text
 配置 YAML -> 数据缓存 -> 信号生成 -> 模拟撮合 -> 指标计算 -> 结构化报告/可视化
 ```
 
-通用交易架构目标链路：
+新架构目标链路分成回测 runtime 和未来实盘/交易链路，不要把二者混成同一个线性流程：
 
 ```text
 MarketDataProvider
-  -> StrategyRunner
-  -> TargetPortfolio / OrderIntent
+  -> HistoricalBars / RealtimeBarSnapshot / MarketSnapshot
+UniverseProvider
+  -> CandidatePool
+SignalGenerator
+  -> SignalScoreFrame
+PortfolioAllocator
+  -> TargetPortfolioFrame
+StrategyPlanner
+  -> StrategyPlan
+
+BacktestRunner
+  -> ExecutionBackend
+       -> NativeSimulationBackend
+       -> LegacyBrokerExecutionBackend
+  -> BacktestRunResult
+
+Future TradingRuntime
+  -> StrategyPlan.targets
+  -> OrderPlanner
+       -> OrderIntent
   -> RiskGate
   -> OrderLedger
   -> ExecutionAdapter
@@ -35,6 +55,14 @@ MarketDataProvider
 - 结构化回测报告；
 - 可复用 K 线查看器；
 - 十大买讯策略、固定持有期退出、30 个回测 case 和可视化结果页；
+- 十大买讯新 runtime 聚合结果，位置为
+  `runs/ten_buy_signals/new_runtime_native_20260510/`；
+- 动态 Strategy Results、Strategy Account Viewer 和 Order Drilldown 视图；
+- 动态 K-line viewer 服务；
+- 统一 Chart Workbench 服务，入口为 `backtest chart serve-workbench`；
+- `SignalScoreFrame`、`SignalGenerator`、`StrategyPlanner` 和 `SignalEvaluator`；
+- `PortfolioAllocator`，把信号评分转换为 `TargetPortfolioFrame`；
+- `BacktestRunner`、`ExecutionBackend`、`LegacyBrokerExecutionBackend` 和 `NativeSimulationBackend`；
 - 通用 `Instrument`、`TradingRule`、`TargetPortfolioFrame`；
 - 通用 `OrderIntent`、`ExecutionReport`、`PortfolioState`；
 - 独立 `OrderPlanner`；
@@ -51,23 +79,39 @@ MarketDataProvider
 5. `docs/cli.md`
 6. `docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md`
 7. `docs/superpowers/plans/2026-05-07-universal-trading-architecture.md`
-8. `docs/ten-buy-signals-implementation.md`
-9. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
-10. 当前要改的代码和测试
+8. `docs/superpowers/specs/2026-05-10-strategy-planning-architecture-design.md`
+9. `docs/superpowers/specs/2026-05-10-backtest-runtime-dual-backend-design.md`
+10. `docs/ten-buy-signals-implementation.md`
+11. `docs/2026-05-11-strategy-planning-architecture-handoff.md`
+12. `docs/2026-05-05-ten-buy-signals-backtest-handoff.md`
+13. 当前要改的代码和测试
 
-旧设计文档在 `docs/superpowers/specs/` 下，可作为背景，但当前代码、测试和本文档优先级更高。
+旧设计文档在 `docs/superpowers/specs/` 下，可作为背景；当前代码、测试、
+`docs/architecture.md`、`docs/data-contracts.md` 和本文档优先级更高。
 
 ## 当前分支和近期能力
 
-截至 2026-05-08，当前工作分支是：
+截至 2026-05-11，当前工作分支是：
 
 ```text
-feat/universal-trading-architecture
+feat/strategy-planning-architecture
 ```
 
-该分支从 `feat/a-share-backtest-mvp` 切出。A 股回测主能力仍来自原分支；本分支新增的是通用交易架构第一阶段地基，未接真实 API。
+该分支建立在此前 A 股回测 MVP 和通用交易合同地基之上。本分支新增的是策略规划层、新 runtime/backtest backend 层和动态 chart workbench，未接真实 API。
 
-和本轮能力直接相关的提交：
+重要：当前本地 `main` 已前进到 `fc7db17`，包含 crypto market data 和动态 K-line
+相关改动；本分支 `HEAD` 仍在 `c224156`。因此直接查看 `git diff main` 会混入
+`main` 新增文件在本分支中缺失造成的删除/回退噪声。合入前必须先 merge 或 rebase
+`main`，重点处理 `backtest/charts/kline_*`、`backtest/cli/chart.py`、
+`backtest/cli/data.py`、`backtest/data/*`、相关 docs 和 tests 的重叠。
+
+本轮最新 hand-off 总结：
+
+```text
+docs/2026-05-11-strategy-planning-architecture-handoff.md
+```
+
+历史上和通用交易地基相关的提交：
 
 ```text
 ee21167 feat: add universal instrument models
@@ -83,6 +127,9 @@ be19a89 feat: add all A-share universe sampling
 10c6b8a feat: add reusable k-line viewer
 b6c701c feat: add ten buy signal backtest results
 ```
+
+当前分支新增的策略规划和 runtime 代码可能还未提交，先以 `git status --short`
+和测试结果为准。
 
 本轮已经确认的产品和架构决策：
 
@@ -101,9 +148,9 @@ git log --oneline --decorate -n 8
 
 注意：工作区可能有用户或临时产物，例如 `runs/charts/000002_SZ_kline_300d.html` 和 `.svg`。除非用户明确要求，不要把这类未跟踪临时文件混进提交。
 
-## 项目主流程
+## 目标主流程
 
-架构主线：
+新架构主线：
 
 ```text
 DataProvider -> DataSyncService -> ParquetBarStore
@@ -111,10 +158,28 @@ DataProvider -> DataSyncService -> ParquetBarStore
                          v              v
                   CrawlTaskManager   DataCatalog
 
+StrategyPlanner
+  -> SignalGenerator
+  -> PortfolioAllocator
+  -> StrategyPlan
+       -> TargetPortfolioFrame
+
+BacktestRunner
+  -> ExecutionBackend
+       -> NativeSimulationBackend
+       -> LegacyBrokerExecutionBackend
+  -> BacktestRunResult
+       -> Metrics
+       -> Reports
+```
+
+legacy 回测执行主线仍保留给已有配置和回归验证：
+
+```text
 Config -> BacktestEngine -> SignalProvider -> BrokerEngine -> Metrics -> Reports
 ```
 
-回测执行主线：
+legacy 执行步骤：
 
 1. `backtest.config.loader.load_config()` 读取 YAML，并解析相对路径。
 2. `BacktestConfig` 等 Pydantic 模型校验配置。
@@ -124,7 +189,7 @@ Config -> BacktestEngine -> SignalProvider -> BrokerEngine -> Metrics -> Reports
 6. `calculate_builtin_metrics()` 和 `MetricRegistry` 计算指标。
 7. `FileReportWriter` 写出 JSON、Parquet 和 HTML 报告。
 
-当前重要限制：`backtest run --config ...` 的命令形状存在，但 CLI 直接从缓存加载 bars 仍未完全打通。现在可用且已验证的方式是用 `BacktestEngine(..., bars_override=bars)` 直接传入缓存行情。
+当前重要限制：`backtest run --config ...` 的命令形状存在，但 CLI 直接从缓存加载 bars 仍未完全打通。legacy 路径中可用且已验证的方式是用 `BacktestEngine(..., bars_override=bars)` 直接传入缓存行情；新架构路径中可用的是程序化 `BacktestRunner`。
 
 ## 目录地图
 
@@ -137,8 +202,10 @@ backtest/core/         枚举、符号规范化、BarFrame/SignalFrame 校验
 backtest/data/         AkShare provider、行情缓存、元数据、股票池、同步服务
 backtest/signals/      CSV/Parquet/Python 信号 provider
 backtest/broker/       账户、费用、滑点、执行循环、订单和成交结果
+backtest/strategy/     SignalScoreFrame、SignalGenerator、StrategyPlanner、SignalEvaluator
 backtest/planning/     TargetPortfolio -> OrderIntent 规划器
-backtest/portfolio/    多账户预留的组合状态模型
+backtest/portfolio/    PortfolioAllocator 和多账户预留的组合状态模型
+backtest/runtime/      BacktestRunner、ExecutionBackend、legacy/native 回测后端
 backtest/execution/    执行基础设施，目前有 SQLite OrderLedger
 backtest/metrics/      内置指标、自定义指标 registry、结果上下文
 backtest/reports/      manifest、结构化报告、HTML report
@@ -154,8 +221,8 @@ docs/                  项目文档
 关键文档：
 
 ```text
-docs/architecture.md                             架构边界和主流程
-docs/data-contracts.md                           symbol、BarFrame、SignalFrame 规范
+docs/architecture.md                             架构边界和目标/legacy 主流程
+docs/data-contracts.md                           BarFrame、SignalFrame、SignalScoreFrame、TargetPortfolioFrame、runtime 结果合同
 docs/data-ingestion.md                           AkShare、股票池、缓存、metadata、sync
 docs/signal-integration.md                       文件信号和 Python 策略信号
 docs/metrics-extension.md                        内置指标和自定义指标
@@ -163,6 +230,8 @@ docs/reports.md                                  报告产物结构
 docs/cli.md                                      当前 CLI 命令
 docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md 通用交易架构设计
 docs/superpowers/plans/2026-05-07-universal-trading-architecture.md 通用交易架构第一阶段执行计划
+docs/superpowers/specs/2026-05-10-strategy-planning-architecture-design.md 策略规划架构设计
+docs/superpowers/specs/2026-05-10-backtest-runtime-dual-backend-design.md 新 runtime 双后端设计
 docs/0504-十大买讯对应的量化公式.md              原始十大买讯公式
 docs/ten-buy-signals-implementation.md           十大买讯公式到代码的映射
 docs/2026-05-05-ten-buy-signals-backtest-handoff.md 本轮回测能力交接
@@ -320,13 +389,31 @@ is_suspended, limit_up, limit_down
 date, symbol, target_weight
 ```
 
-`target_weight` 是目标组合权重，不是订单方向或数量。它必须在 `[0, 1]` 内，同一天所有 symbol 权重总和不能超过 `1.0`。
+`SignalFrame` 是 legacy 信号提供器合同。`target_weight` 是目标组合权重，不是订单方向或数量。它必须在 `[0, 1]` 内，同一天所有 symbol 权重总和不能超过 `1.0`。
 
-所有策略或外部信号都应通过 `validate_signal_frame()`。不要绕过校验。
+legacy 策略或外部信号都应通过 `validate_signal_frame()`。不要绕过校验。新策略规划路径应优先使用 `SignalScoreFrame`，再由 `PortfolioAllocator` 产生 `TargetPortfolioFrame`。
+
+### SignalScoreFrame 和 StrategyPlan
+
+新策略判断合同是 `SignalScoreFrame`：
+
+```text
+signal_time, instrument_id, score, rank, signal_state, confidence, horizon, valid_until, reason
+```
+
+`signal_state` 使用 `long_preferred`、`neutral`、`exit_preferred`、`blocked`，不要使用 `buy/sell/hold` 表达订单动作。订单方向由后续目标仓位和当前仓位差额决定。
+
+`StrategyPlanner` 输出 `StrategyPlan`：
+
+```text
+plan_time, signals, targets, metadata
+```
+
+其中 `signals` 是 `SignalScoreFrame`，`targets` 是 `TargetPortfolioFrame`。
 
 ### 通用交易合同
 
-本分支新增通用交易合同，但还没有把 `BrokerEngine` 改成实盘执行引擎。未来 AI 必须区分旧回测合同和新通用交易合同。
+本分支已有通用交易合同和新 runtime/backtest 后端，但还没有真实交易 API 适配器。未来 AI 必须区分 legacy 回测合同、新策略规划合同、回测执行后端和未来实盘适配器。
 
 新增核心模型：
 
@@ -401,7 +488,7 @@ account_id, cash, positions, updated_at
 
 ## 策略和信号接入
 
-项目支持两类信号：
+legacy `BacktestEngine` 支持两类信号：
 
 ### 文件信号
 
@@ -440,7 +527,18 @@ end_date
 params
 ```
 
-策略应返回标准 `SignalFrame`。不要让策略返回订单意图、手数或买卖 side。
+legacy 策略应返回标准 `SignalFrame`。不要让策略返回订单意图、手数或买卖 side。
+
+新策略规划路径应实现：
+
+```text
+SignalGenerator.generate(context) -> SignalScoreFrame
+PortfolioAllocator.allocate(signals) -> TargetPortfolioFrame
+StrategyPlanner.plan(context) -> StrategyPlan
+```
+
+旧 `FileSignalProvider` / `PythonSignalProvider` 可以通过 `LegacyStrategyPlanner`
+进入新路径，但这只是兼容适配。
 
 ## Broker 和执行能力
 
@@ -455,10 +553,14 @@ params
 - 停牌、涨停买入限制、跌停卖出限制；
 - 输出 orders、trades、positions、equity curve。
 
-注意：`BrokerEngine` 仍是 A 股回测撮合器，不是真实交易系统。通用交易架构第一阶段没有替换 `BrokerEngine`，只是新增了可以复用的交易合同和规划器。
+注意：`BrokerEngine` 仍是 A 股 legacy 回测撮合器，不是真实交易系统。新架构不再把它作为中心组件；它通过 `LegacyBrokerExecutionBackend` 被包装为兼容后端，用来复用旧能力和做 parity 回归参照。
 
 新增执行相关能力：
 
+- `BacktestRunner`：负责历史时间推进、策略计划收集和执行后端调用；
+- `ExecutionBackend`：目标仓位到执行结果的统一接口；
+- `LegacyBrokerExecutionBackend`：把 `TargetPortfolioFrame` 适配成 legacy `SignalFrame` 后调用 `BrokerEngine`；
+- `NativeSimulationBackend`：原生 A 股模拟后端，当前语义对齐 legacy `BrokerEngine`；
 - `OrderPlanner`：把 `TargetPortfolioFrame + PortfolioState + prices + TradingRule` 转成 `OrderIntent`；
 - `OrderPlanner` 会从 `PortfolioState.account_id` 继承账户标识；
 - `SQLiteOrderLedger`：记录订单意图和执行回报，主键为 `(account_id, client_order_id)`；
@@ -473,10 +575,10 @@ params
 - 复杂订单类型；
 - 真实资金费率或融资融券。
 - 真实交易 API；
-- `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`；
+- live `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`；
 - 多账户调度和多账户聚合视图。
 
-新增 A 股回测撮合行为时改 `backtest/broker/` 并补测试。新增通用交易行为时优先扩展 `backtest/planning/`、`backtest/portfolio/`、`backtest/execution/`，不要把真实 API 调用塞进策略或 `BrokerEngine`。
+新增 legacy A 股回测撮合行为时改 `backtest/broker/` 并补测试。新增新架构回测执行行为时优先扩展 `backtest/runtime/` 并补 legacy/native parity 测试。新增通用交易行为时优先扩展 `backtest/planning/`、`backtest/portfolio/`、`backtest/execution/`，不要把真实 API 调用塞进策略或 `BrokerEngine`。
 
 下一阶段真实 API 适配器优先级：
 
@@ -544,36 +646,67 @@ GUI、dashboard 或分析脚本应读取 JSON/Parquet，不要解析 `report.htm
 
 `report.html` 当前总是写出；`report.html` 和 `report.charts` 配置字段存在，但禁用 HTML 或自动图表产物还没完全实现。
 
-## K 线查看器
+## Chart Workbench 和 K 线查看器
 
-已新增静态 K 线查看器：
-
-```text
-backtest/charts/kline_viewer.py
-tests/charts/test_kline_viewer.py
-```
-
-CLI：
+当前推荐使用统一动态 workbench：
 
 ```bash
-backtest chart viewer \
-  --bars-root data/bars \
-  --universe data/universe/board_sample_20_each_20260504_seed42_clean.csv \
-  --symbols-file data/universe/board_sample_20_each_20260504_seed42_clean.txt \
-  --output runs/charts/kline_viewer.html \
-  --limit 300
+backtest chart serve-workbench \
+  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --a-share-bars-root data/bars \
+  --bitget-bars-root data/crypto/bitget/bars \
+  --host 127.0.0.1 \
+  --port 8767
 ```
 
-能力：
+打开：
 
-- 自包含 HTML，可直接 `file://` 打开；
-- 切换 symbol；
+```text
+http://127.0.0.1:8767/
+```
+
+主要路由：
+
+```text
+/strategy-results
+/strategy-results/account?case_id=...
+/strategy-results/drilldown?case_id=...#symbol=...&order_id=...
+/kline
+```
+
+相关实现和测试：
+
+```text
+backtest/charts/workbench_server.py
+backtest/charts/kline_service.py
+backtest/charts/kline_server.py
+backtest/charts/kline_viewer.py
+backtest/charts/kline_viewer_template.html
+backtest/charts/strategy_results_service.py
+backtest/charts/strategy_results_server.py
+backtest/charts/strategy_results_catalog.py
+backtest/charts/strategy_account_viewer.py
+backtest/charts/strategy_order_drilldown_viewer.py
+tests/charts/test_workbench_server.py
+tests/charts/test_kline_service.py
+tests/charts/test_kline_viewer.py
+tests/charts/test_strategy_results_service.py
+tests/charts/test_strategy_account_viewer.py
+tests/charts/test_strategy_order_drilldown_viewer.py
+```
+
+K-line viewer 能力：
+
+- 动态读取缓存 bars；
+- 切换 source、symbol、frequency；
 - 搜索代码和名称；
-- 按板块过滤；
-- 可交互缩放；
+- 按市场/板块过滤；
+- 保留 window size、overlap、older/newer/latest、jump-to-time 和 slider 交互；
 - 使用交易日类别轴，去掉周末/节假日空隙；
 - 图例不遮挡标题；
 - 价格纵轴保留 2 位小数。
+
+静态 K 线 HTML 仍可通过 `backtest chart viewer` 生成，但现在主要作为调试或快照工具。
 
 ## 十大买讯能力
 
@@ -678,7 +811,37 @@ hold_*/buy_signal_*/*/positions.parquet
 30000 行日 K
 ```
 
-查看可视化结果：
+新 runtime 聚合结果：
+
+```text
+runs/ten_buy_signals/new_runtime_native_20260510/
+```
+
+核心文件：
+
+```text
+summary.csv
+summary.json
+orders.csv
+trades.csv
+equity_curve.csv
+signals.csv
+targets.csv
+failures.json
+```
+
+查看动态可视化结果：
+
+```bash
+backtest chart serve-workbench \
+  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --a-share-bars-root data/bars \
+  --bitget-bars-root data/crypto/bitget/bars \
+  --host 127.0.0.1 \
+  --port 8767
+```
+
+旧静态 dashboard：
 
 ```text
 runs/ten_buy_signals/board_sample_20_each_300d/summary_dashboard.html
@@ -746,9 +909,11 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 
 - 新增数据源：实现 `DataProvider.fetch_bars()`，不要把数据源逻辑写进 broker、metrics、reports。
 - 新增缓存行为：改 `ParquetBarStore`、`DataCatalog` 或 `DataSyncService`。
-- 新增信号格式：写新的 provider，但输出仍必须是 `SignalFrame`。
-- 新增策略：放到 `strategies/`，通过 Python signal provider 接入。
-- 新增 A 股回测撮合行为：改 `backtest/broker/`，补 broker 执行测试。
+- 新增 legacy 信号格式：写新的 provider，但输出仍必须是 `SignalFrame`。
+- 新增新架构策略：优先实现 `SignalGenerator`，输出 `SignalScoreFrame`，再通过 `PortfolioAllocator` 得到目标仓位。
+- 新增 legacy 策略：放到 `strategies/`，通过 Python signal provider 接入，必要时用 `LegacyStrategyPlanner` 适配到新 runtime。
+- 新增 legacy A 股回测撮合行为：改 `backtest/broker/`，补 broker 执行测试。
+- 新增新架构回测执行行为：改 `backtest/runtime/`，补 `LegacyBrokerExecutionBackend` 与 `NativeSimulationBackend` 的对照测试。
 - 新增通用交易规划行为：改 `backtest/planning/`，补 `OrderIntent` 生成测试。
 - 新增账户和仓位状态：改 `backtest/portfolio/`，保持 `account_id` 显式传递。
 - 新增订单持久化或执行回报记录：改 `backtest/execution/`，保持 `(account_id, client_order_id)` 隔离。
@@ -764,7 +929,9 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - 保留验证层：配置模型、frame validators、symbol normalization、signal validation、report run ID validation 都是刻意设计。
 - 读取和写入行情统一走 `ParquetBarStore`。
 - 覆盖率和缓存库存统一走 `DataCatalog`，不要只从目录名推断。
-- 策略代码保持在核心引擎外，通过 `FileSignalProvider` 或 `PythonSignalProvider` 接入。
+- 策略代码保持在核心引擎外。legacy 路径通过 `FileSignalProvider` 或
+  `PythonSignalProvider` 接入；新路径通过 `SignalGenerator` 和
+  `StrategyPlanner` 接入。
 - Broker 假设放在 broker/cost/slippage 层，不要塞进 signals 或 metrics。
 - 指标不要去抓原始数据，也不要推断缓存路径，只消费回测结果上下文。
 - dashboard 和 GUI 读取结构化产物，不要 scrape `report.html`。
@@ -782,14 +949,15 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 ## 当前已知限制
 
 - `AkShareProvider` 只支持日线。
-- `BrokerEngine` 只支持 `next_open`。
+- legacy `BrokerEngine` 只支持 `next_open`。
+- `NativeSimulationBackend` 当前也按 A 股 `next_open` 语义实现，用于和 legacy backend 做 parity。
 - CLI run 的缓存行情加载还没接好。
 - 报告 HTML 总是写出，`report.html` 和 `report.charts` 开关还不完整。
 - 十大买讯部分条件是日线近似，尚无分钟级或事件数据。
 - 买讯 09 缺少真实板块成分数据。
 - 本轮 30 case 是 100 支随机样本和 300 日窗口的探索结果，不是全市场最终结论。
-- 通用交易架构还停在合同、状态、规划器和 ledger 第一阶段，没有真实 API 适配器。
-- 尚未实现 `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`、实盘 runner、守护进程或 live CLI。
+- 通用交易架构已经有策略规划层和回测 runtime 双后端，但没有真实 API 适配器。
+- 尚未实现 live `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`、实盘 runner、守护进程或 live CLI。
 - 多账户目前是模型和 ledger 层预留口子，还没有账户调度、跨账户汇总、权限隔离或账户级风控。
 - `CCXT` 是下一阶段优先方向，但当前代码尚未引入 `ccxt` 依赖，也没有任何交易所凭证管理。
 

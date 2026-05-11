@@ -1,7 +1,8 @@
 # Signal Integration
 
-Signals can come from CSV/Parquet files or from a Python strategy file. Both
-paths must produce the same validated `SignalFrame`:
+This document describes the legacy signal-provider path used by
+`BacktestEngine`. Signals can come from CSV/Parquet files or from a Python
+strategy file. Both paths must produce the same validated `SignalFrame`:
 
 ```text
 date, symbol, target_weight
@@ -75,9 +76,28 @@ params
 
 `start_date` and `end_date` are ISO strings. `bars` is a validated `BarFrame`.
 
+## New Strategy Planning Path
+
+New strategy work should prefer the strategy-planning contracts:
+
+```text
+SignalGenerator -> SignalScoreFrame
+PortfolioAllocator -> TargetPortfolioFrame
+StrategyPlanner -> StrategyPlan
+BacktestRunner -> ExecutionBackend
+```
+
+Legacy `SignalFrame` data can still enter that path through
+`LegacyStrategyPlanner`, which converts target weights to
+`TargetPortfolioFrame` and derives a minimal `SignalScoreFrame`. That adapter is
+for compatibility; it does not turn legacy signal providers into full
+signal-scoring implementations.
+
 ## Rules For Strategy Authors
 
-- Return target portfolio weights, not orders.
+- In the legacy provider path, return target portfolio weights, not orders.
+- In the new planning path, implement `SignalGenerator` for scores/ranks/states
+  and let `PortfolioAllocator` produce target weights.
 - Keep total target weight per date at or below `1.0`.
 - Use normalized symbols or values accepted by `normalize_symbol()`.
 - Keep strategy code outside `backtest/`; load it through config.

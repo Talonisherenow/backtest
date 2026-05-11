@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from backtest.charts.kline_viewer import build_kline_payload, write_kline_viewer
+from backtest.charts.kline_viewer import build_kline_payload, render_kline_viewer_html, write_kline_viewer
 from backtest.data.store import ParquetBarStore
 
 
@@ -87,3 +87,19 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "title: {" not in html
     assert 'yanchor: "bottom"' in html
     assert 'tickformat: ".2f"' in html
+
+
+def test_render_kline_viewer_supports_workbench_home_link():
+    html = render_kline_viewer_html({"mode": "dynamic", "links": {"workbench_home": "/"}})
+
+    assert 'id="workbenchHomeLink"' in html
+    assert "Workbench Home" in html
+    assert "workbenchHomeHref" in html
+    assert 'class="header-actions"' in html
+    assert 'class="home-link" id="workbenchHomeLink"' in html
+    assert 'class="data-status-button" id="dataStatusButton"' in html
+    assert 'id="dataStatusStripMeta"' in html
+    assert 'id="frequencyButtons" aria-label="Frequency"></div>' in html
+    assert 'class="toolbar-button data-status-control" id="dataStatusButton"' not in html
+    assert 'class="status-action"' not in html
+    assert 'id="dataStatusButtonMeta"' not in html

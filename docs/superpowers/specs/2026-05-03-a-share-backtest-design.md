@@ -1,8 +1,13 @@
 # A Share Backtest System Design
 
 Date: 2026-05-03
-Status: Draft for user review
+Status: Historical MVP design; kept as legacy `BacktestEngine -> SignalProvider -> BrokerEngine` background
 Workspace: `/Users/talon/code/backtest`
+
+Note: this document describes the earliest A-share MVP. The current target
+architecture now adds `SignalGenerator -> PortfolioAllocator ->
+StrategyPlanner` and `BacktestRunner -> ExecutionBackend`. Treat the
+`SignalProvider -> Broker` flow below as the legacy backtest path.
 
 ## 1. Purpose
 

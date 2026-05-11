@@ -2,9 +2,19 @@
 
 这份文档给未来新开的对话使用。它总结本轮对话中已经完成的事情、项目新增能力、关键文件位置，以及后续如何继续取数、看图、跑回测和分析结果。
 
+注意：本文档记录的是 2026-05-05 的 legacy 十大买讯回测交接，当时主路径是
+`BacktestEngine -> PythonSignalProvider -> BrokerEngine`。当前目标架构已补充
+`SignalGenerator -> PortfolioAllocator -> StrategyPlanner` 和
+`BacktestRunner -> ExecutionBackend`；十大买讯后续可以先通过
+`LegacyStrategyPlanner` 适配进新 runtime，再逐步改写成原生 `SignalGenerator`。
+
+2026-05-11 更新：当前最新分支交接以
+`docs/2026-05-11-strategy-planning-architecture-handoff.md` 为准。本文档仍保留
+十大买讯原始 legacy 跑法、样本数据和旧结果位置，便于对照迁移。
+
 ## 当前分支状态
 
-当前工作发生在 `feat/a-share-backtest-mvp` 分支。和这轮工作直接相关的提交顺序如下：
+本节记录的是当时 `feat/a-share-backtest-mvp` 分支上的历史状态。和那轮工作直接相关的提交顺序如下：
 
 ```text
 bed842d feat: add fixed holding exits for buy signals
@@ -13,7 +23,7 @@ be19a89 feat: add all A-share universe sampling
 b6c701c feat: add ten buy signal backtest results
 ```
 
-当前分支相对远端已经包含这些能力，但如果新会话要推送或继续提交，先运行：
+如果新会话要继续处理当前策略架构分支，先运行：
 
 ```bash
 git status --short --branch

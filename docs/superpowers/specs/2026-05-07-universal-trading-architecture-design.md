@@ -1,9 +1,13 @@
 # 通用标的回测与交易架构设计
 
 日期：2026-05-07
-状态：等待用户审阅
+状态：历史设计，已被 2026-05-10 策略规划和 runtime 设计细化
 分支：`feat/universal-trading-architecture`
 工作目录：`/Users/Tyrone.Shi/code-private/backtest`
+
+注意：本文档保留 2026-05-07 的阶段性设计背景。当前命名以
+`SignalGenerator -> PortfolioAllocator -> StrategyPlanner` 和
+`BacktestRunner -> ExecutionBackend` 为准；本文中的策略阶段名称已按当前命名更新。
 
 ## 1. 背景
 
@@ -43,7 +47,7 @@
 
 - `Instrument`
 - `MarketDataProvider`
-- `StrategyRunner`
+- `StrategyPlanner`
 - `TargetPortfolio`
 - `OrderPlanner`
 - `OrderIntent`
@@ -62,7 +66,7 @@
 
 ```text
 MarketDataProvider
-  -> StrategyRunner
+  -> StrategyPlanner
   -> TargetPortfolio / OrderIntent
   -> RiskGate
   -> OrderLedger
@@ -78,7 +82,7 @@ MarketDataProvider
 
 ```text
 HistoricalMarketDataProvider
-  -> StrategyRunner
+  -> StrategyPlanner
   -> TargetPortfolio
   -> OrderPlanner
   -> RiskGate
@@ -93,7 +97,7 @@ HistoricalMarketDataProvider
 
 ```text
 RealtimeMarketDataProvider
-  -> StrategyRunner
+  -> StrategyPlanner
   -> TargetPortfolio 或 OrderIntent
   -> OrderPlanner
   -> RiskGate
@@ -152,9 +156,9 @@ BTC-USDT.BINANCE      CRYPTO_SPOT  BINANCE   USDT
 
 现有 `DataProvider.fetch_bars()` 可以继续作为历史行情接口。后续应补充 `MarketSnapshot` 和 `TradingRule` 的读取接口。
 
-### 6.4 StrategyRunner
+### 6.4 StrategyPlanner
 
-`StrategyRunner` 是策略运行的统一入口。策略不应该知道自己运行在回测还是实盘。
+`StrategyPlanner` 是策略运行的统一入口。策略不应该知道自己运行在回测还是实盘。
 
 输入：
 
