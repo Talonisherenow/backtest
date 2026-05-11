@@ -1,5 +1,10 @@
 # A Share Backtest MVP Implementation Plan
 
+> Historical note: this 2026-05-03 plan is the original A-share MVP plan. Its
+> `config -> signal loading -> broker execution` flow is the legacy path. The
+> current target architecture is documented in the 2026-05-10 strategy-planning
+> and runtime dual-backend specs.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the first working A share backtesting MVP as a Python package plus CLI, with pluggable data ingestion, Parquet cache, SQLite data catalog/task tracking, normalized signals, A share execution constraints, extensible metrics, reports, and durable docs.

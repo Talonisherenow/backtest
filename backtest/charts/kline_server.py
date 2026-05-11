@@ -6,13 +6,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from backtest.charts.kline_service import KlineCacheService
+from backtest.charts.kline_service import KlineCacheService, KlineSource
 from backtest.charts.kline_viewer import render_kline_viewer_html
 
 
 def serve_kline_viewer(
     *,
-    bars_root: Path,
+    sources: list[KlineSource] | None = None,
+    bars_root: Path | str = Path("data/bars"),
     host: str = "127.0.0.1",
     port: int = 8765,
     adjust: str = "qfq",
@@ -23,7 +24,8 @@ def serve_kline_viewer(
     default_window_size: int = 5000,
 ) -> None:
     service = KlineCacheService(
-        bars_root=bars_root,
+        bars_root=Path(bars_root),
+        sources=sources,
         adjust=adjust,
         universe_path=universe_path,
         source_roots=source_roots,
@@ -40,11 +42,11 @@ def serve_kline_viewer(
     class KlineViewerHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 - stdlib hook
             parsed = urlparse(self.path)
-            if parsed.path in {"/", "/crypto_kline_viewer.html", "/kline_viewer.html"}:
+            if parsed.path in {"/", "/kline", "/crypto_kline_viewer.html", "/kline_viewer.html"}:
                 self._send_bytes(html, "text/html; charset=utf-8")
                 return
             if parsed.path == "/api/manifest":
-                self._send_json(service.manifest())
+                self._send_json(service.manifest(default_window_size=default_window_size))
                 return
             if parsed.path == "/api/bars":
                 self._handle_bars(parsed.query)
@@ -115,7 +117,7 @@ def serve_kline_viewer(
             return int(value) if value not in {None, ""} else None
 
     server = ThreadingHTTPServer((host, port), KlineViewerHandler)
-    print(f"Serving K-line viewer at http://{host}:{port}/crypto_kline_viewer.html")
+    print(f"Serving K-line viewer at http://{host}:{port}/kline")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

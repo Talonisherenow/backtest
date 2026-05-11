@@ -1,8 +1,13 @@
 # A 股回测系统设计
 
 日期：2026-05-03
-状态：等待用户审阅
+状态：历史 MVP 设计，保留为 legacy `BacktestEngine -> SignalProvider -> BrokerEngine` 背景
 工作目录：`/Users/talon/code/backtest`
+
+注意：本文档描述最早的 A 股 MVP。当前目标架构已经补充
+`SignalGenerator -> PortfolioAllocator -> StrategyPlanner` 和
+`BacktestRunner -> ExecutionBackend`。文中的 `SignalProvider -> Broker`
+流程应理解为 legacy 回测路径。
 
 ## 1. 目标
 

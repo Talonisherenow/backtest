@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -25,49 +26,85 @@ from backtest.charts.kline_viewer import (
 from backtest.core.symbols import normalize_symbol, safe_symbol_path
 
 
+@dataclass(frozen=True)
+class KlineSource:
+    source_id: str
+    source_label: str
+    bars_root: Path
+    adjust: str = "qfq"
+    universe_path: Path | None = None
+    frequencies: list[str] | None = None
+    symbols: list[str] | None = None
+
+
 class KlineCacheService:
     """Read-only access to cached K-line parquet files for the local viewer."""
 
     def __init__(
         self,
-        bars_root: Path,
+        bars_root: Path | None = None,
         *,
         adjust: str = "qfq",
         universe_path: Path | None = None,
+        sources: list[KlineSource] | None = None,
         source_roots: list[tuple[str, Path]] | None = None,
         frequencies: list[str] | None = None,
         symbols: list[str] | None = None,
         read_retries: int = 2,
         retry_delay_seconds: float = 0.05,
     ) -> None:
-        self.adjust = adjust
-        self.metadata = _read_universe_metadata(universe_path)
-        self.frequencies = _sort_frequencies(frequencies or [])
-        self.symbols = [normalize_symbol(symbol) for symbol in symbols] if symbols else None
         self.read_retries = max(0, read_retries)
         self.retry_delay_seconds = max(0.0, retry_delay_seconds)
+        if sources is None:
+            roots = source_roots or [("default", Path(bars_root or "data/bars"))]
+            sources = [
+                KlineSource(
+                    source_id=_normalize_source_id(source_id),
+                    source_label=_source_label(source_id),
+                    bars_root=Path(source_root),
+                    adjust=adjust,
+                    universe_path=universe_path,
+                    frequencies=frequencies,
+                    symbols=symbols,
+                )
+                for source_id, source_root in roots
+            ]
+        self.sources = sources
+        self._sources_by_id = {
+            _normalize_source_id(source.source_id): KlineSource(
+                source_id=_normalize_source_id(source.source_id),
+                source_label=source.source_label,
+                bars_root=Path(source.bars_root),
+                adjust=source.adjust,
+                universe_path=source.universe_path,
+                frequencies=_sort_frequencies(source.frequencies or []) or None,
+                symbols=[normalize_symbol(symbol) for symbol in source.symbols] if source.symbols else None,
+            )
+            for source in sources
+        }
+        self.sources = list(self._sources_by_id.values())
+        self._metadata = {
+            source.source_id: _read_universe_metadata(source.universe_path)
+            if source.universe_path is not None
+            else {}
+            for source in self.sources
+        }
 
-        roots = source_roots or [("default", bars_root)]
-        self.source_roots = [
-            (_normalize_source_id(source_id), Path(source_root))
-            for source_id, source_root in roots
-        ]
-        self._roots_by_id = dict(self.source_roots)
-
-    def manifest(self) -> dict[str, Any]:
+    def manifest(self, *, default_window_size: int = 5000) -> dict[str, Any]:
         sources = []
-        for source_id, root in self.source_roots:
-            frequencies = self._frequencies_for(root)
-            requested_symbols = self.symbols or _discover_symbols(root, frequencies, self.adjust)
-            symbols = self._manifest_symbols(root, requested_symbols, frequencies)
+        for source in self.sources:
+            frequencies = self._frequencies_for(source)
+            requested_symbols = source.symbols or _discover_symbols(source.bars_root, frequencies, source.adjust)
+            symbols = self._manifest_symbols(source, requested_symbols, frequencies)
             if not symbols:
                 continue
             sources.append(
                 {
-                    "source_id": source_id,
-                    "source_label": _source_label(source_id),
+                    "source_id": source.source_id,
+                    "source_label": source.source_label,
                     "frequency": frequencies[0] if len(frequencies) == 1 else "multi",
                     "frequencies": frequencies,
+                    "adjust": source.adjust,
                     "symbols": symbols,
                 }
             )
@@ -78,10 +115,12 @@ class KlineCacheService:
             "source_id": primary["source_id"] if primary else "default",
             "source_label": primary["source_label"] if primary else "Cache",
             "frequency": primary["frequency"] if primary else "multi",
+            "default_window_size": default_window_size,
+            "default_window_overlap": 0.8,
             "frequencies": _sort_frequencies(
                 [frequency for source in sources for frequency in source["frequencies"]]
             ),
-            "adjust": self.adjust,
+            "adjust": primary["adjust"] if primary else "qfq",
             "symbols": primary["symbols"] if primary else [],
             "sources": sources,
         }
@@ -100,14 +139,13 @@ class KlineCacheService:
     ) -> dict[str, Any]:
         if limit < 0:
             raise ValueError("limit must be non-negative")
-        source_id = _normalize_source_id(source_id or self.source_roots[0][0])
-        root = self._roots_by_id.get(source_id)
-        if root is None:
+        source = self._source(source_id)
+        if source is None:
             raise ValueError(f"Unknown source: {source_id}")
 
         normalized_symbol = normalize_symbol(symbol)
-        selected_adjust = adjust or self.adjust
-        frame, paths = self._read_frame(root, normalized_symbol, frequency, selected_adjust)
+        selected_adjust = adjust or source.adjust
+        frame, paths = self._read_frame(source.bars_root, normalized_symbol, frequency, selected_adjust)
         if frame.empty:
             raise ValueError(f"No cached bars for {normalized_symbol} {frequency} {selected_adjust}")
 
@@ -119,8 +157,8 @@ class KlineCacheService:
         window = frame.iloc[selected_offset : selected_offset + size]
 
         return {
-            "source_id": source_id,
-            "source_label": _source_label(source_id),
+            "source_id": source.source_id,
+            "source_label": source.source_label,
             "symbol": normalized_symbol,
             "frequency": frequency,
             "adjust": selected_adjust,
@@ -142,14 +180,21 @@ class KlineCacheService:
             "bars": [_bar_to_json(row, frequency) for _, row in window[BAR_COLUMNS].iterrows()],
         }
 
-    def _frequencies_for(self, root: Path) -> list[str]:
-        if self.frequencies:
-            return self.frequencies
-        return _discover_frequencies(root, self.adjust)
+    def _source(self, source_id: str | None) -> KlineSource:
+        normalized = _normalize_source_id(source_id or self.sources[0].source_id)
+        source = self._sources_by_id.get(normalized)
+        if source is None:
+            raise ValueError(f"Unknown source: {source_id}")
+        return source
+
+    def _frequencies_for(self, source: KlineSource) -> list[str]:
+        if source.frequencies:
+            return source.frequencies
+        return _discover_frequencies(source.bars_root, source.adjust)
 
     def _manifest_symbols(
         self,
-        root: Path,
+        source: KlineSource,
         requested_symbols: list[str],
         frequencies: list[str],
     ) -> list[dict[str, Any]]:
@@ -157,12 +202,12 @@ class KlineCacheService:
         for symbol in requested_symbols:
             series = []
             for frequency in frequencies:
-                metadata = self._series_metadata(root, symbol, frequency, self.adjust)
+                metadata = self._series_metadata(source.bars_root, symbol, frequency, source.adjust)
                 if metadata is not None:
                     series.append(metadata)
             if not series:
                 continue
-            details = self.metadata.get(symbol, {})
+            details = self._metadata.get(source.source_id, {}).get(symbol, {})
             items.append(
                 {
                     "symbol": symbol,

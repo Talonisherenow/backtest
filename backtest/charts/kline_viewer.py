@@ -95,7 +95,14 @@ def write_kline_viewer(payload: dict[str, Any], output_path: Path) -> None:
 def render_kline_viewer_html(payload: dict[str, Any]) -> str:
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     safe_payload = payload_json.replace("</", "<\\/")
-    return HTML_TEMPLATE.replace("__KLINE_PAYLOAD__", safe_payload)
+    return _viewer_template().replace("__KLINE_PAYLOAD__", safe_payload)
+
+
+def _viewer_template() -> str:
+    template_path = Path(__file__).with_name("kline_viewer_template.html")
+    if template_path.exists():
+        return template_path.read_text(encoding="utf-8")
+    return HTML_TEMPLATE
 
 
 def _resolve_frequencies(

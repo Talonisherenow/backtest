@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from backtest.charts.kline_service import KlineCacheService
+from backtest.charts.kline_service import KlineCacheService, KlineSource
 from backtest.data.store import ParquetBarStore
 
 
@@ -182,3 +182,60 @@ def test_kline_cache_service_supports_multiple_source_roots(tmp_path: Path):
     assert result["source_id"] == "binance"
     assert result["symbol"] == "ETH/USDT"
     assert [bar["date"] for bar in result["bars"]] == ["2025-01-09", "2025-01-10"]
+
+
+def test_kline_cache_service_exposes_per_source_adjust_and_universe_metadata(tmp_path: Path) -> None:
+    crypto_root = tmp_path / "crypto" / "bitget" / "bars"
+    a_share_root = tmp_path / "bars"
+    universe_path = tmp_path / "a_share_all.csv"
+    universe_path.write_text(
+        "symbol,code,name,exchange,board,list_date,industry\n"
+        "000001.SZ,000001,平安银行,SZ,主板,1991-04-03,J 金融业\n",
+        encoding="utf-8",
+    )
+    _write_cached_bars(
+        crypto_root,
+        "BTC/USDT",
+        frequency="1h",
+        adjust="none",
+        dates=["2025-01-02 09:00:00", "2025-01-02 10:00:00", "2025-01-02 11:00:00"],
+    )
+    _write_cached_bars(
+        a_share_root,
+        "000001.SZ",
+        frequency="1d",
+        adjust="qfq",
+        dates=["2025-01-02", "2025-01-03", "2025-01-06"],
+    )
+
+    service = KlineCacheService(
+        sources=[
+            KlineSource("bitget", "Bitget", crypto_root, adjust="none"),
+            KlineSource("a_share", "A-share", a_share_root, adjust="qfq", universe_path=universe_path),
+        ]
+    )
+
+    manifest = service.manifest(default_window_size=300)
+
+    assert manifest["default_window_size"] == 300
+    assert [source["source_id"] for source in manifest["sources"]] == ["bitget", "a_share"]
+    assert manifest["sources"][0]["adjust"] == "none"
+    assert manifest["sources"][1]["adjust"] == "qfq"
+    a_share_symbol = manifest["sources"][1]["symbols"][0]
+    assert a_share_symbol["symbol"] == "000001.SZ"
+    assert a_share_symbol["name"] == "平安银行"
+    assert a_share_symbol["exchange"] == "SZ"
+    assert a_share_symbol["board"] == "主板"
+
+    crypto_window = service.bars(
+        source_id="bitget",
+        symbol="BTC/USDT",
+        frequency="1h",
+        limit=2,
+        anchor="latest",
+    )
+
+    assert [bar["date"] for bar in crypto_window["bars"]] == [
+        "2025-01-02T10:00:00",
+        "2025-01-02T11:00:00",
+    ]

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from backtest.charts.kline_viewer import build_kline_payload, write_kline_viewer
+from backtest.charts.kline_viewer import build_kline_payload, render_kline_viewer_html, write_kline_viewer
 from backtest.data.store import ParquetBarStore
 
 
@@ -287,10 +287,10 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "updateWindowControls" in html
     assert "flex-wrap: wrap" in html
     assert 'class="topbar-header"' in html
-    assert 'class="status-action" id="dataStatusButton"' in html
-    assert 'id="dataStatusButtonMeta"' in html
+    assert 'class="data-status-button" id="dataStatusButton"' in html
+    assert 'id="dataStatusStripMeta"' in html
     assert html.index('id="dataStatusButton"') < html.index('class="controls"')
-    assert "dataStatusButtonMeta.textContent" in html
+    assert "dataStatusStripMeta.textContent" in html
     assert 'class="time-window" id="timeWindowBar"' in html
     assert 'class="position-meta" id="windowMeta"' in html
     assert 'class="position-control"' in html
@@ -340,10 +340,6 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert "globalWindowOffset" in html
     assert "targetWindowOffset" in html
     assert "targetBufferOffset" in html
-    assert "localWindowStartForTime" in html
-    assert "syncJumpInputToWindow" in html
-    assert "currentJumpStart" in html
-    assert "loadWindowForCurrentStart" in html
     assert "windowOverlapRatio" in html
     assert "pageStepSize" in html
     assert "current - step" in html
@@ -353,3 +349,19 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert "navigateToGlobalOffset" in html
     assert "windowSlider.max = String(globalMaxStart)" in html
     assert "Loaded" not in html
+
+
+def test_render_kline_viewer_supports_workbench_home_link():
+    html = render_kline_viewer_html({"mode": "dynamic", "links": {"workbench_home": "/"}})
+
+    assert 'id="workbenchHomeLink"' in html
+    assert "Workbench Home" in html
+    assert "workbenchHomeHref" in html
+    assert 'class="header-actions"' in html
+    assert 'class="home-link" id="workbenchHomeLink"' in html
+    assert 'class="data-status-button" id="dataStatusButton"' in html
+    assert 'id="dataStatusStripMeta"' in html
+    assert 'id="frequencyButtons" aria-label="Frequency"></div>' in html
+    assert 'class="toolbar-button data-status-control" id="dataStatusButton"' not in html
+    assert 'class="status-action"' not in html
+    assert 'id="dataStatusButtonMeta"' not in html

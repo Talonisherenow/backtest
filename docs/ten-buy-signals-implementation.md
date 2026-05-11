@@ -8,7 +8,10 @@
 date, symbol, target_weight
 ```
 
-这些信号由 `PythonSignalProvider` 加载，之后交给回测引擎按配置执行。
+这些信号由 legacy `PythonSignalProvider` 加载，之后可以继续交给
+`BacktestEngine -> BrokerEngine` 执行，也可以通过 `LegacyStrategyPlanner`
+适配进新的 `BacktestRunner -> ExecutionBackend` 路径。后续如果重写成原生新架构实现，应优先表达为
+`SignalGenerator -> SignalScoreFrame`，再由 `PortfolioAllocator` 生成目标仓位。
 
 ## 文件关系
 
@@ -79,7 +82,7 @@ signals:
 
 - 单日单票默认上限是 `BASE_TARGET_WEIGHT = 0.20`；
 - 如果同一天多只股票触发，会按触发数量平均分配，并限制单票不超过 20%；
-- 返回结果满足项目 `SignalFrame` 校验要求。
+- 返回结果满足 legacy `SignalFrame` 校验要求。
 
 基础函数只生成买入目标权重；固定持有期函数会额外生成 `target_weight = 0` 的退出信号。
 
@@ -104,7 +107,7 @@ generate_buy_signal_10_hold_20
 下一交易日 B 实际买入
 持有 N 个交易日，B 算第 1 天
 第 N 个持有交易日 H 生成 target_weight = 0
-H 的下一交易日由 BrokerEngine 以 next_open 卖出
+H 的下一交易日在 legacy BrokerEngine 或 NativeSimulationBackend 中以 next_open 卖出
 ```
 
 如果同一只股票在尚未完成上一笔固定持有期退出前再次触发买讯，包装逻辑会忽略后续重叠入场，避免同一持仓周期被重复买入信号打乱。若信号靠近回测末尾，未来交易日不足以完成卖出执行，则该入场会被跳过。
@@ -129,7 +132,7 @@ volume_t >= 2 * MA5(volume, 不含当日)
 close_t < MA30(close, 含当日)
 ```
 
-触发后在当日生成买入信号。原始文档里的“收盘前 5 分钟”在当前项目里无法表达为分钟级成交，所以用日线信号日期表示，实际执行由回测配置的 `next_open` 处理。
+触发后在当日生成买入信号。原始文档里的“收盘前 5 分钟”在当前项目里无法表达为分钟级成交，所以用日线信号日期表示，实际执行由回测配置的 `next_open` 处理。新 runtime 下该语义由 `ExecutionBackend` 承接；legacy 路径下由 `BrokerEngine` 承接。
 
 ### 买讯二：股价连续上涨多日
 
@@ -386,7 +389,7 @@ stock_pool:
 2. 扫描 `configs/ten_buy_signals/buy_signal_*.yaml`，确认正好有 10 个 case，且每个 case 指向的策略函数真实存在。
 3. 验证 `hold_1`、`hold_5`、`hold_20` 会在预期交易日生成 `target_weight = 0`，并扫描 30 个固定持有期 case 是否指向真实函数。
 
-这些测试验证的是“公式到信号”的转换，不验证真实行情上的收益表现。
+这些测试验证的是“公式到 legacy `SignalFrame`”的转换，不验证真实行情上的收益表现，也不验证新架构里的 `SignalGenerator -> PortfolioAllocator` 拆分。
 
 ## 当前实现边界
 

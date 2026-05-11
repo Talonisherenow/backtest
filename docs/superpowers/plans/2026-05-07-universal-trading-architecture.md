@@ -1,5 +1,11 @@
 # Universal Trading Architecture Implementation Plan
 
+> Historical note: this 2026-05-07 plan introduced the universal trading
+> contracts. Current strategy/runtime naming is defined by the 2026-05-10
+> plans: `SignalGenerator -> PortfolioAllocator -> StrategyPlanner` and
+> `BacktestRunner -> ExecutionBackend`. Strategy-stage naming below has been
+> updated to the current component name.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the first phase of the universal trading architecture while preserving all existing A-share backtest behavior.
@@ -1545,8 +1551,9 @@ not imply that a broker accepted or filled anything.
 
 ## OrderIntent
 
-`OrderIntent` is the internal order command created by a strategy or
-`OrderPlanner`.
+`OrderIntent` is the internal order command created after target weights are
+known. In the current 2026-05-10 strategy-planning path, it is created by
+`OrderPlanner`, not by `SignalGenerator` or `PortfolioAllocator`.
 
 Required fields:
 
@@ -1585,7 +1592,7 @@ The next architecture separates strategy decisions from execution facts:
 
 ```text
 MarketDataProvider
-  -> StrategyRunner
+  -> StrategyPlanner
   -> TargetPortfolio / OrderIntent
   -> RiskGate
   -> OrderLedger
