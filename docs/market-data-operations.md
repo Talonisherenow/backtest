@@ -260,6 +260,27 @@ uv run backtest chart viewer \
 
 静态 HTML 会把选中的 bars 嵌入文件。`--limit 0` 会嵌入全部数据，但文件会很大。
 
+## Remote LAN Data Source API
+
+在数据机器上启动 K-line 数据 API：
+
+```bash
+uv run backtest data-source serve --host 0.0.0.0 --port 8768
+```
+
+在本机启动 workbench，并让 K-line viewer 读取远端数据 API：
+
+```bash
+uv run backtest chart serve-workbench --data-api-base-url http://SERVER_IP:8768 --host 127.0.0.1 --port 8767
+```
+
+探测远端服务：
+
+```bash
+curl http://SERVER_IP:8768/api/health
+curl http://SERVER_IP:8768/api/kline/manifest
+```
+
 ## Scheduling
 
 定时任务建议直接调用 `sync-job`。例如 cron：

@@ -192,6 +192,11 @@ def serve_workbench(
     host: str = typer.Option("127.0.0.1", "--host", help="Bind host"),
     port: int = typer.Option(8767, "--port", min=1, max=65535, help="Bind port"),
     window_size: int = typer.Option(300, "--window-size", min=1, help="Initial visible K-line window"),
+    data_api_base_url: str | None = typer.Option(
+        None,
+        "--data-api-base-url",
+        help="Optional remote base URL for the K-line data API",
+    ),
 ) -> None:
     """Serve strategy results and K-line viewer from one local process."""
     try:
@@ -217,6 +222,7 @@ def serve_workbench(
         host=host,
         port=port,
         default_window_size=window_size,
+        data_api_base_url=data_api_base_url,
     )
 
 

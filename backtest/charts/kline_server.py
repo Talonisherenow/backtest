@@ -45,10 +45,10 @@ def serve_kline_viewer(
             if parsed.path in {"/", "/kline", "/crypto_kline_viewer.html", "/kline_viewer.html"}:
                 self._send_bytes(html, "text/html; charset=utf-8")
                 return
-            if parsed.path == "/api/manifest":
+            if parsed.path in {"/api/manifest", "/api/kline/manifest"}:
                 self._send_json(service.manifest(default_window_size=default_window_size))
                 return
-            if parsed.path == "/api/bars":
+            if parsed.path in {"/api/bars", "/api/kline/bars"}:
                 self._handle_bars(parsed.query)
                 return
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")

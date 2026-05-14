@@ -846,6 +846,8 @@ def test_chart_serve_workbench_cli_starts_combined_server(tmp_path: Path, monkey
             "9879",
             "--window-size",
             "250",
+            "--data-api-base-url",
+            "http://192.168.1.10:8768",
         ],
     )
 
@@ -855,11 +857,60 @@ def test_chart_serve_workbench_cli_starts_combined_server(tmp_path: Path, monkey
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 9879
     assert captured["default_window_size"] == 250
+    assert captured["data_api_base_url"] == "http://192.168.1.10:8768"
     assert [source.source_id for source in captured["kline_sources"]] == ["bitget", "a_share"]
     assert captured["kline_sources"][0].bars_root == bitget_root
     assert captured["kline_sources"][0].adjust == "none"
     assert captured["kline_sources"][1].bars_root == a_share_root
     assert captured["kline_sources"][1].adjust == "qfq"
+
+
+def test_data_source_serve_cli_passes_server_options(tmp_path: Path, monkeypatch):
+    from backtest.cli import data_source as data_source_cli
+
+    bitget_root = tmp_path / "crypto" / "bitget" / "bars"
+    a_share_root = tmp_path / "bars"
+    universe_path = tmp_path / "a_share_all.csv"
+    bitget_root.mkdir(parents=True)
+    a_share_root.mkdir()
+    universe_path.write_text("symbol,code,name\n000001.SZ,000001,平安银行\n", encoding="utf-8")
+    captured = {}
+
+    def fake_serve_data_source_api(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(data_source_cli, "serve_data_source_api", fake_serve_data_source_api)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "data-source",
+            "serve",
+            "--bitget-bars-root",
+            str(bitget_root),
+            "--bitget-metadata",
+            str(tmp_path / "crypto" / "bitget" / "metadata.sqlite"),
+            "--a-share-bars-root",
+            str(a_share_root),
+            "--a-share-metadata",
+            str(tmp_path / "metadata.sqlite"),
+            "--a-share-universe",
+            str(universe_path),
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8768",
+            "--window-size",
+            "250",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Starting data source API" in result.output
+    assert captured["host"] == "0.0.0.0"
+    assert captured["port"] == 8768
+    assert captured["api"].config.default_window_size == 250
+    assert [source.source_id for source in captured["api"].config.sources] == ["bitget", "a_share"]
 
 
 def test_crawl_task_manager_mark_retrying_accepts_integer_task_id():

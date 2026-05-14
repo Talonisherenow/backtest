@@ -22,16 +22,16 @@ def serve_chart_workbench(
     host: str = "127.0.0.1",
     port: int = 8767,
     default_window_size: int = 300,
+    data_api_base_url: str | None = None,
 ) -> None:
     kline_service = KlineCacheService(sources=kline_sources)
     strategy_service = StrategyResultsService(results_roots=results_roots, bars_root=bars_root)
     index_html = render_workbench_index_html().encode("utf-8")
     kline_html = render_kline_viewer_html(
-        {
-            "mode": "dynamic",
-            "default_window_size": default_window_size,
-            "links": {"workbench_home": "/"},
-        }
+        build_kline_shell_payload(
+            default_window_size=default_window_size,
+            data_api_base_url=data_api_base_url,
+        )
     ).encode("utf-8")
     strategy_html = render_strategy_results_catalog_html(
         {"mode": "dynamic", "title": "Strategy Results", "links": {"workbench_home": "/"}}
@@ -47,10 +47,10 @@ def serve_chart_workbench(
             if parsed.path in {"/kline", "/kline_viewer.html", "/crypto_kline_viewer.html"}:
                 self._send_bytes(kline_html, "text/html; charset=utf-8")
                 return
-            if parsed.path == "/api/manifest":
+            if parsed.path in {"/api/manifest", "/api/kline/manifest"}:
                 self._send_json(kline_service.manifest(default_window_size=default_window_size))
                 return
-            if parsed.path == "/api/bars":
+            if parsed.path in {"/api/bars", "/api/kline/bars"}:
                 self._handle_kline_bars(params)
                 return
             if parsed.path == "/strategy-results":
@@ -186,6 +186,20 @@ def serve_chart_workbench(
         pass
     finally:
         server.server_close()
+
+
+def build_kline_shell_payload(
+    default_window_size: int,
+    data_api_base_url: str | None = None,
+) -> dict:
+    payload = {
+        "mode": "dynamic",
+        "default_window_size": default_window_size,
+        "links": {"workbench_home": "/"},
+    }
+    if data_api_base_url:
+        payload["data_api_base_url"] = data_api_base_url.rstrip("/")
+    return payload
 
 
 def render_workbench_index_html() -> str:
