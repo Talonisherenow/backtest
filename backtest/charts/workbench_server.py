@@ -33,9 +33,10 @@ def serve_chart_workbench(
             data_api_base_url=data_api_base_url,
         )
     ).encode("utf-8")
-    strategy_html = render_strategy_results_catalog_html(
-        {"mode": "dynamic", "title": "Strategy Results", "links": {"workbench_home": "/"}}
-    ).encode("utf-8")
+    strategy_payload = {"mode": "dynamic", "title": "Strategy Results", "links": {"workbench_home": "/"}}
+    if data_api_base_url:
+        strategy_payload["data_api_base_url"] = data_api_base_url.rstrip("/")
+    strategy_html = render_strategy_results_catalog_html(strategy_payload).encode("utf-8")
 
     class WorkbenchHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:

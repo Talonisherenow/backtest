@@ -26,6 +26,55 @@ def test_build_kline_shell_payload_includes_remote_data_api_base_url():
     }
 
 
+def test_workbench_strategy_shell_includes_remote_data_api_base_url(monkeypatch):
+    captured = {}
+
+    class FakeKlineService:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeStrategyService:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeServer:
+        def __init__(self, address, handler_class):
+            pass
+
+        def serve_forever(self):
+            return None
+
+        def server_close(self):
+            return None
+
+    def fake_render_strategy_results_catalog_html(payload):
+        captured["strategy_payload"] = payload
+        return "strategy shell"
+
+    monkeypatch.setattr(workbench_server, "KlineCacheService", FakeKlineService)
+    monkeypatch.setattr(workbench_server, "StrategyResultsService", FakeStrategyService)
+    monkeypatch.setattr(workbench_server, "ThreadingHTTPServer", FakeServer)
+    monkeypatch.setattr(
+        workbench_server,
+        "render_strategy_results_catalog_html",
+        fake_render_strategy_results_catalog_html,
+    )
+
+    workbench_server.serve_chart_workbench(
+        kline_sources=[],
+        results_roots=[],
+        bars_root=".",
+        data_api_base_url="http://data-host:8768/",
+    )
+
+    assert captured["strategy_payload"] == {
+        "mode": "dynamic",
+        "title": "Strategy Results",
+        "links": {"workbench_home": "/"},
+        "data_api_base_url": "http://data-host:8768",
+    }
+
+
 def test_workbench_server_supports_legacy_and_kline_api_manifest_routes(monkeypatch):
     captured = {}
 

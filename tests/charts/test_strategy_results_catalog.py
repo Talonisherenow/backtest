@@ -140,7 +140,12 @@ def test_render_strategy_results_catalog_dynamic_shell_fetches_api():
     from backtest.charts.strategy_results_catalog import render_strategy_results_catalog_html
 
     html = render_strategy_results_catalog_html(
-        {"mode": "dynamic", "title": "Strategy Results", "links": {"workbench_home": "/"}}
+        {
+            "mode": "dynamic",
+            "title": "Strategy Results",
+            "links": {"workbench_home": "/"},
+            "data_api_base_url": "http://127.0.0.1:8768/",
+        }
     )
 
     assert "strategy-results-catalog-payload" in html
@@ -149,3 +154,12 @@ def test_render_strategy_results_catalog_dynamic_shell_fetches_api():
     assert 'id="workbenchHomeLink"' in html
     assert "Workbench Home" in html
     assert "workbenchHomeHref" in html
+    assert '"data_api_base_url":"http://127.0.0.1:8768/"' in html
+    assert 'id="dataSourceMonitor"' in html
+    assert 'id="dataSourceDrawer"' in html
+    assert "function dataApiUrl(path)" in html
+    assert 'fetch(dataApiUrl("/api/data-sources")' in html
+    assert 'fetch(dataApiUrl(`/api/data/tasks?source_id=${encodeURIComponent(source.source_id)}`)' in html
+    assert 'fetch(dataApiUrl("/api/data/jobs")' in html
+    assert "DATA_MONITOR_REFRESH_MS = 10000" in html
+    assert 'document.addEventListener("visibilitychange", refreshDataMonitorWhenVisible)' in html
