@@ -12,6 +12,25 @@ def test_render_workbench_index_html_links_both_chart_apps():
     assert "K-line Viewer" in html
 
 
+def test_render_workbench_index_html_hosts_readonly_data_source_monitor():
+    html = render_workbench_index_html(data_api_base_url="http://127.0.0.1:8768/")
+
+    assert "workbench-index-payload" in html
+    assert '"data_api_base_url":"http://127.0.0.1:8768"' in html
+    assert 'id="dataSourceMonitor"' in html
+    assert 'id="dataSourceDrawer"' in html
+    assert "Read-only crawl task monitor" in html
+    assert "function dataApiUrl(path)" in html
+    assert 'fetch(dataApiUrl("/api/data-sources")' in html
+    assert 'fetch(dataApiUrl(`/api/data/tasks?source_id=${encodeURIComponent(source.source_id)}`)' in html
+    assert 'fetch(dataApiUrl("/api/data/jobs")' in html
+    assert "DATA_MONITOR_REFRESH_MS = 10000" in html
+    assert 'document.addEventListener("visibilitychange", refreshDataMonitorWhenVisible)' in html
+    assert "Submit" not in html
+    assert "Retry" not in html
+    assert "Cancel" not in html
+
+
 def test_build_kline_shell_payload_includes_remote_data_api_base_url():
     payload = build_kline_shell_payload(
         default_window_size=5000,
@@ -26,7 +45,7 @@ def test_build_kline_shell_payload_includes_remote_data_api_base_url():
     }
 
 
-def test_workbench_strategy_shell_includes_remote_data_api_base_url(monkeypatch):
+def test_workbench_home_receives_remote_data_api_base_url(monkeypatch):
     captured = {}
 
     class FakeKlineService:
@@ -51,9 +70,14 @@ def test_workbench_strategy_shell_includes_remote_data_api_base_url(monkeypatch)
         captured["strategy_payload"] = payload
         return "strategy shell"
 
+    def fake_render_workbench_index_html(*, data_api_base_url=None):
+        captured["home_data_api_base_url"] = data_api_base_url
+        return "home shell"
+
     monkeypatch.setattr(workbench_server, "KlineCacheService", FakeKlineService)
     monkeypatch.setattr(workbench_server, "StrategyResultsService", FakeStrategyService)
     monkeypatch.setattr(workbench_server, "ThreadingHTTPServer", FakeServer)
+    monkeypatch.setattr(workbench_server, "render_workbench_index_html", fake_render_workbench_index_html)
     monkeypatch.setattr(
         workbench_server,
         "render_strategy_results_catalog_html",
@@ -67,11 +91,11 @@ def test_workbench_strategy_shell_includes_remote_data_api_base_url(monkeypatch)
         data_api_base_url="http://data-host:8768/",
     )
 
+    assert captured["home_data_api_base_url"] == "http://data-host:8768"
     assert captured["strategy_payload"] == {
         "mode": "dynamic",
         "title": "Strategy Results",
         "links": {"workbench_home": "/"},
-        "data_api_base_url": "http://data-host:8768",
     }
 
 
