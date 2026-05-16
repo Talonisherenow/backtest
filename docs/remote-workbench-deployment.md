@@ -1,10 +1,10 @@
 # Remote Workbench Data Source Deployment
 
-这份文档记录“VPS + Nginx + frp + 家里服务器”的远程数据源部署方式。目标是：
+这份文档记录“VPS + Nginx + frp + 内网数据源机器”的远程数据源部署方式。目标是：
 
 - 公网只访问 VPS 的 HTTPS 入口。
-- 家里服务器不需要公网 IP，也不需要路由器端口转发。
-- K-line 数据、crawl task、inventory、job submission 都在家里服务器执行。
+- 内网数据源机器不需要公网 IP，也不需要路由器端口转发。
+- K-line 数据、crawl task、inventory、job submission 都在内网数据源机器执行。
 - 外面的 workbench 通过 `--data-api-base-url` 切到这台远程数据源。
 
 ## Topology
@@ -15,9 +15,9 @@
   -> VPS Nginx
   -> 127.0.0.1:18768 on VPS
   -> frps
-  -> frpc on home server
+  -> frpc on source machine
   -> 127.0.0.1:8768 backtest data-source API
-  -> 家里 parquet bars + sqlite metadata + crawl jobs
+  -> 源端 parquet bars + sqlite metadata + crawl jobs
 ```
 
 frp 负责内网穿透，Nginx 负责公网 HTTPS 入口。`backtest data-source serve`
@@ -36,9 +36,9 @@ openssl rand -hex 32
 
 不要把这两个 token 设成一样。
 
-## Home Server
+## Source Machine
 
-在家里服务器启动 data-source API。它只监听本机环回地址，让 frpc 访问即可：
+在内网数据源机器启动 data-source API。它只监听本机环回地址，让 frpc 访问即可：
 
 ```bash
 export BACKTEST_DATA_SOURCE_TOKEN="CHANGE_ME_BACKTEST_API_TOKEN"
@@ -114,7 +114,7 @@ VPS 防火墙只需要放行：
 
 不要放行 `18768/tcp`。
 
-## Home frpc
+## Source frpc
 
 样例配置在：
 
@@ -122,7 +122,7 @@ VPS 防火墙只需要放行：
 deploy/frp/frpc.backtest-data-source.example.toml
 ```
 
-复制到家里服务器：
+复制到内网数据源机器：
 
 ```bash
 sudo install -m 600 deploy/frp/frpc.backtest-data-source.example.toml /etc/frp/frpc.toml
@@ -205,7 +205,7 @@ API，workbench 建议在自己的电脑上启动。
 
 ## Submit Data Jobs Remotely
 
-远程提交 job 时，路径都是家里服务器上的路径，不是客户端机器上的路径：
+远程提交 job 时，路径都是内网数据源机器上的路径，不是客户端机器上的路径：
 
 ```bash
 curl -sS https://data.example.com/api/data/jobs \
@@ -258,4 +258,4 @@ curl -sS https://data.example.com/api/data/retry-failed \
   Nginx 成为唯一公网入口。
 - Nginx 层可以继续叠加 Basic Auth、IP allowlist 或 mTLS。
 - API token 是项目层最后一道门；即使 Nginx 配错，未带 bearer token 的请求也会被拒绝。
-- `/api/data/jobs` 会触发家里服务器执行 crawl job，只给自己的客户端 token。
+- `/api/data/jobs` 会触发内网数据源机器执行 crawl job，只给自己的客户端 token。
