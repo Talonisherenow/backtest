@@ -38,6 +38,10 @@ openssl rand -hex 32
 
 ## Source Machine
 
+源端机器的角色，由"哪台机器跑 frpc + `backtest data-source serve`"决定，frps
+本身不限制是哪台机。当前内网数据源机器是一台 macOS Mac mini，下面 Linux 默认
+路径仍可参考，macOS 特殊步骤见后文 [macOS (Mac mini) Setup](#macos-mac-mini-setup)。
+
 在内网数据源机器启动 data-source API。它只监听本机环回地址，让 frpc 访问即可：
 
 ```bash
@@ -69,6 +73,89 @@ curl -sS \
 
 未带 token 应该返回 `401`。
 
+### macOS (Mac mini) Setup
+
+一次性安装：
+
+```bash
+brew install uv frpc
+# brew 在新版本上可能无法 symlink 完成，必要时手动：
+ln -sf /usr/local/Cellar/uv/$(brew list --versions uv | awk '{print $2}')/bin/uv /usr/local/bin/uv
+ln -sf /usr/local/Cellar/frpc/$(brew list --versions frpc | awk '{print $2}')/bin/frpc /usr/local/bin/frpc
+```
+
+项目依赖：
+
+```bash
+cd ~/code/backtest
+UV_DEFAULT_INDEX=https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple uv sync
+```
+
+如果内网数据源机器没有 crypto/bitget 数据，启动 `data-source serve` 时加
+`--no-bitget`，否则会因 `data/crypto/bitget/bars` 不存在直接退出。
+
+LaunchAgents 自启：把下面两份 plist 分别放到
+`~/Library/LaunchAgents/com.backtest.data-source.plist` 和
+`~/Library/LaunchAgents/com.backtest.frpc.plist`，然后：
+
+```bash
+launchctl load -w ~/Library/LaunchAgents/com.backtest.data-source.plist
+launchctl load -w ~/Library/LaunchAgents/com.backtest.frpc.plist
+launchctl list | grep backtest
+tail -f /usr/local/var/log/backtest-data-source.err.log
+tail -f /usr/local/var/log/frpc.log
+```
+
+`com.backtest.data-source.plist` 的关键字段：
+
+```xml
+<key>ProgramArguments</key>
+<array>
+    <string>/usr/local/bin/uv</string>
+    <string>run</string>
+    <string>--</string>
+    <string>backtest</string>
+    <string>data-source</string>
+    <string>serve</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>8768</string>
+    <string>--no-bitget</string>
+</array>
+<key>WorkingDirectory</key>
+<string>/Users/&lt;you&gt;/code/backtest</string>
+<key>EnvironmentVariables</key>
+<dict>
+    <key>BACKTEST_DATA_SOURCE_TOKEN</key>
+    <string>CHANGE_ME_BACKTEST_API_TOKEN</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+</dict>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><true/>
+<key>StandardOutPath</key><string>/usr/local/var/log/backtest-data-source.out.log</string>
+<key>StandardErrorPath</key><string>/usr/local/var/log/backtest-data-source.err.log</string>
+```
+
+`com.backtest.frpc.plist`：
+
+```xml
+<key>ProgramArguments</key>
+<array>
+    <string>/usr/local/bin/frpc</string>
+    <string>-c</string>
+    <string>/usr/local/etc/frp/frpc.toml</string>
+</array>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><true/>
+<key>StandardOutPath</key><string>/usr/local/var/log/frpc.out.log</string>
+<key>StandardErrorPath</key><string>/usr/local/var/log/frpc.err.log</string>
+```
+
+只要 `LaunchAgents` 安装到位，重启 mac-mini 后 data-source 和 frpc 都会自动起，
+公网入口立刻可用。
+
 ## VPS frps
 
 样例配置在：
@@ -90,12 +177,15 @@ sudo vim /etc/frp/frps.toml
 
 建议保留：
 
-- `bindPort = 7000`
+- `bindPort = 7000`（也可以直接绑 `443`，让 frpc 端口看起来像 HTTPS，省一个对外开放端口）
 - `proxyBindAddr = "127.0.0.1"`
 - `allowPorts = [{ single = 18768 }]`
 
 `proxyBindAddr = "127.0.0.1"` 很重要：它让 frp 暴露出来的 `18768` 只在 VPS
 本机可访问，公网只能走 Nginx 的 80/443。
+
+当前 VPS（124.220.8.47）实际使用 `bindPort = 443`，配置文件在
+`/etc/frp-frps.toml`，所以 frpc 端要写 `serverPort = 443`。
 
 验证配置：
 
@@ -108,11 +198,10 @@ VPS 防火墙只需要放行：
 ```text
 22/tcp
 80/tcp
-443/tcp
-7000/tcp
+443/tcp   # frps 绑在这里，且 Nginx 也可在此叠 SSL（看部署）
 ```
 
-不要放行 `18768/tcp`。
+`7000/tcp` 在 frps 绑 443 的方案下不需要。不要放行 `18768/tcp`。
 
 ## Source frpc
 
@@ -183,6 +272,18 @@ export BACKTEST_DATA_API_TOKEN="CHANGE_ME_BACKTEST_API_TOKEN"
 uv run backtest chart serve-workbench \
   --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
   --data-api-base-url https://data.example.com \
+  --host 127.0.0.1 \
+  --port 8767
+```
+
+如果 VPS 暂时还没绑域名/HTTPS，可以直接用裸 IP：
+
+```bash
+export BACKTEST_DATA_API_TOKEN="CHANGE_ME_BACKTEST_API_TOKEN"
+
+uv run backtest chart serve-workbench \
+  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --data-api-base-url http://124.220.8.47 \
   --host 127.0.0.1 \
   --port 8767
 ```
