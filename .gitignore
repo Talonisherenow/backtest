@@ -7,6 +7,7 @@ __pycache__/
 uv.lock
 data/crypto/
 runs/crypto_market_data/
+runs/workbench/
 runs/charts/*.log
 runs/charts/crypto_*.html
 runs/charts/*_kline_300d.*
