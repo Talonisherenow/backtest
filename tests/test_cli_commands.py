@@ -848,6 +848,8 @@ def test_chart_serve_workbench_cli_starts_combined_server(tmp_path: Path, monkey
             "250",
             "--data-api-base-url",
             "http://192.168.1.10:8768",
+            "--data-api-token",
+            "workbench-token",
         ],
     )
 
@@ -858,6 +860,7 @@ def test_chart_serve_workbench_cli_starts_combined_server(tmp_path: Path, monkey
     assert captured["port"] == 9879
     assert captured["default_window_size"] == 250
     assert captured["data_api_base_url"] == "http://192.168.1.10:8768"
+    assert captured["data_api_token"] == "workbench-token"
     assert [source.source_id for source in captured["kline_sources"]] == ["bitget", "a_share"]
     assert captured["kline_sources"][0].bars_root == bitget_root
     assert captured["kline_sources"][0].adjust == "none"
@@ -902,6 +905,8 @@ def test_data_source_serve_cli_passes_server_options(tmp_path: Path, monkeypatch
             "8768",
             "--window-size",
             "250",
+            "--api-token",
+            "server-token",
         ],
     )
 
@@ -910,6 +915,7 @@ def test_data_source_serve_cli_passes_server_options(tmp_path: Path, monkeypatch
     assert captured["host"] == "0.0.0.0"
     assert captured["port"] == 8768
     assert captured["api"].config.default_window_size == 250
+    assert captured["api"].config.api_token == "server-token"
     assert [source.source_id for source in captured["api"].config.sources] == ["bitget", "a_share"]
 
 

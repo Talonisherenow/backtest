@@ -197,6 +197,12 @@ def serve_workbench(
         "--data-api-base-url",
         help="Optional remote base URL for the K-line data API",
     ),
+    data_api_token: str | None = typer.Option(
+        None,
+        "--data-api-token",
+        envvar="BACKTEST_DATA_API_TOKEN",
+        help="Optional bearer token for the remote data API",
+    ),
 ) -> None:
     """Serve strategy results and K-line viewer from one local process."""
     try:
@@ -223,6 +229,7 @@ def serve_workbench(
         port=port,
         default_window_size=window_size,
         data_api_base_url=data_api_base_url,
+        data_api_token=data_api_token,
     )
 
 

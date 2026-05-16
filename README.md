@@ -46,6 +46,10 @@ The workbench is the preferred manual inspection entrypoint. It reads existing
 result files and cached bars on demand; normal backtest runs do not need to
 generate HTML files first.
 
+For a VPS + Nginx + frp deployment where the workbench reads data and submits
+data-source jobs to a home server, see
+[`docs/remote-workbench-deployment.md`](docs/remote-workbench-deployment.md).
+
 ## Current Runtime Shape
 
 New strategy work should use the strategy-planning path:

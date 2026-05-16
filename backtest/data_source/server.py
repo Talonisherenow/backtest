@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hmac
 import json
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -23,6 +25,9 @@ def make_data_source_handler(api: DataSourceApi):
             self._send_empty(204)
 
         def do_GET(self) -> None:
+            if not self._is_authorized():
+                self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
+                return
             parsed = urlparse(self.path)
             query = parse_qs(parsed.query)
             try:
@@ -48,6 +53,9 @@ def make_data_source_handler(api: DataSourceApi):
                 self._send_json(400, {"error": str(exc)})
 
         def do_POST(self) -> None:
+            if not self._is_authorized():
+                self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
+                return
             parsed = urlparse(self.path)
             try:
                 if parsed.path == "/api/data/jobs":
@@ -67,6 +75,15 @@ def make_data_source_handler(api: DataSourceApi):
 
         def log_message(self, format: str, *args: Any) -> None:
             return
+
+        def _is_authorized(self) -> bool:
+            expected_token = api.config.api_token
+            if expected_token is None:
+                return True
+            scheme, _, provided_token = self.headers.get("Authorization", "").partition(" ")
+            if scheme.lower() != "bearer" or not provided_token:
+                return False
+            return hmac.compare_digest(provided_token, expected_token)
 
         def _bars_args(self, query: dict[str, list[str]]) -> dict[str, Any]:
             args: dict[str, Any] = {
@@ -109,6 +126,8 @@ def make_data_source_handler(api: DataSourceApi):
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self._cors_headers()
+            if status == HTTPStatus.UNAUTHORIZED:
+                self.send_header("WWW-Authenticate", "Bearer")
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -123,6 +142,6 @@ def make_data_source_handler(api: DataSourceApi):
         def _cors_headers(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     return DataSourceRequestHandler

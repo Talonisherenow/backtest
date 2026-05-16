@@ -32,8 +32,14 @@ class DataSourceServerConfig:
     host: str = "127.0.0.1"
     port: int = 8768
     default_window_size: int = 300
+    api_token: str | None = None
 
     def __post_init__(self) -> None:
+        if self.api_token is not None:
+            token = self.api_token.strip()
+            if not token:
+                raise ValueError("api_token must not be blank")
+            object.__setattr__(self, "api_token", token)
         seen: set[str] = set()
         for spec in self.sources:
             if spec.source_id in seen:

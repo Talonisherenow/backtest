@@ -52,6 +52,12 @@ def serve(
     host: str = typer.Option("127.0.0.1", "--host", help="Bind host"),
     port: int = typer.Option(8768, "--port", min=1, max=65535, help="Bind port"),
     window_size: int = typer.Option(300, "--window-size", min=1, help="Default K-line window size"),
+    api_token: str | None = typer.Option(
+        None,
+        "--api-token",
+        envvar="BACKTEST_DATA_SOURCE_TOKEN",
+        help="Optional bearer token required for all data-source API requests",
+    ),
 ) -> None:
     """Serve cached bars, crawl tasks, inventory, and crawl job APIs."""
     try:
@@ -69,6 +75,7 @@ def serve(
             host=host,
             port=port,
             default_window_size=window_size,
+            api_token=api_token,
         )
         api = DataSourceApi(
             config=config,

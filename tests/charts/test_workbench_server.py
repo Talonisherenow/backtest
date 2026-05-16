@@ -13,17 +13,23 @@ def test_render_workbench_index_html_links_both_chart_apps():
 
 
 def test_render_workbench_index_html_hosts_readonly_data_source_monitor():
-    html = render_workbench_index_html(data_api_base_url="http://127.0.0.1:8768/")
+    html = render_workbench_index_html(
+        data_api_base_url="http://127.0.0.1:8768/",
+        data_api_token="monitor-token",
+    )
 
     assert "workbench-index-payload" in html
     assert '"data_api_base_url":"http://127.0.0.1:8768"' in html
+    assert '"data_api_token":"monitor-token"' in html
     assert 'id="dataSourceMonitor"' in html
     assert 'id="dataSourceDrawer"' in html
     assert "Read-only crawl task monitor" in html
     assert "function dataApiUrl(path)" in html
-    assert 'fetch(dataApiUrl("/api/data-sources")' in html
-    assert 'fetch(dataApiUrl(`/api/data/tasks?source_id=${encodeURIComponent(source.source_id)}`)' in html
-    assert 'fetch(dataApiUrl("/api/data/jobs")' in html
+    assert "function dataApiRequestOptions()" in html
+    assert '"Authorization", `Bearer ${payload.data_api_token}`' in html
+    assert 'fetch(dataApiUrl("/api/data-sources"), dataApiRequestOptions())' in html
+    assert 'fetch(dataApiUrl(`/api/data/tasks?source_id=${encodeURIComponent(source.source_id)}`), dataApiRequestOptions())' in html
+    assert 'fetch(dataApiUrl("/api/data/jobs"), dataApiRequestOptions())' in html
     assert "DATA_MONITOR_REFRESH_MS = 10000" in html
     assert 'document.addEventListener("visibilitychange", refreshDataMonitorWhenVisible)' in html
     assert "Submit" not in html
@@ -35,6 +41,7 @@ def test_build_kline_shell_payload_includes_remote_data_api_base_url():
     payload = build_kline_shell_payload(
         default_window_size=5000,
         data_api_base_url="http://data-host:8768/",
+        data_api_token="viewer-token",
     )
 
     assert payload == {
@@ -42,6 +49,7 @@ def test_build_kline_shell_payload_includes_remote_data_api_base_url():
         "default_window_size": 5000,
         "links": {"workbench_home": "/"},
         "data_api_base_url": "http://data-host:8768",
+        "data_api_token": "viewer-token",
     }
 
 
@@ -70,8 +78,9 @@ def test_workbench_home_receives_remote_data_api_base_url(monkeypatch):
         captured["strategy_payload"] = payload
         return "strategy shell"
 
-    def fake_render_workbench_index_html(*, data_api_base_url=None):
+    def fake_render_workbench_index_html(*, data_api_base_url=None, data_api_token=None):
         captured["home_data_api_base_url"] = data_api_base_url
+        captured["home_data_api_token"] = data_api_token
         return "home shell"
 
     monkeypatch.setattr(workbench_server, "KlineCacheService", FakeKlineService)
@@ -89,9 +98,11 @@ def test_workbench_home_receives_remote_data_api_base_url(monkeypatch):
         results_roots=[],
         bars_root=".",
         data_api_base_url="http://data-host:8768/",
+        data_api_token="viewer-token",
     )
 
     assert captured["home_data_api_base_url"] == "http://data-host:8768"
+    assert captured["home_data_api_token"] == "viewer-token"
     assert captured["strategy_payload"] == {
         "mode": "dynamic",
         "title": "Strategy Results",

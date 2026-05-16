@@ -358,13 +358,17 @@ def test_render_kline_viewer_supports_remote_data_api_base_url():
             "mode": "dynamic",
             "default_window_size": 5000,
             "data_api_base_url": "http://data-host:8768",
+            "data_api_token": "viewer-token",
         }
     )
 
     assert '"data_api_base_url":"http://data-host:8768"' in html
+    assert '"data_api_token":"viewer-token"' in html
     assert "function apiUrl(path)" in html
-    assert 'fetch(apiUrl("/api/kline/manifest"), { cache: "no-store" })' in html
-    assert 'fetch(apiUrl(`/api/kline/bars?${params.toString()}`), { cache: "no-store" })' in html
+    assert "function apiRequestOptions()" in html
+    assert '"Authorization", `Bearer ${payload.data_api_token}`' in html
+    assert 'fetch(apiUrl("/api/kline/manifest"), apiRequestOptions())' in html
+    assert "fetch(apiUrl(`/api/kline/bars?${params.toString()}`), apiRequestOptions())" in html
 
 
 def test_render_kline_viewer_supports_workbench_home_link():

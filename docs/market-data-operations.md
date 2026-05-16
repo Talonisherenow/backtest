@@ -23,6 +23,10 @@ uv run backtest data sync-job --job configs/data_jobs/crypto_bitget_core.yaml
 http://127.0.0.1:8765/
 ```
 
+如果需要在公网通过 VPS + Nginx + frp 访问家里服务器上的 data-source API，并让
+外部 workbench 通过 `--data-api-base-url` 切换数据源，见
+[`remote-workbench-deployment.md`](remote-workbench-deployment.md)。
+
 如果没有使用 `uv`，先安装项目：
 
 ```bash

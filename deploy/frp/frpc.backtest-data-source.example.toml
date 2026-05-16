@@ -1,0 +1,19 @@
+# Home server: /etc/frp/frpc.toml
+#
+# This forwards the home server's local data-source API to the VPS loopback
+# port 18768. Nginx on the VPS should be the only public HTTP(S) entrypoint.
+
+serverAddr = "YOUR_VPS_PUBLIC_IP"
+serverPort = 7000
+
+auth.method = "token"
+auth.token = "CHANGE_ME_FRP_TOKEN"
+
+transport.tls.enable = true
+
+[[proxies]]
+name = "backtest-data-source"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8768
+remotePort = 18768

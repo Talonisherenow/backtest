@@ -23,15 +23,21 @@ def serve_chart_workbench(
     port: int = 8767,
     default_window_size: int = 300,
     data_api_base_url: str | None = None,
+    data_api_token: str | None = None,
 ) -> None:
     kline_service = KlineCacheService(sources=kline_sources)
     strategy_service = StrategyResultsService(results_roots=results_roots, bars_root=bars_root)
     normalized_data_api_base_url = data_api_base_url.rstrip("/") if data_api_base_url else None
-    index_html = render_workbench_index_html(data_api_base_url=normalized_data_api_base_url).encode("utf-8")
+    normalized_data_api_token = data_api_token.strip() if data_api_token else None
+    index_html = render_workbench_index_html(
+        data_api_base_url=normalized_data_api_base_url,
+        data_api_token=normalized_data_api_token,
+    ).encode("utf-8")
     kline_html = render_kline_viewer_html(
         build_kline_shell_payload(
             default_window_size=default_window_size,
             data_api_base_url=normalized_data_api_base_url,
+            data_api_token=normalized_data_api_token,
         )
     ).encode("utf-8")
     strategy_payload = {"mode": "dynamic", "title": "Strategy Results", "links": {"workbench_home": "/"}}
@@ -191,6 +197,7 @@ def serve_chart_workbench(
 def build_kline_shell_payload(
     default_window_size: int,
     data_api_base_url: str | None = None,
+    data_api_token: str | None = None,
 ) -> dict:
     payload = {
         "mode": "dynamic",
@@ -199,13 +206,20 @@ def build_kline_shell_payload(
     }
     if data_api_base_url:
         payload["data_api_base_url"] = data_api_base_url.rstrip("/")
+    if data_api_token:
+        payload["data_api_token"] = data_api_token.strip()
     return payload
 
 
-def render_workbench_index_html(data_api_base_url: str | None = None) -> str:
+def render_workbench_index_html(
+    data_api_base_url: str | None = None,
+    data_api_token: str | None = None,
+) -> str:
     payload = {}
     if data_api_base_url:
         payload["data_api_base_url"] = data_api_base_url.rstrip("/")
+    if data_api_token:
+        payload["data_api_token"] = data_api_token.strip()
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     safe_payload = payload_json.replace("</", "<\\/")
     return """<!doctype html>
@@ -496,6 +510,16 @@ def render_workbench_index_html(data_api_base_url: str | None = None) -> str:
       return baseUrl ? `${baseUrl}${path}` : path;
     }
 
+    function dataApiRequestOptions() {
+      const options = { cache: "no-store" };
+      if (payload.data_api_token) {
+        const headers = new Headers();
+        headers.set("Authorization", `Bearer ${payload.data_api_token}`);
+        options.headers = headers;
+      }
+      return options;
+    }
+
     function dataMonitorEnabled() {
       return Boolean(payload.data_api_base_url);
     }
@@ -603,14 +627,14 @@ def render_workbench_index_html(data_api_base_url: str | None = None) -> str:
         return;
       }
       try {
-        const sourcesResponse = await fetch(dataApiUrl("/api/data-sources"), { cache: "no-store" });
+        const sourcesResponse = await fetch(dataApiUrl("/api/data-sources"), dataApiRequestOptions());
         if (!sourcesResponse.ok) {
           throw new Error(`HTTP ${sourcesResponse.status}`);
         }
         const sourcePayload = await sourcesResponse.json();
         const sources = Array.isArray(sourcePayload.sources) ? sourcePayload.sources : [];
         const taskEntries = await Promise.all(sources.map(async (source) => {
-          const response = await fetch(dataApiUrl(`/api/data/tasks?source_id=${encodeURIComponent(source.source_id)}`), { cache: "no-store" });
+          const response = await fetch(dataApiUrl(`/api/data/tasks?source_id=${encodeURIComponent(source.source_id)}`), dataApiRequestOptions());
           if (!response.ok) {
             throw new Error(`${sourceLabel(source)} HTTP ${response.status}`);
           }
@@ -618,7 +642,7 @@ def render_workbench_index_html(data_api_base_url: str | None = None) -> str:
           return [source.source_id, Array.isArray(taskPayload.tasks) ? taskPayload.tasks : []];
         }));
         let jobs = [];
-        const jobsResponse = await fetch(dataApiUrl("/api/data/jobs"), { cache: "no-store" });
+        const jobsResponse = await fetch(dataApiUrl("/api/data/jobs"), dataApiRequestOptions());
         if (jobsResponse.ok) {
           const jobsPayload = await jobsResponse.json();
           jobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];

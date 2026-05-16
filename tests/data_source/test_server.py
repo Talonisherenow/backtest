@@ -18,7 +18,13 @@ from backtest.data_source.jobs import DataSourceJobRegistry
 from backtest.data_source.server import make_data_source_handler
 
 
-def _api(tmp_path: Path, *, row_count: int = 2, default_window_size: int = 1) -> DataSourceApi:
+def _api(
+    tmp_path: Path,
+    *,
+    row_count: int = 2,
+    default_window_size: int = 1,
+    api_token: str | None = None,
+) -> DataSourceApi:
     bars_root = tmp_path / "bars"
     ParquetBarStore(bars_root).write_bars(
         pd.DataFrame(
@@ -55,7 +61,11 @@ def _api(tmp_path: Path, *, row_count: int = 2, default_window_size: int = 1) ->
     )
     CrawlTaskManager(MetadataStore(spec.metadata_path)).mark_failed(task_id, "timeout")
     return DataSourceApi(
-        DataSourceServerConfig(sources=[spec], default_window_size=default_window_size),
+        DataSourceServerConfig(
+            sources=[spec],
+            default_window_size=default_window_size,
+            api_token=api_token,
+        ),
         DataSourceJobRegistry(
             lambda config: type(
                 "Result",
@@ -76,13 +86,24 @@ def _api(tmp_path: Path, *, row_count: int = 2, default_window_size: int = 1) ->
     )
 
 
-def _server(tmp_path: Path, *, row_count: int = 2, default_window_size: int = 1):
+def _server(
+    tmp_path: Path,
+    *,
+    row_count: int = 2,
+    default_window_size: int = 1,
+    api_token: str | None = None,
+):
     from http.server import ThreadingHTTPServer
 
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0),
         make_data_source_handler(
-            _api(tmp_path, row_count=row_count, default_window_size=default_window_size)
+            _api(
+                tmp_path,
+                row_count=row_count,
+                default_window_size=default_window_size,
+                api_token=api_token,
+            )
         ),
     )
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -90,9 +111,9 @@ def _server(tmp_path: Path, *, row_count: int = 2, default_window_size: int = 1)
     return server
 
 
-def _json_request(base_url: str, path: str, *, method: str = "GET", payload=None):
+def _json_request(base_url: str, path: str, *, method: str = "GET", payload=None, headers=None):
     data = None
-    headers = {}
+    headers = dict(headers or {})
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -206,6 +227,52 @@ def test_post_job_retry_failed_options_and_error_routes(tmp_path: Path):
         except HTTPError as exc:
             assert exc.code == 400
             assert "source_id is required" in json.loads(exc.read().decode("utf-8"))["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_server_requires_bearer_token_when_configured(tmp_path: Path):
+    server = _server(tmp_path, api_token="secret-token")
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            _json_request(base_url, "/api/health")
+        except HTTPError as exc:
+            assert exc.code == 401
+            assert exc.headers["Access-Control-Allow-Origin"] == "*"
+            assert json.loads(exc.read().decode("utf-8")) == {"error": "Unauthorized"}
+
+        try:
+            _json_request(
+                base_url,
+                "/api/health",
+                headers={"Authorization": "Bearer wrong-token"},
+            )
+        except HTTPError as exc:
+            assert exc.code == 401
+
+        try:
+            _json_request(
+                base_url,
+                "/api/data/jobs",
+                method="POST",
+                payload={"name": "blocked"},
+            )
+        except HTTPError as exc:
+            assert exc.code == 401
+
+        status, headers, _ = _json_request(base_url, "/api/health", method="OPTIONS")
+        assert status == 204
+        assert "Authorization" in headers["Access-Control-Allow-Headers"]
+
+        status, _, health = _json_request(
+            base_url,
+            "/api/health",
+            headers={"Authorization": "Bearer secret-token"},
+        )
+        assert status == 200
+        assert health["status"] == "ok"
     finally:
         server.shutdown()
         server.server_close()

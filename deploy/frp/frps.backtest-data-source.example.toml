@@ -1,0 +1,21 @@
+# VPS: /etc/frp/frps.toml
+#
+# Replace CHANGE_ME_FRP_TOKEN with a long random token. This token only
+# authenticates frpc to frps; the backtest data-source API uses its own bearer
+# token configured with BACKTEST_DATA_SOURCE_TOKEN.
+
+bindAddr = "0.0.0.0"
+bindPort = 7000
+proxyBindAddr = "127.0.0.1"
+
+auth.method = "token"
+auth.token = "CHANGE_ME_FRP_TOKEN"
+
+transport.tls.force = true
+
+allowPorts = [
+  { single = 18768 },
+]
+
+webServer.addr = "127.0.0.1"
+webServer.port = 7500

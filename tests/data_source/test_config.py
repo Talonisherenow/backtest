@@ -64,6 +64,15 @@ def test_server_config_finds_source_by_id(tmp_path: Path):
         config.source("a_share")
 
 
+def test_server_config_normalizes_api_token(tmp_path: Path):
+    config = DataSourceServerConfig(sources=[_spec(tmp_path)], api_token="  secret  ")
+
+    assert config.api_token == "secret"
+
+    with pytest.raises(ValueError, match="api_token must not be blank"):
+        DataSourceServerConfig(sources=[_spec(tmp_path, "other")], api_token="  ")
+
+
 def test_build_default_source_specs_uses_expected_source_metadata(tmp_path: Path):
     bitget_root = tmp_path / "bitget" / "bars"
     a_share_root = tmp_path / "a_share" / "bars"
