@@ -1,4 +1,0 @@
-interface:
-  display_name: "Backtest Data Workbench"
-  short_description: "Submit data jobs and open viewers"
-  default_prompt: "Use $backtest-data-workbench to submit a market data crawl job, check status, and open the workbench."
