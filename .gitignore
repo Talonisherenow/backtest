@@ -1,6 +1,7 @@
 .DS_Store
 .idea/
 .superpowers/
+.cursor/skills/
 __pycache__/
 *.py[cod]
 *.egg-info/

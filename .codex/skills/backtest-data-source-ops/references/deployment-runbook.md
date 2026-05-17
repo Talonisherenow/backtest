@@ -35,6 +35,32 @@ Probe:
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1:8768/api/health
 ```
 
+Common startup flags:
+
+- `--no-bitget` or `--no-a-share` when the corresponding `bars_root` does not
+  exist on this machine. The server exits at startup otherwise.
+- `--bitget-bars-root` / `--bitget-metadata` / `--a-share-bars-root` /
+  `--a-share-metadata` to point at non-default paths.
+
+### macOS LaunchAgents
+
+For long-running macOS source machines, use `~/Library/LaunchAgents/` so the
+data-source and `frpc` come back after reboot. Templates and the install /
+verify / stop commands are in:
+
+- `docs/remote-workbench-deployment.md` → "macOS (Mac mini) Setup"
+- `docs/local-data-source-migration-runbook.zh.md` → step 6
+
+Standard control commands:
+
+```bash
+launchctl list | grep backtest
+launchctl unload ~/Library/LaunchAgents/com.backtest.data-source.plist
+launchctl load -w ~/Library/LaunchAgents/com.backtest.data-source.plist
+tail -f /usr/local/var/log/backtest-data-source.err.log
+tail -f /usr/local/var/log/frpc.log
+```
+
 ## VPS
 
 Important invariants:
@@ -43,6 +69,8 @@ Important invariants:
 - public firewall should not expose `18768/tcp`
 - Nginx should be the only public HTTP(S) entrypoint
 - `FRP_TOKEN` and `BACKTEST_DATA_SOURCE_TOKEN` are different secrets
+- frps `bindPort` may be `7000` or another value (e.g. `443` to look like
+  HTTPS); the source machine's `frpc` must match `serverPort` accordingly
 
 Probe on VPS:
 
