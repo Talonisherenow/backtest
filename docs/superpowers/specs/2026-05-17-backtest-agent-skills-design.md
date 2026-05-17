@@ -131,7 +131,7 @@ POST /api/data/retry-failed
 
 Write endpoints require explicit user confirmation after the agent has shown the final request fields.
 
-The IM agent must not assume the API is exposed specifically through Nginx or frp. Those are deployment details owned by the data-source ops skill. The IM agent works from a configured API client or discovered `base_url` plus bearer token. It should probe `GET /api/health` and `GET /api/data-sources` only when establishing access, diagnosing a failure, or answering an explicit connectivity question; normal data operations should call the narrowest relevant endpoint directly.
+The IM agent must not assume the API is exposed specifically through Nginx or frp. Those are deployment details owned by the data-source ops skill. The IM agent works from a configured API client or discovered `base_url` plus bearer token. It should prefer `BACKTEST_DATA_API_BASE_URL` and `BACKTEST_DATA_API_TOKEN` from environment variables when no API client is injected. It should probe `GET /api/health` and `GET /api/data-sources` only when establishing access, diagnosing a failure, or answering an explicit connectivity question; normal data operations should call the narrowest relevant endpoint directly.
 
 ## 4. Shared Behavioral Rules
 
@@ -173,7 +173,7 @@ Skills must treat `FRP_TOKEN`, `BACKTEST_DATA_SOURCE_TOKEN`, and `BACKTEST_DATA_
 
 Agents should never print bearer tokens back to chat. They may state whether a token is configured, missing, rejected, or required.
 
-IM agents should receive the data-source API token through their runtime secret/config channel. If the token or base URL is absent, the skill should ask for configuration rather than guessing. It must not request frp tokens or server SSH credentials.
+IM agents should receive the data-source API token through `BACKTEST_DATA_API_TOKEN` or their runtime secret/config channel. If the token or base URL is absent, the skill should ask for configuration rather than guessing. It must not request frp tokens or server SSH credentials. `BACKTEST_DATA_SOURCE_TOKEN` is a data-source service variable and should only be used by an IM agent if that runtime explicitly documents it as a client compatibility alias.
 
 ## 5. Proposed Skill File Layout
 

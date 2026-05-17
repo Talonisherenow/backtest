@@ -7,17 +7,23 @@ Do not perform discovery before every normal API call. Prefer reusing the runtim
 Run discovery when:
 
 - no `base_url` or API client is configured
-- no bearer token is configured
+- `BACKTEST_DATA_API_TOKEN` is not configured and no token is available from the runtime secret/config channel
 - the user asks whether this server can reach the home/local backtest backend
 - a call returns `401`, `403`, `404`, timeout, DNS error, connection refused, TLS error, or `502`/`503`/`504`
 - the operator changed the base URL, token, or forwarding path
 
 ## Inputs
 
-Find the API endpoint and token from the IM agent runtime configuration first. If either is missing, ask the user or host application for:
+Find API client inputs in this order:
 
-- `base_url`: the HTTP origin that should reach the backtest data-source API from this server runtime
-- bearer token: the data-source API token
+1. Existing runtime API client, if the host application provides one.
+2. Environment variables:
+   - `BACKTEST_DATA_API_BASE_URL`: HTTP origin that should reach the backtest data-source API from this server runtime.
+   - `BACKTEST_DATA_API_TOKEN`: bearer token for the data-source API.
+3. Runtime secret/config channel supplied by the host application.
+4. Ask the user/operator for only the missing value.
+
+Use `BACKTEST_DATA_API_TOKEN` as the client-side token variable. Do not read `FRP_TOKEN`. Use `BACKTEST_DATA_SOURCE_TOKEN` only when the runtime explicitly documents it as a compatibility alias for API clients.
 
 Never print, echo, log, or summarize token values in chat. It is safe to say the token is configured, missing, rejected, or expired.
 

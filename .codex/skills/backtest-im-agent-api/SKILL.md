@@ -17,7 +17,7 @@ Never SSH, execute shell commands, edit Nginx, edit frp, inspect system logs, re
 
 Read `references/access-discovery.md` when no usable API client/base URL is configured, when the user asks whether the server can reach the backtest backend, or when an API call fails with authorization/connectivity symptoms.
 
-Do not run health probes before every API call. If the runtime already has a configured client, or this task has already validated one, call the narrowest endpoint directly and handle failures.
+Do not run health probes before every API call. If the runtime already has a configured client, or this task has already validated one, call the narrowest endpoint directly and handle failures. Prefer environment variables for client configuration: `BACKTEST_DATA_API_BASE_URL` for the base URL and `BACKTEST_DATA_API_TOKEN` for the bearer token.
 
 Do not assume the transport topology. The API may be reachable through frp, Nginx, a private network route, localhost, or another controlled forwarding path.
 

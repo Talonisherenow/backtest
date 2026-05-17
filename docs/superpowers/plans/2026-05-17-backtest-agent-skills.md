@@ -80,8 +80,9 @@ For A-share, do not use crypto intraday frequencies. AkShare currently accepts d
 
 Create `.codex/skills/backtest-im-agent-api/references/access-discovery.md` to require server-side IM agents to discover whether the current runtime can reach the backtest API before any read or write:
 
-- find `base_url` and bearer token from runtime configuration first
-- ask for configuration if either is missing
+- reuse an injected runtime API client when available
+- otherwise read `BACKTEST_DATA_API_BASE_URL` and `BACKTEST_DATA_API_TOKEN` from environment variables
+- ask for configuration only if either value is still missing
 - never print token values
 - probe `GET /api/health` and `GET /api/data-sources`
 - classify missing config, `401/403`, timeout, connection refused, `502/503/504`, and `404`

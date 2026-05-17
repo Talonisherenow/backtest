@@ -1,8 +1,8 @@
 # Data Source HTTP API
 
-Base URL is discovered from the server-side IM agent runtime or explicit user/operator configuration. Complete `access-discovery.md` before using these endpoints.
+Base URL comes from the configured runtime API client, `BACKTEST_DATA_API_BASE_URL`, or explicit user/operator configuration. Use `access-discovery.md` only when establishing or diagnosing API access.
 
-All requests use:
+All requests use the bearer token from the configured runtime API client or `BACKTEST_DATA_API_TOKEN`:
 
 ```text
 Authorization: Bearer <configured token>
