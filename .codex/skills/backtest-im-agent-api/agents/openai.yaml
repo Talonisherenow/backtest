@@ -1,4 +1,4 @@
 interface:
   display_name: "Backtest IM Agent API"
-  short_description: "Use data-source HTTP APIs from IM"
-  default_prompt: "Use $backtest-im-agent-api to answer IM data requests through the backtest data-source HTTP API without doing server operations."
+  short_description: "Discover and use backtest HTTP APIs from IM"
+  default_prompt: "Use $backtest-im-agent-api to discover whether this server can reach the backtest data-source HTTP API, then answer IM data requests without doing server operations."

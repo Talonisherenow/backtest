@@ -92,6 +92,8 @@ Use this skill only for a server-side IM conversation agent that talks to users 
 
 Responsibilities:
 
+- discover whether the current server runtime can reach a configured backtest data-source API
+- classify missing endpoint, missing token, authorization failure, wrong base URL, and unreachable forwarding path
 - understand the data-source HTTP API contract
 - collect missing user intent fields in conversation
 - confirm write operations before calling them
@@ -129,6 +131,8 @@ POST /api/data/retry-failed
 
 Write endpoints require explicit user confirmation after the agent has shown the final request fields.
 
+The IM agent must not assume the API is exposed specifically through Nginx or frp. Those are deployment details owned by the data-source ops skill. The IM agent works from a configured API client or discovered `base_url` plus bearer token. It should probe `GET /api/health` and `GET /api/data-sources` only when establishing access, diagnosing a failure, or answering an explicit connectivity question; normal data operations should call the narrowest relevant endpoint directly.
+
 ## 4. Shared Behavioral Rules
 
 ### 4.1 Data Job Field Confirmation
@@ -161,13 +165,15 @@ The data-source ops skill may operate processes and deployment files.
 
 The workbench ops skill may start and verify the local workbench, but should route deployment problems to the data-source ops skill.
 
-The IM agent API skill may only call HTTP endpoints. If an IM user asks it to fix deployment, restart services, edit Nginx, inspect logs, or SSH into a server, it should say that those actions are outside its authority and offer the API-level checks it can run.
+The IM agent API skill may only use configured HTTP API access and run access discovery when needed from its current runtime. If an IM user asks it to fix deployment, restart services, edit Nginx, inspect logs, or SSH into a server, it should say that those actions are outside its authority and offer API-level checks it can run.
 
 ### 4.3 Token Handling
 
 Skills must treat `FRP_TOKEN`, `BACKTEST_DATA_SOURCE_TOKEN`, and `BACKTEST_DATA_API_TOKEN` as separate values.
 
 Agents should never print bearer tokens back to chat. They may state whether a token is configured, missing, rejected, or required.
+
+IM agents should receive the data-source API token through their runtime secret/config channel. If the token or base URL is absent, the skill should ask for configuration rather than guessing. It must not request frp tokens or server SSH credentials.
 
 ## 5. Proposed Skill File Layout
 
@@ -205,12 +211,15 @@ The final skills should be reviewed against these scenarios:
    Expected skill: `backtest-workbench-ops`.
 
 4. "IM 里帮我看看 bitget 还有哪些失败任务。"
-   Expected skill: `backtest-im-agent-api`; use only HTTP API.
+   Expected skill: `backtest-im-agent-api`; discover API access, then use only HTTP API.
 
 5. "IM 里帮我重启 nginx 修一下 502。"
-   Expected skill: `backtest-im-agent-api`; refuse operations work and offer API health checks only.
+   Expected skill: `backtest-im-agent-api`; refuse operations work and offer API access discovery and health checks only.
 
-6. "workbench 的 K-line 页面 401。"
+6. "IM 服务器现在能不能连到我家里的 backtest 后台？"
+   Expected skill: `backtest-im-agent-api`; probe configured `base_url` with token using `GET /api/health` and `GET /api/data-sources`, then report reachability without assuming transport topology.
+
+7. "workbench 的 K-line 页面 401。"
    Expected skill: `backtest-workbench-ops`; diagnose token wiring and remote API authorization.
 
 ## 7. Rollout Strategy

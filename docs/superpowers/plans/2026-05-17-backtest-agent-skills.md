@@ -23,6 +23,7 @@ Create:
 - `.codex/skills/backtest-workbench-ops/references/workbench-runbook.md`
 - `.codex/skills/backtest-im-agent-api/SKILL.md`
 - `.codex/skills/backtest-im-agent-api/agents/openai.yaml`
+- `.codex/skills/backtest-im-agent-api/references/access-discovery.md`
 - `.codex/skills/backtest-im-agent-api/references/data-source-http-api.md`
 - `.codex/skills/backtest-im-agent-api/references/dialogue-flows.md`
 
@@ -38,6 +39,7 @@ No Python runtime code changes are part of this plan.
 **Files:**
 
 - Create: `.codex/skills/backtest-data-source-ops/references/data-job-fields.md`
+- Create: `.codex/skills/backtest-im-agent-api/references/access-discovery.md`
 - Create: `.codex/skills/backtest-im-agent-api/references/dialogue-flows.md`
 
 - [ ] **Step 1: Create the shared data job field reference**
@@ -74,7 +76,19 @@ For crypto, confirm `exchange`. If the user did not name one, infer it only from
 For A-share, do not use crypto intraday frequencies. AkShare currently accepts daily bars.
 ````
 
-- [ ] **Step 2: Create the IM dialogue validation reference**
+- [ ] **Step 2: Create the IM API access discovery reference**
+
+Create `.codex/skills/backtest-im-agent-api/references/access-discovery.md` to require server-side IM agents to discover whether the current runtime can reach the backtest API before any read or write:
+
+- find `base_url` and bearer token from runtime configuration first
+- ask for configuration if either is missing
+- never print token values
+- probe `GET /api/health` and `GET /api/data-sources`
+- classify missing config, `401/403`, timeout, connection refused, `502/503/504`, and `404`
+- stop before data reads or writes if the API is not reachable
+- avoid assuming whether the path is Nginx, frp, direct networking, localhost forwarding, or another controlled route
+
+- [ ] **Step 3: Create the IM dialogue validation reference**
 
 Create `.codex/skills/backtest-im-agent-api/references/dialogue-flows.md` with this content:
 
@@ -87,33 +101,35 @@ User intent examples: "拉数据", "补数据", "同步 BTC", "获取 A 股日�
 
 Flow:
 
-1. Identify market, symbols, source, exchange, date range, frequencies, adjust mode, and execution intent.
-2. Fill defaults where safe.
-3. Ask one concise follow-up if a required field remains ambiguous.
-4. Show the final job payload summary.
-5. Call `POST /api/data/jobs` only after the user confirms.
-6. Return `job_id`, initial status, and the next status-check action.
+1. Ensure an API client is configured. Run access discovery only if the client is missing, unvalidated, changed, or currently failing.
+2. Identify market, symbols, source, exchange, date range, frequencies, adjust mode, and execution intent.
+3. Fill defaults where safe.
+4. Ask one concise follow-up if a required field remains ambiguous.
+5. Show the final job payload summary.
+6. Call `POST /api/data/jobs` only after the user confirms.
+7. Return `job_id`, initial status, and the next status-check action.
 
 ## Retry Failed Tasks
 
 Flow:
 
-1. Confirm `source_id`.
-2. Show that retry will enqueue existing failed crawl tasks for that source.
-3. Call `POST /api/data/retry-failed` only after confirmation.
-4. Report queued count and task ids.
+1. Ensure an API client is configured. Run access discovery only if the client is missing, unvalidated, changed, or currently failing.
+2. Confirm `source_id`.
+3. Show that retry will enqueue existing failed crawl tasks for that source.
+4. Call `POST /api/data/retry-failed` only after confirmation.
+5. Report queued count and task ids.
 
 ## Operations Requests
 
-If the user asks to SSH, restart services, edit Nginx, edit frp, inspect logs, or change system service files, say the IM agent is limited to the data-source HTTP API. Offer `GET /api/health`, `GET /api/data-sources`, `GET /api/data/jobs`, or `GET /api/data/tasks` checks instead.
+If the user asks to SSH, restart services, edit Nginx, edit frp, inspect logs, or change system service files, say the IM agent is limited to discovering and calling the data-source HTTP API from its current runtime. Offer API access discovery and read-only API checks instead.
 ````
 
-- [ ] **Step 3: Verify references are discoverable**
+- [ ] **Step 4: Verify references are discoverable**
 
 Run:
 
 ```bash
-rg -n "Data Job Fields|IM Dialogue Flows|POST /api/data/jobs|source=ccxt" .codex/skills
+rg -n "Data Job Fields|API Access Discovery|IM Dialogue Flows|POST /api/data/jobs|source=ccxt" .codex/skills
 ```
 
 Expected: both new reference files appear in the output.

@@ -1,6 +1,6 @@
 # Data Source HTTP API
 
-Base URL is configured by the server-side IM agent runtime.
+Base URL is discovered from the server-side IM agent runtime or explicit user/operator configuration. Complete `access-discovery.md` before using these endpoints.
 
 All requests use:
 
@@ -9,6 +9,8 @@ Authorization: Bearer <configured token>
 ```
 
 Never print the token in chat.
+
+The API contract is independent of transport. The current server may reach a home/local backtest service through frp, Nginx, localhost forwarding, a private route, or another controlled path; callers should treat only the discovered `base_url` as the contract.
 
 ## Read Endpoints
 

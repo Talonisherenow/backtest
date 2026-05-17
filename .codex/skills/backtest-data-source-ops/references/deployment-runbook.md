@@ -8,11 +8,17 @@ Primary docs:
 - `deploy/frp/frpc.backtest-data-source.example.toml`
 - `deploy/nginx/backtest-data-source.example.conf`
 
-## Process Chain
+## Exposure Model
+
+The required contract is: an authorized client on the target server can reach the home/local `backtest data-source` HTTP API through a configured `base_url`.
+
+Common topology:
 
 ```text
-public client -> VPS Nginx -> VPS 127.0.0.1:18768 -> frps -> frpc -> source 127.0.0.1:8768 -> backtest data-source API
+server-side agent/client -> VPS entrypoint -> forwarding path -> source 127.0.0.1:8768 -> backtest data-source API
 ```
+
+The forwarding path may include Nginx, frps/frpc, localhost binding, or another controlled route. Do not make the IM/API skill depend on a specific transport; make the endpoint discoverable and verify it with API probes.
 
 ## Source Machine
 
@@ -45,8 +51,11 @@ curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1
 sudo nginx -t
 ```
 
-Public probe:
+Public or server-runtime probe:
 
 ```bash
-curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" https://data.example.com/api/health
+curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" "$BACKTEST_DATA_SOURCE_BASE_URL/api/health"
+curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" "$BACKTEST_DATA_SOURCE_BASE_URL/api/data-sources"
 ```
+
+Give IM agents only the API `base_url` and data-source API token they need. Do not give them SSH, frp, Nginx, or service-management authority.
