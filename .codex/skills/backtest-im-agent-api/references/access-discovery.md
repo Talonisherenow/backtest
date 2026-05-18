@@ -27,6 +27,10 @@ Use `BACKTEST_DATA_API_TOKEN` as the client-side token variable. Do not read `FR
 
 Never print, echo, log, or summarize token values in chat. It is safe to say the token is configured, missing, rejected, or expired.
 
+For Hermes Agent deployments, the same values should be present in the active
+Hermes home/profile `.env` files and in the gateway process environment. See
+`hermes-runtime.md` for the project sync script and profile refresh flow.
+
 ## Probe Sequence
 
 Normalize `base_url` by removing trailing slashes, then probe in order:

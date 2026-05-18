@@ -44,8 +44,10 @@ Flow:
 
 ## Read Requests
 
-For health, source list, K-line, job, task, or inventory questions, call the narrowest read endpoint through the configured API client. Run access discovery only when the user asks for a connectivity check or the direct call fails with configuration, authorization, base URL, or forwarding symptoms.
+For health, source list, K-line, job, task, or inventory questions, call the narrowest read endpoint through the configured API client. Use `/api/data/tasks/summary` for totals and paginated `/api/data/tasks` for rows. Run access discovery only when the user asks for a connectivity check or the direct call fails with configuration, authorization, base URL, or forwarding symptoms.
+
+If the user asks why a task is stuck or whether a crawler is still running, first read job/task state through the API. Do not inspect processes or logs from IM. If the API state is ambiguous, report the ambiguity and hand off process/log verification to a data-source operator.
 
 ## Operations Requests
 
-If the user asks to SSH, restart services, edit Nginx, edit frp, inspect logs, or change system service files, say the IM agent is limited to discovering and calling the data-source HTTP API from its current runtime. Offer API access discovery and read-only API checks instead.
+If the user asks to SSH, restart services, edit Nginx, edit frp, inspect logs, run local crawlers, write scripts, query SQLite, or change system service files, say the IM agent is limited to discovering and calling the data-source HTTP API from its current runtime. Offer API access discovery and read-only API checks instead.

@@ -19,11 +19,16 @@ GET /api/health
 GET /api/data-sources
 GET /api/kline/manifest
 GET /api/kline/bars?source_id=<source_id>&symbol=<symbol>&frequency=<frequency>&adjust=<adjust>&limit=<n>&anchor=latest
-GET /api/data/tasks?source_id=<source_id>
+GET /api/data/tasks/summary?source_id=<source_id>
+GET /api/data/tasks?source_id=<source_id>&page=<n>&page_size=<n>&symbol=<partial>&frequency=<f>&status=<s>
 GET /api/data/inventory?source_id=<source_id>
 GET /api/data/jobs
 GET /api/data/jobs/<job_id>
 ```
+
+`/api/data/tasks` is paginated. Use `/api/data/tasks/summary` for status and
+frequency totals. `frequency` and `status` can be repeated to express
+multi-select filters.
 
 ## Submit Job
 
