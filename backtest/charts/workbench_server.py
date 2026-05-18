@@ -335,7 +335,7 @@ def render_workbench_index_html(
       width: min(720px, 94vw);
       height: 100vh;
       display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
       background: var(--surface);
       border-left: 1px solid var(--line);
       box-shadow: -18px 0 40px rgb(21 31 43 / 18%);
@@ -356,6 +356,85 @@ def render_workbench_index_html(
       font-size: 12px;
       border-bottom: 1px solid var(--line);
     }
+    .source-tabs {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .source-tab {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .source-tab.active {
+      border-color: #b7d4ff;
+      background: #eef5ff;
+      color: #195bb8;
+    }
+    .drawer-filters {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) minmax(0, 1.2fr) minmax(0, 1.2fr) auto;
+      gap: 10px;
+      align-items: start;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .filter-field,
+    .filter-group {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .filter-field input,
+    .filter-field select {
+      min-height: 32px;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 9px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      font-size: 12px;
+      text-transform: none;
+    }
+    .checkbox-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 32px;
+      align-content: start;
+    }
+    .checkbox-pill {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: none;
+      white-space: nowrap;
+    }
+    .checkbox-pill input { margin: 0; }
     .task-table-wrap { overflow: auto; }
     .task-status {
       display: inline-flex;
@@ -426,10 +505,27 @@ def render_workbench_index_html(
       color: var(--muted);
       text-align: center;
     }
+    .drawer-pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .pagination-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
     @media (max-width: 780px) {
       .data-monitor { grid-template-columns: 1fr; margin-left: 12px; margin-right: 12px; }
       .monitor-actions { justify-content: flex-start; }
       .data-monitor-meta { white-space: normal; }
+      .drawer-filters { grid-template-columns: 1fr; }
+      .drawer-pagination { align-items: flex-start; flex-direction: column; }
       header, main { padding-left: 12px; padding-right: 12px; }
     }
   </style>
@@ -457,6 +553,29 @@ def render_workbench_index_html(
       </div>
       <button class="text-button" id="dataSourceDrawerCloseButton" type="button">Close</button>
     </div>
+    <div class="source-tabs" id="dataSourceTabs"></div>
+    <div class="drawer-filters">
+      <label class="filter-field">
+        <span>Symbol</span>
+        <input id="taskSymbolSearch" type="search" autocomplete="off">
+      </label>
+      <div class="filter-group">
+        <span>Frequency</span>
+        <div class="checkbox-pills" id="taskFrequencyFilters"></div>
+      </div>
+      <div class="filter-group">
+        <span>Status</span>
+        <div class="checkbox-pills" id="taskStatusFilters"></div>
+      </div>
+      <label class="filter-field">
+        <span>Page Size</span>
+        <select id="taskPageSizeSelect">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+        </select>
+      </label>
+    </div>
     <div class="drawer-meta" id="dataSourceDrawerMeta"></div>
     <div class="task-table-wrap">
       <table>
@@ -475,6 +594,13 @@ def render_workbench_index_html(
         <tbody id="dataSourceTaskRows"></tbody>
       </table>
     </div>
+    <div class="drawer-pagination">
+      <span id="taskPaginationMeta"></span>
+      <div class="pagination-actions">
+        <button class="text-button" id="taskPreviousPageButton" type="button">Previous</button>
+        <button class="text-button" id="taskNextPageButton" type="button">Next</button>
+      </div>
+    </div>
   </aside>
   <main>
     <a href="/strategy-results">
@@ -490,10 +616,14 @@ def render_workbench_index_html(
     const payload = JSON.parse(document.getElementById("workbench-index-payload").textContent);
     const DATA_MONITOR_REFRESH_MS = 10000;
     let dataMonitorTimer = null;
+    let taskSearchTimer = null;
     let dataMonitorState = {
       sources: [],
-      tasksBySource: {},
+      summariesBySource: {},
       jobs: [],
+      selectedSourceId: "",
+      taskPagesBySource: {},
+      filtersBySource: {},
       lastUpdated: "",
       error: "",
     };
@@ -524,14 +654,6 @@ def render_workbench_index_html(
       return Boolean(payload.data_api_base_url);
     }
 
-    function statusCounts(tasks) {
-      return tasks.reduce((counts, task) => {
-        const status = String(task.status || "unknown");
-        counts[status] = (counts[status] || 0) + 1;
-        return counts;
-      }, {});
-    }
-
     function taskUpdatedAt(task) {
       return task.updated_at || task.finished_at || task.started_at || task.created_at || "";
     }
@@ -545,6 +667,53 @@ def render_workbench_index_html(
 
     function sourceLabel(source) {
       return source.source_label || source.source_id || "Source";
+    }
+
+    function defaultTaskFilters() {
+      return { symbol: "", frequencies: [], statuses: [], page: 1, pageSize: 50 };
+    }
+
+    function filtersForSource(sourceId) {
+      if (!dataMonitorState.filtersBySource[sourceId]) {
+        dataMonitorState.filtersBySource[sourceId] = defaultTaskFilters();
+      }
+      return dataMonitorState.filtersBySource[sourceId];
+    }
+
+    function sourceSummary(sourceId) {
+      return dataMonitorState.summariesBySource[sourceId] || {
+        total: 0,
+        status_counts: {},
+        frequency_counts: {},
+        latest_updated_at: null,
+      };
+    }
+
+    function selectedSource() {
+      const sources = dataMonitorState.sources || [];
+      const selectedId = dataMonitorState.selectedSourceId || sources[0]?.source_id || "";
+      return sources.find((source) => source.source_id === selectedId) || sources[0] || null;
+    }
+
+    function sortedKeys(value) {
+      return Object.keys(value || {}).sort((left, right) => left.localeCompare(right));
+    }
+
+    function taskPageUrl(sourceId, filters) {
+      const params = new URLSearchParams();
+      params.set("source_id", sourceId);
+      params.set("page", String(filters.page || 1));
+      params.set("page_size", String(filters.pageSize || 50));
+      if (filters.symbol.trim()) {
+        params.set("symbol", filters.symbol.trim());
+      }
+      for (const frequency of filters.frequencies || []) {
+        params.append("frequency", frequency);
+      }
+      for (const status of filters.statuses || []) {
+        params.append("status", status);
+      }
+      return dataApiUrl(`/api/data/tasks?${params.toString()}`);
     }
 
     function renderDataMonitor() {
@@ -564,8 +733,7 @@ def render_workbench_index_html(
       }
       const sources = dataMonitorState.sources || [];
       summaryEl.innerHTML = sources.length ? sources.map((source) => {
-        const tasks = dataMonitorState.tasksBySource[source.source_id] || [];
-        const counts = statusCounts(tasks);
+        const counts = sourceSummary(source.source_id).status_counts || {};
         const active = (counts.running || 0) + (counts.pending || 0) + (counts.retrying || 0);
         const failed = counts.failed || 0;
         const success = counts.success || 0;
@@ -586,30 +754,110 @@ def render_workbench_index_html(
       renderTaskDrawer();
     }
 
-    function allMonitorTasks() {
-      return (dataMonitorState.sources || []).flatMap((source) => {
-        const tasks = dataMonitorState.tasksBySource[source.source_id] || [];
-        return tasks.map((task) => ({ ...task, source_label: sourceLabel(source), source_id: source.source_id }));
-      }).sort((left, right) => String(taskUpdatedAt(right)).localeCompare(String(taskUpdatedAt(left))));
+    function renderSourceTabs() {
+      const tabsEl = document.getElementById("dataSourceTabs");
+      const sources = dataMonitorState.sources || [];
+      tabsEl.innerHTML = sources.map((source) => {
+        const active = source.source_id === selectedSource()?.source_id ? " active" : "";
+        return `<button class="source-tab${active}" data-source-id="${escapeHtml(source.source_id)}" type="button">${escapeHtml(sourceLabel(source))}</button>`;
+      }).join("");
+      for (const button of tabsEl.querySelectorAll(".source-tab")) {
+        button.addEventListener("click", () => selectTaskSource(button.dataset.sourceId || ""));
+      }
+    }
+
+    function renderFilterOptions(containerId, values, selectedValues, filterKey) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = values.length ? values.map((value) => {
+        const checked = selectedValues.includes(value) ? " checked" : "";
+        return `<label class="checkbox-pill"><input type="checkbox" value="${escapeHtml(value)}"${checked}>${escapeHtml(value)}</label>`;
+      }).join("") : `<span class="data-monitor-meta">All</span>`;
+      for (const input of container.querySelectorAll("input")) {
+        input.addEventListener("change", () => {
+          const source = selectedSource();
+          if (!source) return;
+          const filters = filtersForSource(source.source_id);
+          const selected = Array.from(container.querySelectorAll("input:checked")).map((item) => item.value);
+          filters[filterKey] = selected;
+          filters.page = 1;
+          loadSelectedTaskPage();
+        });
+      }
+    }
+
+    function renderTaskControls() {
+      const source = selectedSource();
+      const symbolInput = document.getElementById("taskSymbolSearch");
+      const pageSizeSelect = document.getElementById("taskPageSizeSelect");
+      if (!source) {
+        symbolInput.value = "";
+        pageSizeSelect.value = "50";
+        renderFilterOptions("taskFrequencyFilters", [], [], "frequencies");
+        renderFilterOptions("taskStatusFilters", [], [], "statuses");
+        return;
+      }
+      const filters = filtersForSource(source.source_id);
+      const summary = sourceSummary(source.source_id);
+      if (document.activeElement !== symbolInput) {
+        symbolInput.value = filters.symbol || "";
+      }
+      pageSizeSelect.value = String(filters.pageSize || 50);
+      renderFilterOptions(
+        "taskFrequencyFilters",
+        sortedKeys(summary.frequency_counts),
+        filters.frequencies || [],
+        "frequencies",
+      );
+      renderFilterOptions(
+        "taskStatusFilters",
+        sortedKeys(summary.status_counts),
+        filters.statuses || [],
+        "statuses",
+      );
     }
 
     function renderTaskDrawer() {
+      renderSourceTabs();
+      renderTaskControls();
       const metaEl = document.getElementById("dataSourceDrawerMeta");
       const rowsEl = document.getElementById("dataSourceTaskRows");
+      const paginationMetaEl = document.getElementById("taskPaginationMeta");
+      const previousButton = document.getElementById("taskPreviousPageButton");
+      const nextButton = document.getElementById("taskNextPageButton");
       if (dataMonitorState.error) {
         metaEl.textContent = `Data source monitor offline · ${dataMonitorState.error}`;
+        paginationMetaEl.textContent = "";
+        previousButton.disabled = true;
+        nextButton.disabled = true;
         rowsEl.innerHTML = `<tr><td class="empty" colspan="8">Unable to load crawl tasks</td></tr>`;
         return;
       }
-      const tasks = allMonitorTasks();
-      const failed = tasks.filter((task) => task.status === "failed").length;
-      const active = tasks.filter((task) => ["pending", "running", "retrying"].includes(task.status)).length;
+      const source = selectedSource();
+      if (!source) {
+        metaEl.textContent = "No data sources";
+        paginationMetaEl.textContent = "";
+        previousButton.disabled = true;
+        nextButton.disabled = true;
+        rowsEl.innerHTML = `<tr><td class="empty" colspan="8">No crawl tasks</td></tr>`;
+        return;
+      }
+      const page = dataMonitorState.taskPagesBySource[source.source_id] || {
+        tasks: [],
+        page: filtersForSource(source.source_id).page,
+        page_size: filtersForSource(source.source_id).pageSize,
+        total: sourceSummary(source.source_id).total || 0,
+        total_pages: 1,
+      };
+      const tasks = page.tasks || [];
       const jobs = Array.isArray(dataMonitorState.jobs) ? dataMonitorState.jobs.length : 0;
-      metaEl.textContent = `${tasks.length} tasks · ${active} active · ${failed} failed · ${jobs} submitted jobs`;
+      metaEl.textContent = `${escapeHtml(sourceLabel(source))} · ${page.total || 0} matching tasks · ${jobs} submitted jobs`;
+      paginationMetaEl.textContent = `Page ${page.page || 1} / ${page.total_pages || 1} · ${page.total || 0} total`;
+      previousButton.disabled = (page.page || 1) <= 1;
+      nextButton.disabled = (page.page || 1) >= (page.total_pages || 1);
       rowsEl.innerHTML = tasks.length ? tasks.map((task) => {
         const status = escapeHtml(task.status || "unknown");
         return `<tr>
-          <td>${escapeHtml(task.source_label || task.source_id || "")}</td>
+          <td>${escapeHtml(sourceLabel(source))}</td>
           <td>${escapeHtml(task.symbol || "")}</td>
           <td>${escapeHtml(task.frequency || "")}</td>
           <td>${escapeHtml(task.adjust || "")}</td>
@@ -618,7 +866,46 @@ def render_workbench_index_html(
           <td>${escapeHtml(formatClock(taskUpdatedAt(task)))}</td>
           <td>${escapeHtml(task.last_error || "")}</td>
         </tr>`;
-      }).join("") : `<tr><td class="empty" colspan="8">No crawl tasks</td></tr>`;
+      }).join("") : `<tr><td class="empty" colspan="8">No matching crawl tasks</td></tr>`;
+    }
+
+    async function loadSelectedTaskPage() {
+      const source = selectedSource();
+      if (!dataMonitorEnabled() || !source) {
+        renderTaskDrawer();
+        return;
+      }
+      const filters = filtersForSource(source.source_id);
+      try {
+        const response = await fetch(taskPageUrl(source.source_id, filters), dataApiRequestOptions());
+        if (!response.ok) {
+          throw new Error(`${sourceLabel(source)} HTTP ${response.status}`);
+        }
+        const pagePayload = await response.json();
+        dataMonitorState.taskPagesBySource = {
+          ...dataMonitorState.taskPagesBySource,
+          [source.source_id]: pagePayload,
+        };
+        filters.page = pagePayload.page || filters.page;
+        filters.pageSize = pagePayload.page_size || filters.pageSize;
+      } catch (error) {
+        dataMonitorState = {
+          ...dataMonitorState,
+          lastUpdated: new Date(),
+          error: error.message,
+        };
+      }
+      renderDataMonitor();
+    }
+
+    function selectTaskSource(sourceId) {
+      if (!sourceId || dataMonitorState.selectedSourceId === sourceId) {
+        return;
+      }
+      dataMonitorState.selectedSourceId = sourceId;
+      filtersForSource(sourceId);
+      renderTaskDrawer();
+      loadSelectedTaskPage();
     }
 
     async function loadDataMonitor() {
@@ -633,13 +920,13 @@ def render_workbench_index_html(
         }
         const sourcePayload = await sourcesResponse.json();
         const sources = Array.isArray(sourcePayload.sources) ? sourcePayload.sources : [];
-        const taskEntries = await Promise.all(sources.map(async (source) => {
-          const response = await fetch(dataApiUrl(`/api/data/tasks?source_id=${encodeURIComponent(source.source_id)}`), dataApiRequestOptions());
+        const summaryEntries = await Promise.all(sources.map(async (source) => {
+          const response = await fetch(dataApiUrl(`/api/data/tasks/summary?source_id=${encodeURIComponent(source.source_id)}`), dataApiRequestOptions());
           if (!response.ok) {
             throw new Error(`${sourceLabel(source)} HTTP ${response.status}`);
           }
-          const taskPayload = await response.json();
-          return [source.source_id, Array.isArray(taskPayload.tasks) ? taskPayload.tasks : []];
+          const summaryPayload = await response.json();
+          return [source.source_id, summaryPayload];
         }));
         let jobs = [];
         const jobsResponse = await fetch(dataApiUrl("/api/data/jobs"), dataApiRequestOptions());
@@ -647,10 +934,15 @@ def render_workbench_index_html(
           const jobsPayload = await jobsResponse.json();
           jobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
         }
+        const selectedSourceId = sources.some((source) => source.source_id === dataMonitorState.selectedSourceId)
+          ? dataMonitorState.selectedSourceId
+          : sources[0]?.source_id || "";
         dataMonitorState = {
+          ...dataMonitorState,
           sources,
-          tasksBySource: Object.fromEntries(taskEntries),
+          summariesBySource: Object.fromEntries(summaryEntries),
           jobs,
+          selectedSourceId,
           lastUpdated: new Date(),
           error: "",
         };
@@ -662,6 +954,9 @@ def render_workbench_index_html(
         };
       }
       renderDataMonitor();
+      if (!document.getElementById("dataSourceDrawer").hidden) {
+        await loadSelectedTaskPage();
+      }
     }
 
     function refreshDataMonitorWhenVisible() {
@@ -685,6 +980,12 @@ def render_workbench_index_html(
     function openDataSourceDrawer() {
       document.getElementById("dataSourceDrawer").hidden = false;
       document.getElementById("dataSourceDrawerBackdrop").hidden = false;
+      const source = selectedSource();
+      if (source && !dataMonitorState.taskPagesBySource[source.source_id]) {
+        loadSelectedTaskPage();
+      } else {
+        renderTaskDrawer();
+      }
     }
 
     function closeDataSourceDrawer() {
@@ -695,6 +996,40 @@ def render_workbench_index_html(
     document.getElementById("dataSourceDetailsButton").addEventListener("click", openDataSourceDrawer);
     document.getElementById("dataSourceDrawerCloseButton").addEventListener("click", closeDataSourceDrawer);
     document.getElementById("dataSourceDrawerBackdrop").addEventListener("click", closeDataSourceDrawer);
+    document.getElementById("taskSymbolSearch").addEventListener("input", (event) => {
+      const source = selectedSource();
+      if (!source) return;
+      const filters = filtersForSource(source.source_id);
+      filters.symbol = event.target.value || "";
+      filters.page = 1;
+      if (taskSearchTimer) {
+        clearTimeout(taskSearchTimer);
+      }
+      taskSearchTimer = setTimeout(loadSelectedTaskPage, 300);
+    });
+    document.getElementById("taskPageSizeSelect").addEventListener("change", (event) => {
+      const source = selectedSource();
+      if (!source) return;
+      const filters = filtersForSource(source.source_id);
+      filters.pageSize = Number(event.target.value) || 50;
+      filters.page = 1;
+      loadSelectedTaskPage();
+    });
+    document.getElementById("taskPreviousPageButton").addEventListener("click", () => {
+      const source = selectedSource();
+      if (!source) return;
+      const filters = filtersForSource(source.source_id);
+      filters.page = Math.max(1, (filters.page || 1) - 1);
+      loadSelectedTaskPage();
+    });
+    document.getElementById("taskNextPageButton").addEventListener("click", () => {
+      const source = selectedSource();
+      if (!source) return;
+      const filters = filtersForSource(source.source_id);
+      const page = dataMonitorState.taskPagesBySource[source.source_id];
+      filters.page = Math.min(page?.total_pages || ((filters.page || 1) + 1), (filters.page || 1) + 1);
+      loadSelectedTaskPage();
+    });
     document.addEventListener("visibilitychange", refreshDataMonitorWhenVisible);
     startDataMonitor();
   </script>

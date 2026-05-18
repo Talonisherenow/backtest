@@ -23,12 +23,20 @@ def test_render_workbench_index_html_hosts_readonly_data_source_monitor():
     assert '"data_api_token":"monitor-token"' in html
     assert 'id="dataSourceMonitor"' in html
     assert 'id="dataSourceDrawer"' in html
+    assert 'id="dataSourceTabs"' in html
+    assert 'id="taskSymbolSearch"' in html
+    assert 'id="taskFrequencyFilters"' in html
+    assert 'id="taskStatusFilters"' in html
+    assert 'id="taskPreviousPageButton"' in html
+    assert 'id="taskNextPageButton"' in html
+    assert 'id="taskPageSizeSelect"' in html
     assert "Read-only crawl task monitor" in html
     assert "function dataApiUrl(path)" in html
     assert "function dataApiRequestOptions()" in html
     assert '"Authorization", `Bearer ${payload.data_api_token}`' in html
     assert 'fetch(dataApiUrl("/api/data-sources"), dataApiRequestOptions())' in html
-    assert 'fetch(dataApiUrl(`/api/data/tasks?source_id=${encodeURIComponent(source.source_id)}`), dataApiRequestOptions())' in html
+    assert 'fetch(dataApiUrl(`/api/data/tasks/summary?source_id=${encodeURIComponent(source.source_id)}`), dataApiRequestOptions())' in html
+    assert 'fetch(taskPageUrl(source.source_id, filters), dataApiRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/data/jobs"), dataApiRequestOptions())' in html
     assert "DATA_MONITOR_REFRESH_MS = 10000" in html
     assert 'document.addEventListener("visibilitychange", refreshDataMonitorWhenVisible)' in html

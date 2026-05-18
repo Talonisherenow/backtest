@@ -39,8 +39,10 @@ def make_data_source_handler(api: DataSourceApi):
                     self._send_json(200, api.kline_manifest())
                 elif parsed.path == "/api/kline/bars":
                     self._send_json(200, api.kline_bars(**self._bars_args(query)))
+                elif parsed.path == "/api/data/tasks/summary":
+                    self._send_json(200, api.task_summary(self._required(query, "source_id")))
                 elif parsed.path == "/api/data/tasks":
-                    self._send_json(200, api.tasks(self._required(query, "source_id")))
+                    self._send_json(200, api.tasks(**self._task_args(query)))
                 elif parsed.path == "/api/data/inventory":
                     self._send_json(200, api.inventory(self._required(query, "source_id")))
                 elif parsed.path == "/api/data/jobs":
@@ -100,6 +102,21 @@ def make_data_source_handler(api: DataSourceApi):
             offset = self._optional(query, "offset")
             if offset is not None:
                 args["offset"] = int(offset)
+            return args
+
+        def _task_args(self, query: dict[str, list[str]]) -> dict[str, Any]:
+            page = self._optional(query, "page")
+            page_size = self._optional(query, "page_size")
+            args: dict[str, Any] = {
+                "source_id": self._required(query, "source_id"),
+                "symbol": self._optional(query, "symbol"),
+                "frequencies": query.get("frequency", []),
+                "statuses": query.get("status", []),
+            }
+            if page is not None:
+                args["page"] = int(page)
+            if page_size is not None:
+                args["page_size"] = int(page_size)
             return args
 
         def _read_json(self) -> dict[str, Any]:

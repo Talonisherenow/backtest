@@ -142,6 +142,7 @@ def test_get_routes_and_cors_headers(tmp_path: Path):
         )
         _, _, bars = _json_request(base_url, f"/api/kline/bars?{query}")
         _, _, tasks = _json_request(base_url, "/api/data/tasks?source_id=a_share")
+        _, _, task_summary = _json_request(base_url, "/api/data/tasks/summary?source_id=a_share")
         _, _, inventory = _json_request(base_url, "/api/data/inventory?source_id=a_share")
         _, _, jobs = _json_request(base_url, "/api/data/jobs")
 
@@ -152,6 +153,11 @@ def test_get_routes_and_cors_headers(tmp_path: Path):
         assert manifest["default_window_size"] == 1
         assert bars["loaded_rows"] == 1
         assert tasks["tasks"][0]["status"] == "failed"
+        assert tasks["page"] == 1
+        assert tasks["page_size"] == 50
+        assert tasks["total"] == 1
+        assert task_summary["status_counts"] == {"failed": 1}
+        assert task_summary["frequency_counts"] == {"1d": 1}
         assert inventory == {"records": []}
         assert jobs == {"jobs": []}
     finally:
@@ -176,6 +182,56 @@ def test_kline_bars_uses_config_default_window_size_when_limit_is_omitted(tmp_pa
 
         assert bars["loaded_rows"] == 4
         assert bars["limit"] == 4
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_task_route_supports_pagination_symbol_and_multi_select_filters(tmp_path: Path):
+    server = _server(tmp_path)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        query = urlencode(
+            [
+                ("source_id", "a_share"),
+                ("page", "1"),
+                ("page_size", "1"),
+                ("symbol", "000001"),
+                ("frequency", "1d"),
+                ("frequency", "4h"),
+                ("status", "failed"),
+                ("status", "running"),
+            ]
+        )
+
+        _, _, tasks = _json_request(base_url, f"/api/data/tasks?{query}")
+
+        assert tasks["source_id"] == "a_share"
+        assert tasks["page"] == 1
+        assert tasks["page_size"] == 1
+        assert tasks["total"] == 1
+        assert tasks["filters"] == {
+            "symbol": "000001",
+            "frequencies": ["1d", "4h"],
+            "statuses": ["failed", "running"],
+        }
+        assert tasks["tasks"][0]["symbol"] == "000001.SZ"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_task_route_rejects_invalid_pagination(tmp_path: Path):
+    server = _server(tmp_path)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            _json_request(base_url, "/api/data/tasks?source_id=a_share&page=0")
+        except HTTPError as exc:
+            assert exc.code == 400
+            assert "page must be greater than or equal to 1" in json.loads(
+                exc.read().decode("utf-8")
+            )["error"]
     finally:
         server.shutdown()
         server.server_close()

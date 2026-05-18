@@ -34,6 +34,21 @@ Not allowed:
 
 Read `references/workbench-runbook.md` for local and remote startup commands.
 
+When verifying the workbench home data-source monitor:
+
+- The compact home summary should stay visible below the header when
+  `--data-api-base-url` is configured.
+- The summary is backed by `/api/data/tasks/summary?source_id=<source_id>`, not
+  by a full task list fetch.
+- The `Details` drawer should provide source tabs, one tab per configured data
+  source.
+- Within a source tab, the task table should support server-side pagination,
+  symbol search, frequency multi-select, and status multi-select. `last_error`
+  is display-only.
+- If the drawer shows a task stuck in `running`, ask data-source ops to compare
+  metadata status with actual sync-job processes before assuming a crawl is
+  still active.
+
 If the user asks to fix data-source deployment, route to `backtest-data-source-ops`.
 
 If the user asks from an IM-agent context, route API-only actions to `backtest-im-agent-api`.

@@ -119,12 +119,36 @@ def test_tasks_inventory_and_retry_failed_serialize_real_store_records(tmp_path:
     )
 
     task_payload = api.tasks("a_share")
+    paged_task_payload = api.tasks(
+        "a_share",
+        page=1,
+        page_size=1,
+        symbol="000001",
+        frequencies=["1d"],
+        statuses=["failed"],
+    )
+    task_summary = api.task_summary("a_share")
     inventory_payload = api.inventory("a_share")
     retry_payload = api.retry_failed("a_share")
 
     assert task_payload["tasks"][0]["frequency"] == "1d"
     assert task_payload["tasks"][0]["adjust"] == "qfq"
     assert task_payload["tasks"][0]["status"] == "failed"
+    assert paged_task_payload["source_id"] == "a_share"
+    assert paged_task_payload["page"] == 1
+    assert paged_task_payload["page_size"] == 1
+    assert paged_task_payload["total"] == 1
+    assert paged_task_payload["total_pages"] == 1
+    assert paged_task_payload["filters"] == {
+        "symbol": "000001",
+        "frequencies": ["1d"],
+        "statuses": ["failed"],
+    }
+    assert task_summary["source_id"] == "a_share"
+    assert task_summary["total"] == 1
+    assert task_summary["status_counts"] == {"failed": 1}
+    assert task_summary["frequency_counts"] == {"1d": 1}
+    assert task_summary["latest_updated_at"] is not None
     assert inventory_payload["records"][0]["cache_path"] == str(spec.bars_root / "frequency=1d")
     assert inventory_payload["records"][0]["quality_status"] == "ok"
     assert retry_payload == {"queued": 1, "task_ids": [task_id]}

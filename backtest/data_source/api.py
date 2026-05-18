@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from backtest.core.enums import Frequency
 from backtest.charts.kline_service import KlineCacheService, KlineSource
 from backtest.data.catalog import DataCatalog
 from backtest.data.jobs import DataSyncJobConfig
@@ -66,9 +67,52 @@ class DataSourceApi:
             anchor=anchor,
         )
 
-    def tasks(self, source_id: str) -> dict[str, list[dict[str, Any]]]:
+    def task_summary(self, source_id: str) -> dict[str, Any]:
         spec = self.config.source(source_id)
-        return {"tasks": [self._jsonify(record) for record in self._tasks(spec).list_tasks()]}
+        summary = self._tasks(spec).task_summary()
+        return {
+            "source_id": source_id,
+            "total": summary.total,
+            "status_counts": summary.status_counts,
+            "frequency_counts": summary.frequency_counts,
+            "latest_updated_at": summary.latest_updated_at.isoformat()
+            if summary.latest_updated_at
+            else None,
+        }
+
+    def tasks(
+        self,
+        source_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        symbol: str | None = None,
+        frequencies: list[str] | None = None,
+        statuses: list[str] | None = None,
+    ) -> dict[str, Any]:
+        spec = self.config.source(source_id)
+        normalized_frequencies = [Frequency(frequency) for frequency in frequencies or []]
+        normalized_statuses = [status.strip() for status in statuses or [] if status.strip()]
+        task_page = self._tasks(spec).list_tasks_page(
+            page=page,
+            page_size=page_size,
+            symbol=symbol,
+            frequencies=normalized_frequencies,
+            statuses=normalized_statuses,
+        )
+        return {
+            "source_id": source_id,
+            "tasks": [self._jsonify(record) for record in task_page.tasks],
+            "page": task_page.page,
+            "page_size": task_page.page_size,
+            "total": task_page.total,
+            "total_pages": task_page.total_pages,
+            "filters": {
+                "symbol": symbol or "",
+                "frequencies": [frequency.value for frequency in normalized_frequencies],
+                "statuses": normalized_statuses,
+            },
+        }
 
     def inventory(self, source_id: str) -> dict[str, list[dict[str, Any]]]:
         spec = self.config.source(source_id)
