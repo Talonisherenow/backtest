@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from pyarrow.lib import ArrowException
 
 from backtest.charts.kline_viewer import (
     BAR_COLUMNS,
@@ -24,6 +25,9 @@ from backtest.charts.kline_viewer import (
     _years_from_paths,
 )
 from backtest.core.symbols import normalize_symbol, safe_symbol_path
+
+_READ_ERRORS = (OSError, ValueError, ArrowException)
+_MANIFEST_SERIES_ERRORS = (*_READ_ERRORS, KeyError)
 
 
 @dataclass(frozen=True)
@@ -202,7 +206,10 @@ class KlineCacheService:
         for symbol in requested_symbols:
             series = []
             for frequency in frequencies:
-                metadata = self._series_metadata(source.bars_root, symbol, frequency, source.adjust)
+                try:
+                    metadata = self._series_metadata(source.bars_root, symbol, frequency, source.adjust)
+                except _MANIFEST_SERIES_ERRORS:
+                    continue
                 if metadata is not None:
                     series.append(metadata)
             if not series:
@@ -271,7 +278,7 @@ class KlineCacheService:
         for attempt in range(self.read_retries + 1):
             try:
                 return pd.concat([pd.read_parquet(path) for path in paths], ignore_index=True)
-            except (OSError, ValueError) as exc:
+            except _READ_ERRORS as exc:
                 last_error = exc
                 if attempt >= self.read_retries:
                     break

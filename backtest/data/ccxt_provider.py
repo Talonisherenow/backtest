@@ -186,6 +186,8 @@ class CCXTOHLCVProvider:
 
             next_since = self._next_since(last_timestamp, timeframe_ms, frequency)
             if next_since <= since:
+                if self._is_terminal_repeated_candle(last_timestamp, timeframe_ms, end_ms):
+                    break
                 raise ValueError("CCXT OHLCV pagination did not advance")
             since = next_since
             if self.page_delay_seconds:
@@ -208,6 +210,12 @@ class CCXTOHLCVProvider:
         if self.exchange_id == "bitget" and frequency is Frequency.DAILY:
             return start_ms - timeframe_ms
         return start_ms
+
+    def _is_terminal_repeated_candle(self, timestamp_ms: int, timeframe_ms: int, end_ms: int) -> bool:
+        candle_end_ms = timestamp_ms + timeframe_ms
+        if candle_end_ms >= end_ms:
+            return True
+        return self.drop_incomplete and candle_end_ms > self.now_ms()
 
     def _row_from_candle(
         self, symbol: str, frequency: Frequency, candle: list[float]

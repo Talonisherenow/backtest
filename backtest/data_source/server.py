@@ -53,6 +53,8 @@ def make_data_source_handler(api: DataSourceApi):
                     self._send_json(404, {"error": "Not found"})
             except ValueError as exc:
                 self._send_json(400, {"error": str(exc)})
+            except Exception as exc:
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
 
         def do_POST(self) -> None:
             if not self._is_authorized():
@@ -74,6 +76,8 @@ def make_data_source_handler(api: DataSourceApi):
                 self._send_json(400, {"error": str(exc)})
             except json.JSONDecodeError as exc:
                 self._send_json(400, {"error": str(exc)})
+            except Exception as exc:
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
 
         def log_message(self, format: str, *args: Any) -> None:
             return

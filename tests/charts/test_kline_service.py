@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from backtest.charts.kline_service import KlineCacheService, KlineSource
+from backtest.core.symbols import safe_symbol_path
 from backtest.data.store import ParquetBarStore
 
 
@@ -60,6 +61,26 @@ def test_kline_cache_service_manifest_indexes_cached_series_without_bars(tmp_pat
     assert "bars" not in item["series"][0]
     assert item["series"][0]["rows"] == 3
     assert item["series"][0]["first_bar"] == "2025-01-01T00:00:00"
+
+
+def test_kline_cache_service_manifest_skips_unreadable_cached_series(tmp_path: Path):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(bars_root, "BTC/USDT", frequency="1d")
+    bad_path = (
+        bars_root
+        / "frequency=1d"
+        / "adjust=none"
+        / f"symbol={safe_symbol_path('BNB/USDT')}"
+        / "year=2025"
+        / "bars.parquet"
+    )
+    bad_path.parent.mkdir(parents=True)
+    bad_path.write_bytes(b"PAR1not-a-readable-parquet")
+
+    manifest = KlineCacheService(bars_root=bars_root, adjust="none", read_retries=0).manifest()
+
+    source = manifest["sources"][0]
+    assert [item["symbol"] for item in source["symbols"]] == ["BTC/USDT"]
 
 
 def test_kline_cache_service_reads_latest_and_offset_windows(tmp_path: Path):

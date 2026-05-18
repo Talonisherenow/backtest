@@ -187,6 +187,32 @@ def test_kline_bars_uses_config_default_window_size_when_limit_is_omitted(tmp_pa
         server.server_close()
 
 
+def test_get_route_returns_json_error_for_unexpected_failure():
+    from http.server import ThreadingHTTPServer
+
+    class BrokenApi:
+        config = type("Config", (), {"api_token": None})()
+
+        def kline_manifest(self):
+            raise OSError("corrupt parquet")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), make_data_source_handler(BrokenApi()))
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        try:
+            _json_request(base_url, "/api/kline/manifest")
+        except HTTPError as exc:
+            assert exc.code == 500
+            assert json.loads(exc.read().decode("utf-8")) == {"error": "corrupt parquet"}
+        else:
+            raise AssertionError("expected HTTPError")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_task_route_supports_pagination_symbol_and_multi_select_filters(tmp_path: Path):
     server = _server(tmp_path)
     base_url = f"http://127.0.0.1:{server.server_address[1]}"

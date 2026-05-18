@@ -275,6 +275,41 @@ def test_ccxt_provider_offsets_initial_since_for_bitget_daily_pagination():
     assert exchange.calls[0]["since"] == first_timestamp - 24 * 60 * 60 * 1000
 
 
+def test_ccxt_provider_stops_when_bitget_daily_repeats_current_incomplete_candle():
+    first_timestamp = _ms("2025-01-01T00:00:00")
+    second_timestamp = _ms("2025-01-02T00:00:00")
+    incomplete_timestamp = _ms("2025-01-03T00:00:00")
+    exchange = FakeExchange(
+        batches=[
+            [
+                [first_timestamp, 100.0, 110.0, 90.0, 105.0, 2.0],
+                [second_timestamp, 105.0, 115.0, 95.0, 110.0, 3.0],
+                [incomplete_timestamp, 110.0, 120.0, 100.0, 115.0, 4.0],
+            ],
+            [[incomplete_timestamp, 110.0, 120.0, 100.0, 115.0, 4.0]],
+        ]
+    )
+    provider = CCXTOHLCVProvider(
+        exchange_id="bitget",
+        exchange=exchange,
+        limit=3,
+        now_ms=lambda: _ms("2025-01-03T12:00:00"),
+    )
+
+    result = provider.fetch_bars(
+        BarRequest(
+            symbols=["BTC/USDT"],
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 3),
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.NONE,
+            source="ccxt:bitget",
+        )
+    )
+
+    assert result["date"].dt.strftime("%Y-%m-%d").tolist() == ["2025-01-01", "2025-01-02"]
+
+
 def test_ccxt_provider_waits_between_paginated_requests():
     first_timestamp = _ms("2025-01-01T00:00:00")
     second_timestamp = _ms("2025-01-01T00:01:00")
