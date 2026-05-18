@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backtest Workbench Ops"
+  short_description: "Start and verify the workbench"
+  default_prompt: "Use $backtest-workbench-ops to start the chart workbench, connect it to a data-source API, and verify K-line and strategy result pages."

@@ -962,6 +962,11 @@ HTML_TEMPLATE = """<!doctype html>
     const datasetMeta = document.getElementById("datasetMeta");
     const chart = document.getElementById("chart");
 
+    function apiUrl(path) {
+      const baseUrl = String(payload.data_api_base_url || "").replace(/\\/+$/, "");
+      return baseUrl ? `${baseUrl}${path}` : path;
+    }
+
     function normalizeSources(payload) {
       if (Array.isArray(payload.sources) && payload.sources.length) {
         return payload.sources;
@@ -1627,7 +1632,7 @@ HTML_TEMPLATE = """<!doctype html>
       chart.className = "empty";
       chart.textContent = "Loading local data index...";
       try {
-        const response = await fetch("/api/manifest", { cache: "no-store" });
+        const response = await fetch(apiUrl("/api/kline/manifest"), { cache: "no-store" });
         const manifest = await response.json();
         if (!response.ok || manifest.error) {
           throw new Error(manifest.error || `Manifest request failed: ${response.status}`);
@@ -1686,7 +1691,7 @@ HTML_TEMPLATE = """<!doctype html>
         params.set("anchor", anchor);
       }
       try {
-        const response = await fetch(`/api/bars?${params.toString()}`, { cache: "no-store" });
+        const response = await fetch(apiUrl(`/api/kline/bars?${params.toString()}`), { cache: "no-store" });
         const result = await response.json();
         if (!response.ok || result.error) {
           throw new Error(result.error || `Bars request failed: ${response.status}`);

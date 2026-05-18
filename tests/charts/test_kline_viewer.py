@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from backtest.charts.kline_viewer import build_kline_payload, render_kline_viewer_html, write_kline_viewer
+from backtest.charts import kline_server
 from backtest.data.store import ParquetBarStore
 
 
@@ -325,8 +326,8 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert 'mode": "dynamic"' not in html
     assert '"mode":"dynamic"' in html
     assert "loadManifest" in html
-    assert "/api/manifest" in html
-    assert "/api/bars" in html
+    assert 'apiUrl("/api/kline/manifest")' in html
+    assert "apiUrl(`/api/kline/bars?${params.toString()}`)" in html
     assert "olderPageButton" in html
     assert "newerPageButton" in html
     assert "latestPageButton" in html
@@ -351,6 +352,25 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert "Loaded" not in html
 
 
+def test_render_kline_viewer_supports_remote_data_api_base_url():
+    html = render_kline_viewer_html(
+        {
+            "mode": "dynamic",
+            "default_window_size": 5000,
+            "data_api_base_url": "http://data-host:8768",
+            "data_api_token": "viewer-token",
+        }
+    )
+
+    assert '"data_api_base_url":"http://data-host:8768"' in html
+    assert '"data_api_token":"viewer-token"' in html
+    assert "function apiUrl(path)" in html
+    assert "function apiRequestOptions()" in html
+    assert '"Authorization", `Bearer ${payload.data_api_token}`' in html
+    assert 'fetch(apiUrl("/api/kline/manifest"), apiRequestOptions())' in html
+    assert "fetch(apiUrl(`/api/kline/bars?${params.toString()}`), apiRequestOptions())" in html
+
+
 def test_render_kline_viewer_supports_workbench_home_link():
     html = render_kline_viewer_html({"mode": "dynamic", "links": {"workbench_home": "/"}})
 
@@ -365,3 +385,56 @@ def test_render_kline_viewer_supports_workbench_home_link():
     assert 'class="toolbar-button data-status-control" id="dataStatusButton"' not in html
     assert 'class="status-action"' not in html
     assert 'id="dataStatusButtonMeta"' not in html
+
+
+def test_kline_server_supports_legacy_and_kline_api_manifest_routes(monkeypatch):
+    captured = {}
+
+    class FakeService:
+        def __init__(self, **kwargs):
+            pass
+
+        def manifest(self, *, default_window_size):
+            return {"window": default_window_size}
+
+        def bars(self, **kwargs):
+            return {"symbol": kwargs["symbol"], "frequency": kwargs["frequency"]}
+
+    class FakeServer:
+        def __init__(self, address, handler_class):
+            captured["handler_class"] = handler_class
+
+        def serve_forever(self):
+            return None
+
+        def server_close(self):
+            return None
+
+    monkeypatch.setattr(kline_server, "KlineCacheService", FakeService)
+    monkeypatch.setattr(kline_server, "ThreadingHTTPServer", FakeServer)
+
+    kline_server.serve_kline_viewer(default_window_size=123)
+    handler_class = captured["handler_class"]
+
+    for path in ["/api/manifest", "/api/kline/manifest"]:
+        sent = {}
+        handler = object.__new__(handler_class)
+        handler.path = path
+        handler._send_json = lambda payload, status=None: sent.update(payload=payload)
+
+        handler.do_GET()
+
+        assert sent["payload"] == {"window": 123}
+
+    for path in [
+        "/api/bars?symbol=BTC%2FUSDT&frequency=1d",
+        "/api/kline/bars?symbol=BTC%2FUSDT&frequency=1d",
+    ]:
+        sent = {}
+        handler = object.__new__(handler_class)
+        handler.path = path
+        handler._send_json = lambda payload, status=None: sent.update(payload=payload)
+
+        handler.do_GET()
+
+        assert sent["payload"] == {"symbol": "BTC/USDT", "frequency": "1d"}

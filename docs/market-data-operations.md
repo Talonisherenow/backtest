@@ -23,6 +23,10 @@ uv run backtest data sync-job --job configs/data_jobs/crypto_bitget_core.yaml
 http://127.0.0.1:8765/
 ```
 
+如果需要在公网通过 VPS + Nginx + frp 访问家里服务器上的 data-source API，并让
+外部 workbench 通过 `--data-api-base-url` 切换数据源，见
+[`remote-workbench-deployment.md`](remote-workbench-deployment.md)。
+
 如果没有使用 `uv`，先安装项目：
 
 ```bash
@@ -259,6 +263,27 @@ uv run backtest chart viewer \
 ```
 
 静态 HTML 会把选中的 bars 嵌入文件。`--limit 0` 会嵌入全部数据，但文件会很大。
+
+## Remote LAN Data Source API
+
+在数据机器上启动 K-line 数据 API：
+
+```bash
+uv run backtest data-source serve --host 0.0.0.0 --port 8768
+```
+
+在本机启动 workbench，并让 K-line viewer 读取远端数据 API：
+
+```bash
+uv run backtest chart serve-workbench --data-api-base-url http://SERVER_IP:8768 --host 127.0.0.1 --port 8767
+```
+
+探测远端服务：
+
+```bash
+curl http://SERVER_IP:8768/api/health
+curl http://SERVER_IP:8768/api/kline/manifest
+```
 
 ## Scheduling
 

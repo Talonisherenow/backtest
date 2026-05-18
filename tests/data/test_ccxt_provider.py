@@ -1,4 +1,6 @@
+import sys
 from datetime import UTC, date, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -155,6 +157,26 @@ def test_ccxt_provider_keeps_configured_limit_for_non_bitget_exchanges():
     assert exchange.calls[0]["limit"] == 1000
 
 
+def test_ccxt_provider_passes_env_proxy_to_ccxt_exchange(monkeypatch):
+    captured_config: dict = {}
+
+    class FakeExchangeFactory:
+        def __init__(self, config):
+            captured_config.update(config)
+
+    monkeypatch.setenv("CCXT_HTTP_PROXY", "http://127.0.0.1:7897")
+    monkeypatch.setenv("CCXT_HTTPS_PROXY", "http://127.0.0.1:7897")
+    monkeypatch.setitem(sys.modules, "ccxt", SimpleNamespace(bitget=FakeExchangeFactory))
+
+    CCXTOHLCVProvider(exchange_id="bitget")._exchange()
+
+    assert captured_config["enableRateLimit"] is True
+    assert captured_config["proxies"] == {
+        "http": "http://127.0.0.1:7897",
+        "https": "http://127.0.0.1:7897",
+    }
+
+
 def test_ccxt_provider_paginates_from_last_candle_timestamp():
     first_timestamp = _ms("2025-01-01T00:00:00")
     second_timestamp = _ms("2025-01-01T04:00:00")
@@ -184,6 +206,108 @@ def test_ccxt_provider_paginates_from_last_candle_timestamp():
 
     assert len(result) == 3
     assert exchange.calls[1]["since"] == third_timestamp
+
+
+def test_ccxt_provider_reuses_last_timestamp_for_bitget_daily_pagination():
+    first_timestamp = _ms("2025-01-01T00:00:00")
+    second_timestamp = _ms("2025-01-02T00:00:00")
+    third_timestamp = _ms("2025-01-03T00:00:00")
+    exchange = FakeExchange(
+        batches=[
+            [
+                [first_timestamp, 100.0, 110.0, 90.0, 105.0, 2.0],
+                [second_timestamp, 105.0, 115.0, 95.0, 110.0, 3.0],
+            ],
+            [[third_timestamp, 110.0, 120.0, 100.0, 115.0, 4.0]],
+            [],
+        ]
+    )
+    provider = CCXTOHLCVProvider(
+        exchange_id="bitget",
+        exchange=exchange,
+        limit=2,
+        now_ms=lambda: _ms("2025-01-04T00:00:00"),
+    )
+
+    provider.fetch_bars(
+        BarRequest(
+            symbols=["BTC/USDT"],
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 3),
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.NONE,
+            source="ccxt:bitget",
+        )
+    )
+
+    assert exchange.calls[1]["since"] == second_timestamp
+
+
+def test_ccxt_provider_offsets_initial_since_for_bitget_daily_pagination():
+    first_timestamp = _ms("2025-01-01T00:00:00")
+    second_timestamp = _ms("2025-01-02T00:00:00")
+    exchange = FakeExchange(
+        batches=[
+            [
+                [first_timestamp, 100.0, 110.0, 90.0, 105.0, 2.0],
+                [second_timestamp, 105.0, 115.0, 95.0, 110.0, 3.0],
+            ],
+            [],
+        ]
+    )
+    provider = CCXTOHLCVProvider(
+        exchange_id="bitget",
+        exchange=exchange,
+        now_ms=lambda: _ms("2025-01-02T00:00:00"),
+    )
+
+    provider.fetch_bars(
+        BarRequest(
+            symbols=["BTC/USDT"],
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 2),
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.NONE,
+            source="ccxt:bitget",
+        )
+    )
+
+    assert exchange.calls[0]["since"] == first_timestamp - 24 * 60 * 60 * 1000
+
+
+def test_ccxt_provider_stops_when_bitget_daily_repeats_current_incomplete_candle():
+    first_timestamp = _ms("2025-01-01T00:00:00")
+    second_timestamp = _ms("2025-01-02T00:00:00")
+    incomplete_timestamp = _ms("2025-01-03T00:00:00")
+    exchange = FakeExchange(
+        batches=[
+            [
+                [first_timestamp, 100.0, 110.0, 90.0, 105.0, 2.0],
+                [second_timestamp, 105.0, 115.0, 95.0, 110.0, 3.0],
+                [incomplete_timestamp, 110.0, 120.0, 100.0, 115.0, 4.0],
+            ],
+            [[incomplete_timestamp, 110.0, 120.0, 100.0, 115.0, 4.0]],
+        ]
+    )
+    provider = CCXTOHLCVProvider(
+        exchange_id="bitget",
+        exchange=exchange,
+        limit=3,
+        now_ms=lambda: _ms("2025-01-03T12:00:00"),
+    )
+
+    result = provider.fetch_bars(
+        BarRequest(
+            symbols=["BTC/USDT"],
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 3),
+            frequency=Frequency.DAILY,
+            adjust=AdjustMode.NONE,
+            source="ccxt:bitget",
+        )
+    )
+
+    assert result["date"].dt.strftime("%Y-%m-%d").tolist() == ["2025-01-01", "2025-01-02"]
 
 
 def test_ccxt_provider_waits_between_paginated_requests():

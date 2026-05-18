@@ -140,7 +140,11 @@ def test_render_strategy_results_catalog_dynamic_shell_fetches_api():
     from backtest.charts.strategy_results_catalog import render_strategy_results_catalog_html
 
     html = render_strategy_results_catalog_html(
-        {"mode": "dynamic", "title": "Strategy Results", "links": {"workbench_home": "/"}}
+        {
+            "mode": "dynamic",
+            "title": "Strategy Results",
+            "links": {"workbench_home": "/"},
+        }
     )
 
     assert "strategy-results-catalog-payload" in html
@@ -149,3 +153,6 @@ def test_render_strategy_results_catalog_dynamic_shell_fetches_api():
     assert 'id="workbenchHomeLink"' in html
     assert "Workbench Home" in html
     assert "workbenchHomeHref" in html
+    assert 'id="dataSourceMonitor"' not in html
+    assert 'id="dataSourceDrawer"' not in html
+    assert 'fetch(dataApiUrl("/api/data-sources")' not in html

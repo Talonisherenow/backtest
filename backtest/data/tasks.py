@@ -1,8 +1,26 @@
+from dataclasses import dataclass
 from datetime import date, datetime
 
 from backtest.core.contracts import CrawlTaskRecord
 from backtest.core.enums import AdjustMode, Frequency
 from backtest.data.metadata import MetadataStore
+
+
+@dataclass(frozen=True)
+class CrawlTaskSummary:
+    total: int
+    status_counts: dict[str, int]
+    frequency_counts: dict[str, int]
+    latest_updated_at: datetime | None
+
+
+@dataclass(frozen=True)
+class CrawlTaskPage:
+    tasks: list[CrawlTaskRecord]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
 
 
 class CrawlTaskManager:
@@ -97,8 +115,100 @@ class CrawlTaskManager:
             rows = conn.execute("SELECT * FROM crawl_tasks ORDER BY created_at").fetchall()
         return [self._record_from_row(row) for row in rows]
 
+    def task_summary(self) -> CrawlTaskSummary:
+        with self.metadata.connect() as conn:
+            total_row = conn.execute(
+                "SELECT COUNT(*) AS total, MAX(updated_at) AS latest_updated_at FROM crawl_tasks"
+            ).fetchone()
+            status_rows = conn.execute(
+                "SELECT status, COUNT(*) AS count FROM crawl_tasks GROUP BY status"
+            ).fetchall()
+            frequency_rows = conn.execute(
+                "SELECT frequency, COUNT(*) AS count FROM crawl_tasks GROUP BY frequency"
+            ).fetchall()
+
+        latest_updated_at = total_row["latest_updated_at"] if total_row else None
+        return CrawlTaskSummary(
+            total=int(total_row["total"] if total_row else 0),
+            status_counts={row["status"]: int(row["count"]) for row in status_rows},
+            frequency_counts={row["frequency"]: int(row["count"]) for row in frequency_rows},
+            latest_updated_at=self._parse_dt(latest_updated_at),
+        )
+
+    def list_tasks_page(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+        symbol: str | None = None,
+        frequencies: list[Frequency] | None = None,
+        statuses: list[str] | None = None,
+    ) -> CrawlTaskPage:
+        if page < 1:
+            raise ValueError("page must be greater than or equal to 1")
+        if page_size < 1:
+            raise ValueError("page_size must be greater than or equal to 1")
+        capped_page_size = min(page_size, 100)
+        where_sql, params = self._task_filter_sql(
+            symbol=symbol,
+            frequencies=frequencies,
+            statuses=statuses,
+        )
+        offset = (page - 1) * capped_page_size
+
+        with self.metadata.connect() as conn:
+            total_row = conn.execute(
+                f"SELECT COUNT(*) AS total FROM crawl_tasks{where_sql}",
+                params,
+            ).fetchone()
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM crawl_tasks
+                {where_sql}
+                ORDER BY updated_at DESC, task_id DESC
+                LIMIT ? OFFSET ?
+                """,
+                [*params, capped_page_size, offset],
+            ).fetchall()
+
+        total = int(total_row["total"] if total_row else 0)
+        total_pages = max(1, (total + capped_page_size - 1) // capped_page_size)
+        return CrawlTaskPage(
+            tasks=[self._record_from_row(row) for row in rows],
+            page=page,
+            page_size=capped_page_size,
+            total=total,
+            total_pages=total_pages,
+        )
+
+    def _task_filter_sql(
+        self,
+        *,
+        symbol: str | None,
+        frequencies: list[Frequency] | None,
+        statuses: list[str] | None,
+    ) -> tuple[str, list[str]]:
+        clauses: list[str] = []
+        params: list[str] = []
+        if symbol:
+            clauses.append("LOWER(symbol) LIKE ?")
+            params.append(f"%{symbol.lower()}%")
+        if frequencies:
+            placeholders = ", ".join("?" for _ in frequencies)
+            clauses.append(f"frequency IN ({placeholders})")
+            params.extend(frequency.value for frequency in frequencies)
+        if statuses:
+            normalized_statuses = [status.strip() for status in statuses if status.strip()]
+            if normalized_statuses:
+                placeholders = ", ".join("?" for _ in normalized_statuses)
+                clauses.append(f"status IN ({placeholders})")
+                params.extend(normalized_statuses)
+        if not clauses:
+            return "", params
+        return " WHERE " + " AND ".join(clauses), params
+
     def _record_from_row(self, row) -> CrawlTaskRecord:
-        parse_dt = lambda value: datetime.fromisoformat(value) if value else None
         return CrawlTaskRecord(
             task_id=row["task_id"],
             symbol=row["symbol"],
@@ -110,8 +220,12 @@ class CrawlTaskManager:
             status=row["status"],
             attempts=row["attempts"],
             last_error=row["last_error"],
-            created_at=parse_dt(row["created_at"]),
-            updated_at=parse_dt(row["updated_at"]),
-            started_at=parse_dt(row["started_at"]),
-            finished_at=parse_dt(row["finished_at"]),
+            created_at=self._parse_dt(row["created_at"]),
+            updated_at=self._parse_dt(row["updated_at"]),
+            started_at=self._parse_dt(row["started_at"]),
+            finished_at=self._parse_dt(row["finished_at"]),
         )
+
+    @staticmethod
+    def _parse_dt(value: str | None) -> datetime | None:
+        return datetime.fromisoformat(value) if value else None

@@ -696,6 +696,21 @@
       workbenchHomeLink.hidden = false;
     }
 
+    function apiUrl(path) {
+      const baseUrl = String(payload.data_api_base_url || "").replace(/\/+$/, "");
+      return baseUrl ? `${baseUrl}${path}` : path;
+    }
+
+    function apiRequestOptions() {
+      const options = { cache: "no-store" };
+      if (payload.data_api_token) {
+        const headers = new Headers();
+        headers.set("Authorization", `Bearer ${payload.data_api_token}`);
+        options.headers = headers;
+      }
+      return options;
+    }
+
     function normalizeSources(payload) {
       if (Array.isArray(payload.sources) && payload.sources.length) {
         return payload.sources;
@@ -1307,7 +1322,7 @@
       chart.className = "empty";
       chart.textContent = "Loading local data index...";
       try {
-        const response = await fetch("/api/manifest", { cache: "no-store" });
+        const response = await fetch(apiUrl("/api/kline/manifest"), apiRequestOptions());
         const manifest = await response.json();
         if (!response.ok || manifest.error) {
           throw new Error(manifest.error || `Manifest request failed: ${response.status}`);
@@ -1366,7 +1381,7 @@
         params.set("anchor", anchor);
       }
       try {
-        const response = await fetch(`/api/bars?${params.toString()}`, { cache: "no-store" });
+        const response = await fetch(apiUrl(`/api/kline/bars?${params.toString()}`), apiRequestOptions());
         const result = await response.json();
         if (!response.ok || result.error) {
           throw new Error(result.error || `Bars request failed: ${response.status}`);

@@ -1,3 +1,4 @@
+import os
 import time
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
@@ -108,8 +109,33 @@ class CCXTOHLCVProvider:
         exchange_class = getattr(ccxt, self.exchange_id, None)
         if exchange_class is None:
             raise ValueError(f"Unknown CCXT exchange: {self.exchange_id}")
-        self.exchange = exchange_class({"enableRateLimit": True})
+        config: dict[str, Any] = {"enableRateLimit": True}
+        proxies = self._proxy_config_from_env()
+        if proxies:
+            config["proxies"] = proxies
+        self.exchange = exchange_class(config)
         return self.exchange
+
+    def _proxy_config_from_env(self) -> dict[str, str]:
+        all_proxy = os.environ.get("CCXT_PROXY") or os.environ.get("ALL_PROXY") or os.environ.get("all_proxy")
+        http_proxy = (
+            os.environ.get("CCXT_HTTP_PROXY")
+            or os.environ.get("HTTP_PROXY")
+            or os.environ.get("http_proxy")
+            or all_proxy
+        )
+        https_proxy = (
+            os.environ.get("CCXT_HTTPS_PROXY")
+            or os.environ.get("HTTPS_PROXY")
+            or os.environ.get("https_proxy")
+            or all_proxy
+        )
+        proxies: dict[str, str] = {}
+        if http_proxy:
+            proxies["http"] = http_proxy
+        if https_proxy:
+            proxies["https"] = https_proxy
+        return proxies
 
     def _validate_exchange(self, exchange, ccxt_timeframe: str) -> None:
         if not getattr(exchange, "has", {}).get("fetchOHLCV"):
@@ -133,7 +159,7 @@ class CCXTOHLCVProvider:
         end_ms: int,
     ) -> list[dict[str, object]]:
         rows: list[dict[str, object]] = []
-        since = start_ms
+        since = self._initial_since(start_ms, timeframe_ms, frequency)
 
         while since < end_ms:
             batch = exchange.fetch_ohlcv(
@@ -158,8 +184,10 @@ class CCXTOHLCVProvider:
                     continue
                 rows.append(self._row_from_candle(symbol, frequency, candle))
 
-            next_since = last_timestamp + timeframe_ms
+            next_since = self._next_since(last_timestamp, timeframe_ms, frequency)
             if next_since <= since:
+                if self._is_terminal_repeated_candle(last_timestamp, timeframe_ms, end_ms):
+                    break
                 raise ValueError("CCXT OHLCV pagination did not advance")
             since = next_since
             if self.page_delay_seconds:
@@ -172,6 +200,22 @@ class CCXTOHLCVProvider:
         if exchange_limit is None:
             return self.limit
         return min(self.limit, exchange_limit)
+
+    def _next_since(self, last_timestamp: int, timeframe_ms: int, frequency: Frequency) -> int:
+        if self.exchange_id == "bitget" and frequency is Frequency.DAILY:
+            return last_timestamp
+        return last_timestamp + timeframe_ms
+
+    def _initial_since(self, start_ms: int, timeframe_ms: int, frequency: Frequency) -> int:
+        if self.exchange_id == "bitget" and frequency is Frequency.DAILY:
+            return start_ms - timeframe_ms
+        return start_ms
+
+    def _is_terminal_repeated_candle(self, timestamp_ms: int, timeframe_ms: int, end_ms: int) -> bool:
+        candle_end_ms = timestamp_ms + timeframe_ms
+        if candle_end_ms >= end_ms:
+            return True
+        return self.drop_incomplete and candle_end_ms > self.now_ms()
 
     def _row_from_candle(
         self, symbol: str, frequency: Frequency, candle: list[float]
