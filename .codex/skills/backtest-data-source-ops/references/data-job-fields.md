@@ -25,3 +25,16 @@ Defaults:
 For crypto, confirm `exchange`. If the user did not name one, infer it only from an existing repo default or ask.
 
 For A-share, do not use crypto intraday frequencies. AkShare currently accepts daily bars.
+
+For scheduled data jobs, also confirm:
+
+- trigger type: `once`, `interval`, `daily`, or `weekly`
+- concrete trigger time or interval and `timezone`
+- repeat policy: `forever`, `count`, or `until`
+- whether the schedule should start enabled
+- `overlap_policy`, defaulting to `skip`
+- date range mode inside the job template, usually `last_n_days` for recurring refreshes
+
+Schedule job templates use `source_id` and let the data-source backend map
+server-side paths and provider defaults. Prefer `GET /api/data/schedule-options`
+before creating or updating schedules.

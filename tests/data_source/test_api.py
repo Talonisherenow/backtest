@@ -12,6 +12,7 @@ from backtest.data.tasks import CrawlTaskManager
 from backtest.data_source.api import DataSourceApi
 from backtest.data_source.config import DataSourceServerConfig, DataSourceSpec
 from backtest.data_source.jobs import DataSourceJobRegistry
+from backtest.data_source.schedules import DataSourceScheduleService, DataSourceScheduleStore
 
 
 def _write_bars(root: Path) -> None:
@@ -203,3 +204,51 @@ def test_submit_job_normalizes_path_fields_and_exposes_job_snapshots(tmp_path: P
     assert snapshot["status"] == "success"
     assert api.jobs()["jobs"][0]["job_id"] == snapshot["job_id"]
     assert api.job(snapshot["job_id"]) == snapshot
+
+
+def test_api_exposes_schedule_service_methods(tmp_path: Path):
+    api = _api(tmp_path)
+    submitted = []
+    service = DataSourceScheduleService(
+        store=DataSourceScheduleStore(
+            tmp_path / "schedules.sqlite",
+            now=lambda: datetime(2026, 5, 18, 9, 0, 0),
+        ),
+        server_config=api.config,
+        submit_job=lambda payload: submitted.append(payload) or api.submit_job(payload),
+        get_job=api.job,
+        now=lambda: datetime(2026, 5, 18, 9, 0, 0),
+    )
+    api.schedule_service = service
+
+    options = api.schedule_options()
+    created = api.create_schedule(
+        {
+            "name": "api-schedule",
+            "trigger": {"type": "once", "run_at": "2026-05-18T09:00:00+08:00"},
+            "job": {
+                "source_id": "a_share",
+                "symbols": ["000001.SZ"],
+                "frequencies": ["1d"],
+                "date_range": {
+                    "type": "fixed",
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-01-03",
+                },
+            },
+        }
+    )
+    enabled = api.enable_schedule(created["schedule_id"])
+    updated = api.update_schedule(
+        created["schedule_id"],
+        {"job": {"symbols": ["000002.SZ"]}},
+    )
+    job = api.run_schedule_now(created["schedule_id"])
+
+    assert options["trigger_types"] == ["once", "interval", "daily", "weekly"]
+    assert created["name"] == "api-schedule"
+    assert enabled["enabled"] is True
+    assert updated["config"]["job"]["symbols"] == ["000002.SZ"]
+    assert job["status"] == "success"
+    assert submitted[0]["symbols"] == ["000002.SZ"]
+    assert api.schedule_runs(created["schedule_id"])["runs"][0]["status"] == "submitted"

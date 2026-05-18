@@ -26,7 +26,7 @@ Allowed:
 - start and inspect `backtest data-source serve`
 - inspect and maintain frpc/frps/Nginx deployment
 - inspect logs, ports, and launch services
-- submit, inspect, and retry crawl jobs after confirmation
+- submit, inspect, schedule, enable/disable, and retry crawl jobs after confirmation
 
 Not the right skill for:
 
@@ -48,6 +48,8 @@ curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1:8768/api/data-sources
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" "http://127.0.0.1:8768/api/data/tasks/summary?source_id=bitget"
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" "http://127.0.0.1:8768/api/data/tasks?source_id=bitget&page=1&page_size=50&symbol=BTC&frequency=1d&status=success"
+curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1:8768/api/data/schedule-options
+curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1:8768/api/data/schedules
 uv run backtest data tasks --metadata data/crypto/bitget/metadata.sqlite
 uv run backtest data inventory --metadata data/crypto/bitget/metadata.sqlite
 ```

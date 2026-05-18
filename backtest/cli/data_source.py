@@ -12,6 +12,11 @@ from backtest.data.tasks import CrawlTaskManager
 from backtest.data_source.api import DataSourceApi
 from backtest.data_source.config import DataSourceServerConfig, build_default_source_specs
 from backtest.data_source.jobs import DataSourceJobRegistry
+from backtest.data_source.schedules import (
+    DataSourceScheduleService,
+    DataSourceScheduleStore,
+    DataSourceScheduler,
+)
 from backtest.data_source.server import serve_data_source_api
 
 app = typer.Typer(help="Serve remote market data source APIs")
@@ -58,6 +63,22 @@ def serve(
         envvar="BACKTEST_DATA_SOURCE_TOKEN",
         help="Optional bearer token required for all data-source API requests",
     ),
+    schedule_db: Path = typer.Option(
+        Path("data/data_source_schedules.sqlite"),
+        "--schedule-db",
+        help="SQLite database for data-source schedule definitions and run history",
+    ),
+    scheduler_poll_seconds: float = typer.Option(
+        5.0,
+        "--scheduler-poll-seconds",
+        min=0.1,
+        help="How often the in-process scheduler scans for due schedules",
+    ),
+    scheduler_enabled: bool = typer.Option(
+        True,
+        "--scheduler/--no-scheduler",
+        help="Start the in-process scheduler loop",
+    ),
 ) -> None:
     """Serve cached bars, crawl tasks, inventory, and crawl job APIs."""
     try:
@@ -76,11 +97,26 @@ def serve(
             port=port,
             default_window_size=window_size,
             api_token=api_token,
+            schedule_db_path=schedule_db,
+            scheduler_poll_seconds=scheduler_poll_seconds,
         )
         api = DataSourceApi(
             config=config,
             job_registry=DataSourceJobRegistry(run_job=_run_data_job),
         )
+        schedule_service = DataSourceScheduleService(
+            store=DataSourceScheduleStore(config.schedule_db_path),
+            server_config=config,
+            submit_job=api.submit_job,
+            get_job=api.job,
+        )
+        api.schedule_service = schedule_service
+        scheduler = DataSourceScheduler(
+            service=schedule_service,
+            poll_seconds=config.scheduler_poll_seconds,
+        )
+        if scheduler_enabled:
+            scheduler.start()
     except Exception as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc

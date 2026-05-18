@@ -12,6 +12,7 @@ from backtest.data.metadata import MetadataStore
 from backtest.data.tasks import CrawlTaskManager
 from backtest.data_source.config import DataSourceServerConfig, DataSourceSpec
 from backtest.data_source.jobs import DataSourceJobRegistry
+from backtest.data_source.schedules import DataSourceScheduleService
 
 
 class DataSourceApi:
@@ -22,6 +23,7 @@ class DataSourceApi:
     ) -> None:
         self.config = config
         self.job_registry = job_registry
+        self.schedule_service: DataSourceScheduleService | None = None
         self.kline_service = KlineCacheService(
             sources=[
                 KlineSource(
@@ -144,11 +146,46 @@ class DataSourceApi:
     def job(self, job_id: str) -> dict[str, object]:
         return self.job_registry.get(job_id).to_dict()
 
+    def schedule_options(self) -> dict[str, Any]:
+        return self._schedules().options()
+
+    def schedules(self) -> dict[str, list[dict[str, Any]]]:
+        return self._schedules().list()
+
+    def schedule(self, schedule_id: str) -> dict[str, Any]:
+        return self._schedules().get(schedule_id).to_dict()
+
+    def create_schedule(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._schedules().create(payload).to_dict()
+
+    def update_schedule(self, schedule_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._schedules().update(schedule_id, payload).to_dict()
+
+    def delete_schedule(self, schedule_id: str) -> dict[str, str]:
+        return self._schedules().delete(schedule_id)
+
+    def enable_schedule(self, schedule_id: str) -> dict[str, Any]:
+        return self._schedules().enable(schedule_id).to_dict()
+
+    def disable_schedule(self, schedule_id: str) -> dict[str, Any]:
+        return self._schedules().disable(schedule_id).to_dict()
+
+    def run_schedule_now(self, schedule_id: str) -> dict[str, Any]:
+        return self._schedules().run_now(schedule_id)
+
+    def schedule_runs(self, schedule_id: str) -> dict[str, list[dict[str, Any]]]:
+        return self._schedules().runs(schedule_id)
+
     def _metadata(self, spec: DataSourceSpec) -> MetadataStore:
         return MetadataStore(spec.metadata_path)
 
     def _tasks(self, spec: DataSourceSpec) -> CrawlTaskManager:
         return CrawlTaskManager(self._metadata(spec))
+
+    def _schedules(self) -> DataSourceScheduleService:
+        if self.schedule_service is None:
+            raise ValueError("Scheduler is not configured")
+        return self.schedule_service
 
     @staticmethod
     def _normalize_job_payload(payload: dict[str, Any]) -> dict[str, Any]:

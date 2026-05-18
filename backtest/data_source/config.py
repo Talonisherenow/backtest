@@ -33,8 +33,13 @@ class DataSourceServerConfig:
     port: int = 8768
     default_window_size: int = 300
     api_token: str | None = None
+    schedule_db_path: Path = Path("data/data_source_schedules.sqlite")
+    scheduler_poll_seconds: float = 5.0
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "schedule_db_path", Path(self.schedule_db_path))
+        if self.scheduler_poll_seconds <= 0:
+            raise ValueError("scheduler_poll_seconds must be greater than 0")
         if self.api_token is not None:
             token = self.api_token.strip()
             if not token:

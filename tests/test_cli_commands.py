@@ -907,6 +907,11 @@ def test_data_source_serve_cli_passes_server_options(tmp_path: Path, monkeypatch
             "250",
             "--api-token",
             "server-token",
+            "--schedule-db",
+            str(tmp_path / "schedules.sqlite"),
+            "--scheduler-poll-seconds",
+            "2",
+            "--no-scheduler",
         ],
     )
 
@@ -916,6 +921,9 @@ def test_data_source_serve_cli_passes_server_options(tmp_path: Path, monkeypatch
     assert captured["port"] == 8768
     assert captured["api"].config.default_window_size == 250
     assert captured["api"].config.api_token == "server-token"
+    assert captured["api"].config.schedule_db_path == tmp_path / "schedules.sqlite"
+    assert captured["api"].config.scheduler_poll_seconds == 2
+    assert captured["api"].schedule_service is not None
     assert [source.source_id for source in captured["api"].config.sources] == ["bitget", "a_share"]
 
 

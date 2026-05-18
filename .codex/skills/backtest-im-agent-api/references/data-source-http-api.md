@@ -24,6 +24,10 @@ GET /api/data/tasks?source_id=<source_id>&page=<n>&page_size=<n>&symbol=<partial
 GET /api/data/inventory?source_id=<source_id>
 GET /api/data/jobs
 GET /api/data/jobs/<job_id>
+GET /api/data/schedule-options
+GET /api/data/schedules
+GET /api/data/schedules/<schedule_id>
+GET /api/data/schedules/<schedule_id>/runs
 ```
 
 `/api/data/tasks` is paginated. Use `/api/data/tasks/summary` for status and
@@ -77,8 +81,68 @@ Body:
 {"source_id":"bitget"}
 ```
 
+## Schedule Management
+
+Use schedules when the user wants the data-source backend to submit existing
+data crawl jobs at future times or repeated intervals. Schedule writes require
+explicit confirmation.
+
+Read endpoints:
+
+```text
+GET /api/data/schedule-options
+GET /api/data/schedules
+GET /api/data/schedules/<schedule_id>
+GET /api/data/schedules/<schedule_id>/runs
+```
+
+Write endpoints:
+
+```text
+POST   /api/data/schedules
+PATCH  /api/data/schedules/<schedule_id>
+DELETE /api/data/schedules/<schedule_id>
+POST   /api/data/schedules/<schedule_id>/enable
+POST   /api/data/schedules/<schedule_id>/disable
+POST   /api/data/schedules/<schedule_id>/run-now
+```
+
+Call `GET /api/data/schedule-options` before constructing a schedule when source
+defaults, frequencies, trigger types, repeat modes, or date range types are
+unknown.
+
+Schedule body example:
+
+```json
+{
+  "name": "bitget-hourly",
+  "enabled": false,
+  "trigger": {
+    "type": "interval",
+    "every": 1,
+    "unit": "hours",
+    "timezone": "Asia/Shanghai"
+  },
+  "repeat": {"mode": "count", "count": 24},
+  "job": {
+    "source_id": "bitget",
+    "symbols": ["BTC/USDT", "ETH/USDT"],
+    "frequencies": ["1h"],
+    "date_range": {"type": "last_n_days", "days": 7}
+  },
+  "overlap_policy": "skip"
+}
+```
+
+The schedule `job` template uses `source_id`; the backend maps that source to
+server-side paths and provider defaults. Do not ask IM users for server paths
+unless they explicitly need a one-shot `/api/data/jobs` payload override.
+
 ## Status Meaning
 
 Job status can be `submitted`, `running`, `success`, or `failed`.
 
 Crawl task status can include `pending`, `running`, `retrying`, `success`, or `failed`.
+
+Schedule status can be `enabled`, `disabled`, `completed`, or `error`. Schedule
+run status can be `submitted`, `skipped`, or `failed`.
