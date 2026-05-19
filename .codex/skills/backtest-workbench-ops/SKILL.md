@@ -41,10 +41,13 @@ When verifying the workbench home data-source monitor:
 - The crawl-task summary is backed by `/api/data/tasks/summary?source_id=<source_id>`,
   not by a full task list fetch.
 - The schedule summary and drawer table are backed by `/api/data/schedules`.
+- The recent schedule run table is backed by
+  `/api/data/schedules/<schedule_id>/runs`; use it to verify the latest trigger
+  for an active schedule rather than relying on crawl task `updated_at`.
 - The `Details` drawer should provide source tabs, one tab per configured data
   source.
 - The drawer should show schedules read-only with status, trigger, repeat,
-  next run, and last job before the crawl task table.
+  next run, last job, and recent schedule runs before the crawl task table.
 - Within a source tab, the task table should support server-side pagination,
   symbol search, frequency multi-select, and status multi-select. `last_error`
   is display-only.

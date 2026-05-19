@@ -340,7 +340,7 @@ def render_workbench_index_html(
       width: min(720px, 94vw);
       height: 100vh;
       display: grid;
-      grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto auto auto auto auto minmax(0, 1fr) auto;
       background: var(--surface);
       border-left: 1px solid var(--line);
       box-shadow: -18px 0 40px rgb(21 31 43 / 18%);
@@ -448,6 +448,7 @@ def render_workbench_index_html(
       padding: 10px 16px 12px;
       border-bottom: 1px solid var(--line);
     }
+    .schedule-runs-panel { max-height: 180px; }
     .schedule-panel-header {
       display: flex;
       justify-content: space-between;
@@ -487,7 +488,8 @@ def render_workbench_index_html(
     .task-status.running,
     .task-status.pending,
     .task-status.retrying,
-    .task-status.enabled {
+    .task-status.enabled,
+    .task-status.submitted {
       background: #eef5ff;
       color: #195bb8;
     }
@@ -620,6 +622,27 @@ def render_workbench_index_html(
         </table>
       </div>
     </section>
+    <section class="schedule-panel schedule-runs-panel" aria-label="Recent schedule runs">
+      <div class="schedule-panel-header">
+        <strong>Recent Runs</strong>
+        <span id="dataScheduleRunMeta"></span>
+      </div>
+      <div class="schedule-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Schedule</th>
+              <th>Target</th>
+              <th>Run Status</th>
+              <th>Job Status</th>
+              <th>Triggered</th>
+              <th>Job</th>
+            </tr>
+          </thead>
+          <tbody id="dataScheduleRunRows"></tbody>
+        </table>
+      </div>
+    </section>
     <div class="source-tabs" id="dataSourceTabs"></div>
     <div class="drawer-filters">
       <label class="filter-field">
@@ -689,6 +712,7 @@ def render_workbench_index_html(
       summariesBySource: {},
       jobs: [],
       schedules: [],
+      scheduleRunsById: {},
       selectedSourceId: "",
       taskPagesBySource: {},
       filtersBySource: {},
@@ -784,6 +808,15 @@ def render_workbench_index_html(
       return Array.isArray(dataMonitorState.schedules) ? dataMonitorState.schedules : [];
     }
 
+    function scheduleById(scheduleId) {
+      return scheduleList().find((schedule) => schedule.schedule_id === scheduleId) || null;
+    }
+
+    function jobById(jobId) {
+      const jobs = Array.isArray(dataMonitorState.jobs) ? dataMonitorState.jobs : [];
+      return jobs.find((job) => job.job_id === jobId) || null;
+    }
+
     function scheduleStatusCounts() {
       const counts = { total: 0, active: 0, due: 0, errors: 0, completed: 0 };
       const now = Date.now();
@@ -808,9 +841,10 @@ def render_workbench_index_html(
 
     function formatScheduleJob(schedule) {
       const job = scheduleConfig(schedule).job || {};
-      const symbolCount = Array.isArray(job.symbols) ? job.symbols.length : 0;
+      const symbols = Array.isArray(job.symbols) ? job.symbols : [];
+      const symbolText = symbols.length <= 3 ? symbols.join(", ") : `${symbols.length} symbols`;
       const frequencies = Array.isArray(job.frequencies) ? job.frequencies.join(", ") : "";
-      return [job.source_id, symbolCount ? `${symbolCount} symbols` : "", frequencies].filter(Boolean).join(" · ");
+      return [job.source_id, symbolText, frequencies].filter(Boolean).join(" · ");
     }
 
     function formatScheduleTrigger(schedule) {
@@ -841,6 +875,24 @@ def render_workbench_index_html(
         return `until ${formatDateTime(repeat.until)}`;
       }
       return repeat.mode || "forever";
+    }
+
+    function recentScheduleRuns() {
+      const runsById = dataMonitorState.scheduleRunsById || {};
+      const runs = [];
+      for (const schedule of scheduleList()) {
+        const scheduleRuns = Array.isArray(runsById[schedule.schedule_id])
+          ? runsById[schedule.schedule_id]
+          : [];
+        for (const run of scheduleRuns) {
+          runs.push({ ...run, schedule });
+        }
+      }
+      return runs.sort((left, right) => {
+        const leftTime = new Date(left.triggered_at || left.created_at || "").getTime();
+        const rightTime = new Date(right.triggered_at || right.created_at || "").getTime();
+        return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime);
+      }).slice(0, 8);
     }
 
     function taskPageUrl(sourceId, filters) {
@@ -1019,8 +1071,48 @@ def render_workbench_index_html(
       }).join("") : `<tr><td class="empty" colspan="6">No schedules</td></tr>`;
     }
 
+    function renderScheduleRunRows() {
+      const metaEl = document.getElementById("dataScheduleRunMeta");
+      const rowsEl = document.getElementById("dataScheduleRunRows");
+      if (dataMonitorState.error) {
+        metaEl.textContent = "Run history unavailable";
+        rowsEl.innerHTML = `<tr><td class="empty" colspan="6">Unable to load schedule runs</td></tr>`;
+        return;
+      }
+      const runs = recentScheduleRuns();
+      metaEl.textContent = runs.length ? `${runs.length} latest runs` : "No run history";
+      rowsEl.innerHTML = runs.length ? runs.map((run) => {
+        const schedule = run.schedule || scheduleById(run.schedule_id) || {};
+        const job = run.job_id ? jobById(run.job_id) : null;
+        const runStatus = escapeHtml(run.status || "unknown");
+        const jobStatus = escapeHtml(job?.status || (run.job_id ? "submitted" : ""));
+        const jobLine = job
+          ? `${job.success_count || 0}/${job.total_items || 0} ok · failed ${job.failed_count || 0}`
+          : run.error || "";
+        return `<tr>
+          <td>
+            <div class="schedule-name">
+              <strong>${escapeHtml(schedule.name || run.schedule_id || "")}</strong>
+              <span class="schedule-subline">${escapeHtml(schedule.schedule_id || "")}</span>
+            </div>
+          </td>
+          <td>${escapeHtml(formatScheduleJob(schedule))}</td>
+          <td><span class="task-status ${runStatus}">${runStatus}</span></td>
+          <td>${jobStatus ? `<span class="task-status ${jobStatus}">${jobStatus}</span>` : ""}</td>
+          <td>${escapeHtml(formatDateTime(run.triggered_at))}</td>
+          <td>
+            <div class="schedule-name">
+              <strong>${escapeHtml(run.job_id || "")}</strong>
+              <span class="schedule-subline">${escapeHtml(jobLine)}</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join("") : `<tr><td class="empty" colspan="6">No schedule runs yet</td></tr>`;
+    }
+
     function renderTaskDrawer() {
       renderScheduleRows();
+      renderScheduleRunRows();
       renderSourceTabs();
       renderTaskControls();
       const metaEl = document.getElementById("dataSourceDrawerMeta");
@@ -1145,6 +1237,16 @@ def render_workbench_index_html(
           const schedulesPayload = await schedulesResponse.json();
           schedules = Array.isArray(schedulesPayload.schedules) ? schedulesPayload.schedules : [];
         }
+        let scheduleRunsById = {};
+        const runEntries = await Promise.all(schedules.map(async (schedule) => {
+          const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs`), dataApiRequestOptions());
+          if (!response.ok) {
+            return [schedule.schedule_id, []];
+          }
+          const runsPayload = await response.json();
+          return [schedule.schedule_id, Array.isArray(runsPayload.runs) ? runsPayload.runs : []];
+        }));
+        scheduleRunsById = Object.fromEntries(runEntries);
         const selectedSourceId = sources.some((source) => source.source_id === dataMonitorState.selectedSourceId)
           ? dataMonitorState.selectedSourceId
           : sources[0]?.source_id || "";
@@ -1154,6 +1256,7 @@ def render_workbench_index_html(
           summariesBySource: Object.fromEntries(summaryEntries),
           jobs,
           schedules,
+          scheduleRunsById,
           selectedSourceId,
           lastUpdated: new Date(),
           error: "",
