@@ -121,6 +121,7 @@ Schedule body example:
     "type": "interval",
     "every": 1,
     "unit": "hours",
+    "start_at": "2026-05-20T09:00:00+08:00",
     "timezone": "Asia/Shanghai"
   },
   "repeat": {"mode": "count", "count": 24},
@@ -133,6 +134,11 @@ Schedule body example:
   "overlap_policy": "skip"
 }
 ```
+
+`start_at` is optional for `interval`, `daily`, and `weekly` triggers. When it is
+set, the backend will not submit the first scheduled crawl before that concrete
+time; for `daily` and `weekly`, the first run is the first configured wall-clock
+slot at or after `start_at`.
 
 The schedule `job` template uses `source_id`; the backend maps that source to
 server-side paths and provider defaults. Do not ask IM users for server paths

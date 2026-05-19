@@ -325,6 +325,7 @@ curl -sS http://127.0.0.1:8768/api/data/schedules \
       "type": "interval",
       "every": 1,
       "unit": "hours",
+      "start_at": "2026-05-20T09:00:00+08:00",
       "timezone": "Asia/Shanghai"
     },
     "repeat": {"mode": "count", "count": 24},
@@ -337,6 +338,9 @@ curl -sS http://127.0.0.1:8768/api/data/schedules \
     "overlap_policy": "skip"
   }'
 ```
+
+`start_at` 可用于 `interval`、`daily`、`weekly`，表示最早开始执行的具体时间点。
+对 `daily` / `weekly` 来说，第一次执行会落到 `start_at` 之后的第一个匹配本地墙钟时间。
 
 确认无误后开启：
 

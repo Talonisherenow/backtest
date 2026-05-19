@@ -433,6 +433,7 @@ def test_schedule_http_routes(tmp_path: Path):
         )
 
         assert "interval" in options["trigger_types"]
+        assert "start_at" in options["example"]["trigger"]
         assert schedules["schedules"][0]["schedule_id"] == created["schedule_id"]
         assert enabled["enabled"] is True
         assert updated["config"]["job"]["symbols"] == ["000002.SZ"]

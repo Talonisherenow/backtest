@@ -37,4 +37,9 @@ curl -sS http://127.0.0.1:8767/api/strategy-results
 curl -sS http://127.0.0.1:8767/api/manifest
 ```
 
+When `--data-api-base-url` is set, the workbench home also calls the remote data
+API for `/api/data-sources`, `/api/data/tasks/summary`, `/api/data/jobs`, and
+`/api/data/schedules`. The home drawer shows schedules read-only before the task
+table.
+
 Security note: do not publish this local workbench to the Internet when it embeds `data_api_token`.

@@ -30,6 +30,9 @@ For scheduled data jobs, also confirm:
 
 - trigger type: `once`, `interval`, `daily`, or `weekly`
 - concrete trigger time or interval and `timezone`
+- optional concrete `start_at`; for `daily` and `weekly`, this is the earliest
+  wall-clock boundary and the first run will be the first matching slot at or
+  after it
 - repeat policy: `forever`, `count`, or `until`
 - whether the schedule should start enabled
 - `overlap_policy`, defaulting to `skip`

@@ -273,6 +273,11 @@ def render_workbench_index_html(
       font-size: 13px;
       white-space: nowrap;
     }
+    .data-monitor-body {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
     .data-source-summary {
       display: flex;
       flex-wrap: wrap;
@@ -335,7 +340,7 @@ def render_workbench_index_html(
       width: min(720px, 94vw);
       height: 100vh;
       display: grid;
-      grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+      grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
       background: var(--surface);
       border-left: 1px solid var(--line);
       box-shadow: -18px 0 40px rgb(21 31 43 / 18%);
@@ -435,6 +440,41 @@ def render_workbench_index_html(
       white-space: nowrap;
     }
     .checkbox-pill input { margin: 0; }
+    .schedule-panel {
+      display: grid;
+      gap: 8px;
+      max-height: 220px;
+      overflow: auto;
+      padding: 10px 16px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .schedule-panel-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .schedule-panel-header strong {
+      color: var(--text);
+      font-size: 13px;
+    }
+    .schedule-table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+    }
+    .schedule-name {
+      display: grid;
+      gap: 3px;
+      min-width: 150px;
+    }
+    .schedule-subline {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
     .task-table-wrap { overflow: auto; }
     .task-status {
       display: inline-flex;
@@ -446,15 +486,18 @@ def render_workbench_index_html(
     }
     .task-status.running,
     .task-status.pending,
-    .task-status.retrying {
+    .task-status.retrying,
+    .task-status.enabled {
       background: #eef5ff;
       color: #195bb8;
     }
-    .task-status.failed {
+    .task-status.failed,
+    .task-status.error {
       background: #fff0ed;
       color: var(--red);
     }
-    .task-status.success {
+    .task-status.success,
+    .task-status.completed {
       background: #eef8f3;
       color: var(--green);
     }
@@ -538,7 +581,10 @@ def render_workbench_index_html(
   </header>
   <section class="data-monitor" id="dataSourceMonitor" hidden>
     <div class="data-monitor-title">Data Source</div>
-    <div class="data-source-summary" id="dataSourceSummary"></div>
+    <div class="data-monitor-body">
+      <div class="data-source-summary" id="dataSourceSummary"></div>
+      <div class="data-source-summary" id="dataScheduleSummary"></div>
+    </div>
     <div class="monitor-actions">
       <span class="data-monitor-meta" id="dataSourceMonitorMeta"></span>
       <button class="text-button" id="dataSourceDetailsButton" type="button">Details</button>
@@ -548,11 +594,32 @@ def render_workbench_index_html(
   <aside class="data-drawer" id="dataSourceDrawer" hidden aria-label="Data source task details">
     <div class="drawer-header">
       <div>
-        <h2>Data Source Tasks</h2>
-        <div class="subtitle">Read-only crawl task monitor</div>
+        <h2>Data Source Monitor</h2>
+        <div class="subtitle">Read-only crawl task and schedule monitor</div>
       </div>
       <button class="text-button" id="dataSourceDrawerCloseButton" type="button">Close</button>
     </div>
+    <section class="schedule-panel" aria-label="Data source schedules">
+      <div class="schedule-panel-header">
+        <strong>Schedules</strong>
+        <span id="dataScheduleMeta"></span>
+      </div>
+      <div class="schedule-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Schedule</th>
+              <th>Status</th>
+              <th>Trigger</th>
+              <th>Repeat</th>
+              <th>Next Run</th>
+              <th>Last Job</th>
+            </tr>
+          </thead>
+          <tbody id="dataScheduleRows"></tbody>
+        </table>
+      </div>
+    </section>
     <div class="source-tabs" id="dataSourceTabs"></div>
     <div class="drawer-filters">
       <label class="filter-field">
@@ -621,6 +688,7 @@ def render_workbench_index_html(
       sources: [],
       summariesBySource: {},
       jobs: [],
+      schedules: [],
       selectedSourceId: "",
       taskPagesBySource: {},
       filtersBySource: {},
@@ -669,6 +737,19 @@ def render_workbench_index_html(
       return source.source_label || source.source_id || "Source";
     }
 
+    function formatDateTime(value) {
+      if (!value) return "";
+      const date = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleString([], {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
     function defaultTaskFilters() {
       return { symbol: "", frequencies: [], statuses: [], page: 1, pageSize: 50 };
     }
@@ -699,6 +780,69 @@ def render_workbench_index_html(
       return Object.keys(value || {}).sort((left, right) => left.localeCompare(right));
     }
 
+    function scheduleList() {
+      return Array.isArray(dataMonitorState.schedules) ? dataMonitorState.schedules : [];
+    }
+
+    function scheduleStatusCounts() {
+      const counts = { total: 0, active: 0, due: 0, errors: 0, completed: 0 };
+      const now = Date.now();
+      for (const schedule of scheduleList()) {
+        counts.total += 1;
+        if (schedule.enabled && schedule.next_run_at) {
+          counts.active += 1;
+          const nextRunTime = new Date(schedule.next_run_at).getTime();
+          if (!Number.isNaN(nextRunTime) && nextRunTime <= now) {
+            counts.due += 1;
+          }
+        }
+        if (schedule.status === "error") counts.errors += 1;
+        if (schedule.status === "completed") counts.completed += 1;
+      }
+      return counts;
+    }
+
+    function scheduleConfig(schedule) {
+      return schedule.config || {};
+    }
+
+    function formatScheduleJob(schedule) {
+      const job = scheduleConfig(schedule).job || {};
+      const symbolCount = Array.isArray(job.symbols) ? job.symbols.length : 0;
+      const frequencies = Array.isArray(job.frequencies) ? job.frequencies.join(", ") : "";
+      return [job.source_id, symbolCount ? `${symbolCount} symbols` : "", frequencies].filter(Boolean).join(" · ");
+    }
+
+    function formatScheduleTrigger(schedule) {
+      const trigger = scheduleConfig(schedule).trigger || {};
+      let label = trigger.type || "unknown";
+      if (trigger.type === "interval") {
+        label = `Every ${trigger.every || 1} ${trigger.unit || "hours"}`;
+      } else if (trigger.type === "daily") {
+        label = `Daily ${trigger.time || ""}`.trim();
+      } else if (trigger.type === "weekly") {
+        const days = Array.isArray(trigger.days_of_week) ? trigger.days_of_week.join(", ") : "";
+        label = `${days} ${trigger.time || ""}`.trim();
+      } else if (trigger.type === "once") {
+        label = `Once ${formatDateTime(trigger.run_at)}`.trim();
+      }
+      if (trigger.start_at) {
+        label = `${label} · from ${formatDateTime(trigger.start_at)}`;
+      }
+      return label;
+    }
+
+    function formatScheduleRepeat(schedule) {
+      const repeat = scheduleConfig(schedule).repeat || {};
+      if (repeat.mode === "count") {
+        return `${schedule.run_count || 0}/${repeat.count || 0} runs`;
+      }
+      if (repeat.mode === "until") {
+        return `until ${formatDateTime(repeat.until)}`;
+      }
+      return repeat.mode || "forever";
+    }
+
     function taskPageUrl(sourceId, filters) {
       const params = new URLSearchParams();
       params.set("source_id", sourceId);
@@ -716,6 +860,27 @@ def render_workbench_index_html(
       return dataApiUrl(`/api/data/tasks?${params.toString()}`);
     }
 
+    function renderScheduleSummary() {
+      const summaryEl = document.getElementById("dataScheduleSummary");
+      if (dataMonitorState.error) {
+        summaryEl.innerHTML = `<span class="data-source-pill failed"><strong>Schedules</strong><span>offline</span></span>`;
+        return;
+      }
+      const counts = scheduleStatusCounts();
+      if (!counts.total) {
+        summaryEl.innerHTML = `<span class="data-source-pill"><strong>Schedules</strong><span>0</span></span>`;
+        return;
+      }
+      const css = counts.errors ? " failed" : counts.active ? " active" : "";
+      summaryEl.innerHTML = `<span class="data-source-pill${css}">
+        <strong>Schedules</strong>
+        <span>total ${escapeHtml(counts.total)}</span>
+        <span>active ${escapeHtml(counts.active)}</span>
+        ${counts.due ? `<span>due ${escapeHtml(counts.due)}</span>` : ""}
+        ${counts.errors ? `<span>errors ${escapeHtml(counts.errors)}</span>` : ""}
+      </span>`;
+    }
+
     function renderDataMonitor() {
       const monitor = document.getElementById("dataSourceMonitor");
       if (!dataMonitorEnabled()) {
@@ -727,6 +892,7 @@ def render_workbench_index_html(
       const metaEl = document.getElementById("dataSourceMonitorMeta");
       if (dataMonitorState.error) {
         summaryEl.innerHTML = `<span class="data-source-pill failed"><strong>Offline</strong><span>${escapeHtml(dataMonitorState.error)}</span></span>`;
+        renderScheduleSummary();
         metaEl.textContent = dataMonitorState.lastUpdated ? `checked ${formatClock(dataMonitorState.lastUpdated)}` : "";
         renderTaskDrawer();
         return;
@@ -750,6 +916,7 @@ def render_workbench_index_html(
           ${failed && active ? `<span>failed ${escapeHtml(failed)}</span>` : ""}
         </span>`;
       }).join("") : `<span class="data-source-pill"><strong>No sources</strong></span>`;
+      renderScheduleSummary();
       metaEl.textContent = dataMonitorState.lastUpdated ? `updated ${formatClock(dataMonitorState.lastUpdated)}` : "";
       renderTaskDrawer();
     }
@@ -816,7 +983,44 @@ def render_workbench_index_html(
       );
     }
 
+    function renderScheduleRows() {
+      const metaEl = document.getElementById("dataScheduleMeta");
+      const rowsEl = document.getElementById("dataScheduleRows");
+      if (dataMonitorState.error) {
+        metaEl.textContent = "Schedules unavailable";
+        rowsEl.innerHTML = `<tr><td class="empty" colspan="6">Unable to load schedules</td></tr>`;
+        return;
+      }
+      const schedules = scheduleList();
+      const counts = scheduleStatusCounts();
+      metaEl.textContent = `${counts.total} schedules · ${counts.active} active · ${counts.completed} completed`;
+      rowsEl.innerHTML = schedules.length ? schedules.map((schedule) => {
+        const status = escapeHtml(schedule.status || (schedule.enabled ? "enabled" : "disabled"));
+        const lastJob = schedule.last_job_id || "";
+        const lastRun = schedule.last_run_at ? `last run ${formatDateTime(schedule.last_run_at)}` : "";
+        return `<tr>
+          <td>
+            <div class="schedule-name">
+              <strong>${escapeHtml(schedule.name || schedule.schedule_id || "")}</strong>
+              <span class="schedule-subline">${escapeHtml(formatScheduleJob(schedule))}</span>
+            </div>
+          </td>
+          <td><span class="task-status ${status}">${status}</span></td>
+          <td>${escapeHtml(formatScheduleTrigger(schedule))}</td>
+          <td>${escapeHtml(formatScheduleRepeat(schedule))}</td>
+          <td>${escapeHtml(formatDateTime(schedule.next_run_at))}</td>
+          <td>
+            <div class="schedule-name">
+              <strong>${escapeHtml(lastJob)}</strong>
+              <span class="schedule-subline">${escapeHtml(lastRun)}</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join("") : `<tr><td class="empty" colspan="6">No schedules</td></tr>`;
+    }
+
     function renderTaskDrawer() {
+      renderScheduleRows();
       renderSourceTabs();
       renderTaskControls();
       const metaEl = document.getElementById("dataSourceDrawerMeta");
@@ -850,7 +1054,8 @@ def render_workbench_index_html(
       };
       const tasks = page.tasks || [];
       const jobs = Array.isArray(dataMonitorState.jobs) ? dataMonitorState.jobs.length : 0;
-      metaEl.textContent = `${escapeHtml(sourceLabel(source))} · ${page.total || 0} matching tasks · ${jobs} submitted jobs`;
+      const schedules = scheduleList().length;
+      metaEl.textContent = `${escapeHtml(sourceLabel(source))} · ${page.total || 0} matching tasks · ${jobs} submitted jobs · ${schedules} schedules`;
       paginationMetaEl.textContent = `Page ${page.page || 1} / ${page.total_pages || 1} · ${page.total || 0} total`;
       previousButton.disabled = (page.page || 1) <= 1;
       nextButton.disabled = (page.page || 1) >= (page.total_pages || 1);
@@ -934,6 +1139,12 @@ def render_workbench_index_html(
           const jobsPayload = await jobsResponse.json();
           jobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
         }
+        let schedules = [];
+        const schedulesResponse = await fetch(dataApiUrl("/api/data/schedules"), dataApiRequestOptions());
+        if (schedulesResponse.ok) {
+          const schedulesPayload = await schedulesResponse.json();
+          schedules = Array.isArray(schedulesPayload.schedules) ? schedulesPayload.schedules : [];
+        }
         const selectedSourceId = sources.some((source) => source.source_id === dataMonitorState.selectedSourceId)
           ? dataMonitorState.selectedSourceId
           : sources[0]?.source_id || "";
@@ -942,6 +1153,7 @@ def render_workbench_index_html(
           sources,
           summariesBySource: Object.fromEntries(summaryEntries),
           jobs,
+          schedules,
           selectedSourceId,
           lastUpdated: new Date(),
           error: "",

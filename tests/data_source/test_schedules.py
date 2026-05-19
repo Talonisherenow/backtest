@@ -155,6 +155,77 @@ def test_daily_and_weekly_triggers_use_local_wall_clock_time():
     )
 
 
+def test_daily_trigger_starts_at_first_wall_clock_after_start_at():
+    schedule = DataScheduleConfig.model_validate(
+        _schedule_payload(
+            trigger={
+                "type": "daily",
+                "time": "08:30",
+                "timezone": "Asia/Shanghai",
+                "start_at": "2026-05-20T00:00:00+08:00",
+            },
+            repeat={"mode": "forever"},
+        )
+    )
+
+    assert (
+        compute_next_run_at(
+            schedule,
+            now=datetime.fromisoformat("2026-05-18T09:00:00+08:00"),
+            run_count=0,
+        ).isoformat()
+        == "2026-05-20T08:30:00+08:00"
+    )
+
+
+def test_weekly_trigger_starts_at_first_wall_clock_after_start_at():
+    schedule = DataScheduleConfig.model_validate(
+        _schedule_payload(
+            trigger={
+                "type": "weekly",
+                "days_of_week": ["wed"],
+                "time": "08:30",
+                "timezone": "Asia/Shanghai",
+                "start_at": "2026-05-21T00:00:00+08:00",
+            },
+            repeat={"mode": "forever"},
+        )
+    )
+
+    assert (
+        compute_next_run_at(
+            schedule,
+            now=datetime.fromisoformat("2026-05-18T09:00:00+08:00"),
+            run_count=0,
+        ).isoformat()
+        == "2026-05-27T08:30:00+08:00"
+    )
+
+
+def test_wall_clock_start_at_is_not_skipped_after_manual_run_before_start():
+    schedule = DataScheduleConfig.model_validate(
+        _schedule_payload(
+            trigger={
+                "type": "daily",
+                "time": "08:30",
+                "timezone": "Asia/Shanghai",
+                "start_at": "2026-05-20T08:30:00+08:00",
+            },
+            repeat={"mode": "forever"},
+        )
+    )
+
+    assert (
+        compute_next_run_at(
+            schedule,
+            now=datetime.fromisoformat("2026-05-18T09:00:00+08:00"),
+            run_count=1,
+            after=True,
+        ).isoformat()
+        == "2026-05-20T08:30:00+08:00"
+    )
+
+
 def test_job_template_compiles_to_existing_data_job_payload(tmp_path: Path):
     schedule = DataScheduleConfig.model_validate(
         _schedule_payload(

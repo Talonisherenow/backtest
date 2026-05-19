@@ -51,10 +51,10 @@ Flow:
 
 1. Ensure an API client is configured. Run access discovery only if the client is missing, unvalidated, changed, or currently failing.
 2. Call `GET /api/data/schedule-options` when supported fields, source defaults, frequencies, trigger types, repeat modes, or date range types are unknown.
-3. Identify trigger time, repeat policy, symbols, frequencies, source, date range, retry policy, overlap policy, and whether the schedule should start enabled.
+3. Identify trigger time, optional concrete `start_at`, repeat policy, symbols, frequencies, source, date range, retry policy, overlap policy, and whether the schedule should start enabled.
 4. Fill defaults where safe: `timezone=Asia/Shanghai`, `enabled=false` for newly created schedules, and `overlap_policy=skip`.
 5. Ask one concise follow-up if a required field remains ambiguous.
-6. Show the final schedule summary, including trigger, repeat count or stop condition, source, symbols, frequencies, date range, retry policy, overlap policy, and enabled state.
+6. Show the final schedule summary, including trigger, start time when provided, repeat count or stop condition, source, symbols, frequencies, date range, retry policy, overlap policy, and enabled state.
 7. Call schedule write endpoints only after explicit confirmation.
 8. Return `schedule_id`, enabled state, `next_run_at`, and the next status-check action.
 

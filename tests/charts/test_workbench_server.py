@@ -30,7 +30,14 @@ def test_render_workbench_index_html_hosts_readonly_data_source_monitor():
     assert 'id="taskPreviousPageButton"' in html
     assert 'id="taskNextPageButton"' in html
     assert 'id="taskPageSizeSelect"' in html
-    assert "Read-only crawl task monitor" in html
+    assert 'id="dataScheduleSummary"' in html
+    assert 'id="dataScheduleRows"' in html
+    assert "Read-only crawl task and schedule monitor" in html
+    assert "Schedule" in html
+    assert "Trigger" in html
+    assert "Repeat" in html
+    assert "Next Run" in html
+    assert "Last Job" in html
     assert "function dataApiUrl(path)" in html
     assert "function dataApiRequestOptions()" in html
     assert '"Authorization", `Bearer ${payload.data_api_token}`' in html
@@ -38,6 +45,8 @@ def test_render_workbench_index_html_hosts_readonly_data_source_monitor():
     assert 'fetch(dataApiUrl(`/api/data/tasks/summary?source_id=${encodeURIComponent(source.source_id)}`), dataApiRequestOptions())' in html
     assert 'fetch(taskPageUrl(source.source_id, filters), dataApiRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/data/jobs"), dataApiRequestOptions())' in html
+    assert 'fetch(dataApiUrl("/api/data/schedules"), dataApiRequestOptions())' in html
+    assert "function renderScheduleRows()" in html
     assert "DATA_MONITOR_REFRESH_MS = 10000" in html
     assert 'document.addEventListener("visibilitychange", refreshDataMonitorWhenVisible)' in html
     assert "Submit" not in html

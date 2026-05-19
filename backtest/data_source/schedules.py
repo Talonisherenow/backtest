@@ -220,9 +220,19 @@ def compute_next_run_at(
     if trigger.type == "interval":
         candidate = _next_interval(trigger, local_now, after=after)
     elif trigger.type == "daily":
-        candidate = _next_daily(trigger, local_now, after=after)
+        wall_clock_now = _wall_clock_floor(trigger, local_now)
+        candidate = _next_daily(
+            trigger,
+            wall_clock_now,
+            after=after and wall_clock_now == local_now,
+        )
     else:
-        candidate = _next_weekly(trigger, local_now, after=after)
+        wall_clock_now = _wall_clock_floor(trigger, local_now)
+        candidate = _next_weekly(
+            trigger,
+            wall_clock_now,
+            after=after and wall_clock_now == local_now,
+        )
 
     if schedule.repeat.mode == "until" and schedule.repeat.until is not None:
         if candidate > _aware(schedule.repeat.until, zone):
@@ -595,6 +605,7 @@ class DataSourceScheduleService:
                     "type": "interval",
                     "every": 1,
                     "unit": "hours",
+                    "start_at": "2026-05-20T09:00:00+08:00",
                     "timezone": DEFAULT_TIMEZONE,
                 },
                 "repeat": {"mode": "count", "count": 24},
@@ -875,6 +886,13 @@ def _next_interval(trigger: TriggerConfig, now: datetime, *, after: bool) -> dat
     elapsed = now - start
     steps = int(elapsed.total_seconds() // delta.total_seconds()) + 1
     return start + delta * steps
+
+
+def _wall_clock_floor(trigger: TriggerConfig, now: datetime) -> datetime:
+    if trigger.start_at is None:
+        return now
+    start = _aware(trigger.start_at, now.tzinfo)
+    return start if start > now else now
 
 
 def _next_daily(trigger: TriggerConfig, now: datetime, *, after: bool) -> datetime:
