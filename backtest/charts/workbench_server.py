@@ -449,6 +449,16 @@ def render_workbench_index_html(
       border-bottom: 1px solid var(--line);
     }
     .schedule-runs-panel { max-height: 180px; }
+    .schedule-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    .schedule-actions .text-button {
+      min-height: 26px;
+      padding: 0 8px;
+    }
     .schedule-panel-header {
       display: flex;
       justify-content: space-between;
@@ -475,6 +485,90 @@ def render_workbench_index_html(
       color: var(--muted);
       font-size: 11px;
       font-weight: 500;
+    }
+    .schedule-editor-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 29;
+      background: rgb(21 31 43 / 34%);
+    }
+    .schedule-editor-backdrop[hidden] { display: none; }
+    .schedule-editor {
+      position: fixed;
+      top: 5vh;
+      left: 50%;
+      z-index: 30;
+      width: min(720px, 94vw);
+      max-height: 90vh;
+      overflow: auto;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 24px 60px rgb(21 31 43 / 28%);
+    }
+    .schedule-editor[hidden] { display: none; }
+    .schedule-editor-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .schedule-editor-header h3 { margin: 0; font-size: 15px; }
+    .schedule-editor form {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+    }
+    .schedule-editor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .schedule-editor-field {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      min-width: 0;
+    }
+    .schedule-editor-field input,
+    .schedule-editor-field select {
+      min-height: 32px;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 9px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      font-size: 12px;
+      text-transform: none;
+    }
+    .schedule-editor-field.checkbox-field {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      align-items: center;
+      text-transform: none;
+      color: var(--text);
+      font-size: 12px;
+    }
+    .schedule-editor-field.checkbox-field input { width: auto; min-height: auto; }
+    .schedule-editor-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      align-items: center;
+    }
+    .schedule-editor-error {
+      min-height: 18px;
+      color: var(--red);
+      font-size: 12px;
     }
     .task-table-wrap { overflow: auto; }
     .task-status {
@@ -597,7 +691,7 @@ def render_workbench_index_html(
     <div class="drawer-header">
       <div>
         <h2>Data Source Monitor</h2>
-        <div class="subtitle">Read-only crawl task and schedule monitor</div>
+        <div class="subtitle">Schedule controls and crawl task monitor</div>
       </div>
       <button class="text-button" id="dataSourceDrawerCloseButton" type="button">Close</button>
     </div>
@@ -616,6 +710,7 @@ def render_workbench_index_html(
               <th>Repeat</th>
               <th>Next Run</th>
               <th>Last Job</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="dataScheduleRows"></tbody>
@@ -692,6 +787,142 @@ def render_workbench_index_html(
       </div>
     </div>
   </aside>
+  <div class="schedule-editor-backdrop" id="scheduleEditBackdrop" hidden></div>
+  <section class="schedule-editor" id="scheduleEditDialog" hidden aria-label="Edit schedule">
+    <div class="schedule-editor-header">
+      <div>
+        <h3>Edit Schedule</h3>
+        <div class="subtitle" id="scheduleEditSubtitle"></div>
+      </div>
+      <button class="text-button" id="scheduleEditCloseButton" type="button">Close</button>
+    </div>
+    <form id="scheduleEditForm">
+      <div class="schedule-editor-grid">
+        <label class="schedule-editor-field">
+          <span>Name</span>
+          <input id="scheduleEditName" type="text" autocomplete="off">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Source</span>
+          <input id="scheduleEditSourceId" type="text" autocomplete="off">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Overlap</span>
+          <select id="scheduleEditOverlapPolicy">
+            <option value="skip">skip</option>
+            <option value="allow">allow</option>
+          </select>
+        </label>
+      </div>
+      <div class="schedule-editor-grid">
+        <label class="schedule-editor-field">
+          <span>Trigger</span>
+          <select id="scheduleEditTriggerType">
+            <option value="interval">interval</option>
+            <option value="daily">daily</option>
+            <option value="weekly">weekly</option>
+            <option value="once">once</option>
+          </select>
+        </label>
+        <label class="schedule-editor-field">
+          <span>Timezone</span>
+          <input id="scheduleEditTimezone" type="text" autocomplete="off">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Every</span>
+          <input id="scheduleEditEvery" type="number" min="1" step="1">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Unit</span>
+          <select id="scheduleEditUnit">
+            <option value="minutes">minutes</option>
+            <option value="hours">hours</option>
+            <option value="days">days</option>
+          </select>
+        </label>
+        <label class="schedule-editor-field">
+          <span>Time</span>
+          <input id="scheduleEditTime" type="time">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Days</span>
+          <input id="scheduleEditDaysOfWeek" type="text" autocomplete="off">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Start At</span>
+          <input id="scheduleEditStartAt" type="text" autocomplete="off">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Run At</span>
+          <input id="scheduleEditRunAt" type="text" autocomplete="off">
+        </label>
+      </div>
+      <div class="schedule-editor-grid">
+        <label class="schedule-editor-field">
+          <span>Repeat</span>
+          <select id="scheduleEditRepeatMode">
+            <option value="forever">forever</option>
+            <option value="count">count</option>
+            <option value="until">until</option>
+          </select>
+        </label>
+        <label class="schedule-editor-field">
+          <span>Count</span>
+          <input id="scheduleEditRepeatCount" type="number" min="1" step="1">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Until</span>
+          <input id="scheduleEditRepeatUntil" type="text" autocomplete="off">
+        </label>
+      </div>
+      <div class="schedule-editor-grid">
+        <label class="schedule-editor-field">
+          <span>Symbols</span>
+          <input id="scheduleEditSymbols" type="text" autocomplete="off">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Frequencies</span>
+          <input id="scheduleEditFrequencies" type="text" autocomplete="off">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Range</span>
+          <select id="scheduleEditDateRangeType">
+            <option value="last_n_days">last_n_days</option>
+            <option value="fixed">fixed</option>
+          </select>
+        </label>
+        <label class="schedule-editor-field">
+          <span>Days</span>
+          <input id="scheduleEditDateRangeDays" type="number" min="1" step="1">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Start Date</span>
+          <input id="scheduleEditStartDate" type="date">
+        </label>
+        <label class="schedule-editor-field">
+          <span>End Date</span>
+          <input id="scheduleEditEndDate" type="date">
+        </label>
+        <label class="schedule-editor-field">
+          <span>End Offset</span>
+          <input id="scheduleEditEndOffsetDays" type="number" min="0" step="1">
+        </label>
+        <label class="schedule-editor-field">
+          <span>Page Delay</span>
+          <input id="scheduleEditPageDelaySeconds" type="number" min="0" step="0.05">
+        </label>
+        <label class="schedule-editor-field checkbox-field">
+          <input id="scheduleEditRefreshExisting" type="checkbox">
+          <span>Refresh existing coverage</span>
+        </label>
+      </div>
+      <div class="schedule-editor-error" id="scheduleEditError"></div>
+      <div class="schedule-editor-actions">
+        <button class="text-button" id="scheduleEditDismissButton" type="button">Close</button>
+        <button class="text-button" type="submit">Save</button>
+      </div>
+    </form>
+  </section>
   <main>
     <a href="/strategy-results">
       <strong>Strategy Results</strong>
@@ -716,6 +947,7 @@ def render_workbench_index_html(
       selectedSourceId: "",
       taskPagesBySource: {},
       filtersBySource: {},
+      editingScheduleId: "",
       lastUpdated: "",
       error: "",
     };
@@ -738,6 +970,18 @@ def render_workbench_index_html(
         const headers = new Headers();
         headers.set("Authorization", `Bearer ${payload.data_api_token}`);
         options.headers = headers;
+      }
+      return options;
+    }
+
+    function dataApiMutationOptions(method, body) {
+      const options = dataApiRequestOptions();
+      options.method = method;
+      if (body !== undefined) {
+        const headers = new Headers(options.headers || undefined);
+        headers.set("Content-Type", "application/json");
+        options.headers = headers;
+        options.body = JSON.stringify(body);
       }
       return options;
     }
@@ -1040,7 +1284,7 @@ def render_workbench_index_html(
       const rowsEl = document.getElementById("dataScheduleRows");
       if (dataMonitorState.error) {
         metaEl.textContent = "Schedules unavailable";
-        rowsEl.innerHTML = `<tr><td class="empty" colspan="6">Unable to load schedules</td></tr>`;
+        rowsEl.innerHTML = `<tr><td class="empty" colspan="7">Unable to load schedules</td></tr>`;
         return;
       }
       const schedules = scheduleList();
@@ -1050,6 +1294,8 @@ def render_workbench_index_html(
         const status = escapeHtml(schedule.status || (schedule.enabled ? "enabled" : "disabled"));
         const lastJob = schedule.last_job_id || "";
         const lastRun = schedule.last_run_at ? `last run ${formatDateTime(schedule.last_run_at)}` : "";
+        const scheduleId = escapeHtml(schedule.schedule_id || "");
+        const toggleText = schedule.enabled ? "Disable" : "Enable";
         return `<tr>
           <td>
             <div class="schedule-name">
@@ -1067,8 +1313,247 @@ def render_workbench_index_html(
               <span class="schedule-subline">${escapeHtml(lastRun)}</span>
             </div>
           </td>
+          <td>
+            <div class="schedule-actions">
+              <button class="text-button" data-schedule-action="toggle" data-schedule-id="${scheduleId}" type="button">${toggleText}</button>
+              <button class="text-button" data-schedule-action="run" data-schedule-id="${scheduleId}" type="button">Run</button>
+              <button class="text-button" data-schedule-action="edit" data-schedule-id="${scheduleId}" type="button">Edit</button>
+            </div>
+          </td>
         </tr>`;
-      }).join("") : `<tr><td class="empty" colspan="6">No schedules</td></tr>`;
+      }).join("") : `<tr><td class="empty" colspan="7">No schedules</td></tr>`;
+      for (const button of rowsEl.querySelectorAll("[data-schedule-action]")) {
+        button.addEventListener("click", () => {
+          const scheduleId = button.dataset.scheduleId || "";
+          if (button.dataset.scheduleAction === "toggle") {
+            toggleSchedule(scheduleId);
+          } else if (button.dataset.scheduleAction === "run") {
+            runScheduleNow(scheduleId);
+          } else if (button.dataset.scheduleAction === "edit") {
+            openScheduleEditor(scheduleId);
+          }
+        });
+      }
+    }
+
+    function scheduleEditInput(id) {
+      return document.getElementById(id);
+    }
+
+    function inputValue(id) {
+      return String(scheduleEditInput(id).value || "").trim();
+    }
+
+    function numberValue(id, fallback = null) {
+      const value = inputValue(id);
+      if (!value) {
+        return fallback;
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function listValue(id) {
+      return inputValue(id)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    function setInputValue(id, value) {
+      scheduleEditInput(id).value = value ?? "";
+    }
+
+    function setScheduleEditError(message) {
+      document.getElementById("scheduleEditError").textContent = message || "";
+    }
+
+    function setScheduleActionError(message) {
+      const metaEl = document.getElementById("dataScheduleMeta");
+      if (metaEl) {
+        metaEl.textContent = message ? `Schedule update failed · ${message}` : "";
+      }
+    }
+
+    function closeScheduleEditor() {
+      dataMonitorState.editingScheduleId = "";
+      document.getElementById("scheduleEditDialog").hidden = true;
+      document.getElementById("scheduleEditBackdrop").hidden = true;
+      setScheduleEditError("");
+    }
+
+    function openScheduleEditor(scheduleId) {
+      const schedule = scheduleById(scheduleId);
+      if (!schedule) {
+        return;
+      }
+      const config = scheduleConfig(schedule);
+      const trigger = config.trigger || {};
+      const repeat = config.repeat || {};
+      const job = config.job || {};
+      const dateRange = job.date_range || {};
+      dataMonitorState.editingScheduleId = schedule.schedule_id;
+      document.getElementById("scheduleEditSubtitle").textContent = schedule.schedule_id || "";
+      setInputValue("scheduleEditName", config.name || schedule.name || "");
+      setInputValue("scheduleEditSourceId", job.source_id || "");
+      setInputValue("scheduleEditOverlapPolicy", config.overlap_policy || "skip");
+      setInputValue("scheduleEditTriggerType", trigger.type || "interval");
+      setInputValue("scheduleEditTimezone", trigger.timezone || "Asia/Shanghai");
+      setInputValue("scheduleEditEvery", trigger.every || 1);
+      setInputValue("scheduleEditUnit", trigger.unit || "hours");
+      setInputValue("scheduleEditTime", trigger.time || "");
+      setInputValue(
+        "scheduleEditDaysOfWeek",
+        Array.isArray(trigger.days_of_week) ? trigger.days_of_week.join(", ") : "",
+      );
+      setInputValue("scheduleEditStartAt", trigger.start_at || "");
+      setInputValue("scheduleEditRunAt", trigger.run_at || "");
+      setInputValue("scheduleEditRepeatMode", repeat.mode || "forever");
+      setInputValue("scheduleEditRepeatCount", repeat.count || "");
+      setInputValue("scheduleEditRepeatUntil", repeat.until || "");
+      setInputValue("scheduleEditSymbols", Array.isArray(job.symbols) ? job.symbols.join(", ") : "");
+      setInputValue(
+        "scheduleEditFrequencies",
+        Array.isArray(job.frequencies) ? job.frequencies.join(", ") : "",
+      );
+      setInputValue("scheduleEditDateRangeType", dateRange.type || "last_n_days");
+      setInputValue("scheduleEditDateRangeDays", dateRange.days || 1);
+      setInputValue("scheduleEditStartDate", dateRange.start_date || "");
+      setInputValue("scheduleEditEndDate", dateRange.end_date || "");
+      setInputValue("scheduleEditEndOffsetDays", dateRange.end_offset_days || 0);
+      setInputValue("scheduleEditPageDelaySeconds", job.page_delay_seconds || 0);
+      scheduleEditInput("scheduleEditRefreshExisting").checked = job.refresh_existing !== false;
+      setScheduleEditError("");
+      document.getElementById("scheduleEditBackdrop").hidden = false;
+      document.getElementById("scheduleEditDialog").hidden = false;
+    }
+
+    function buildScheduleEditPayload(schedule) {
+      const config = scheduleConfig(schedule);
+      const triggerType = inputValue("scheduleEditTriggerType") || "interval";
+      const trigger = {
+        type: triggerType,
+        timezone: inputValue("scheduleEditTimezone") || "Asia/Shanghai",
+      };
+      const startAt = inputValue("scheduleEditStartAt");
+      if (startAt) {
+        trigger.start_at = startAt;
+      } else {
+        trigger.start_at = null;
+      }
+      if (triggerType === "once") {
+        trigger.run_at = inputValue("scheduleEditRunAt") || null;
+      } else if (triggerType === "interval") {
+        trigger.every = numberValue("scheduleEditEvery", 1);
+        trigger.unit = inputValue("scheduleEditUnit") || "hours";
+      } else if (triggerType === "daily") {
+        trigger.time = inputValue("scheduleEditTime") || "00:00";
+      } else if (triggerType === "weekly") {
+        trigger.time = inputValue("scheduleEditTime") || "00:00";
+        trigger.days_of_week = listValue("scheduleEditDaysOfWeek");
+      }
+
+      const repeatMode = inputValue("scheduleEditRepeatMode") || "forever";
+      const repeat = { mode: repeatMode };
+      if (repeatMode === "count") {
+        repeat.count = numberValue("scheduleEditRepeatCount", 1);
+      } else if (repeatMode === "until") {
+        repeat.until = inputValue("scheduleEditRepeatUntil") || null;
+      }
+
+      const dateRangeType = inputValue("scheduleEditDateRangeType") || "last_n_days";
+      const dateRange = {
+        type: dateRangeType,
+        end_offset_days: numberValue("scheduleEditEndOffsetDays", 0),
+      };
+      if (dateRangeType === "fixed") {
+        dateRange.start_date = inputValue("scheduleEditStartDate") || null;
+        dateRange.end_date = inputValue("scheduleEditEndDate") || null;
+      } else {
+        dateRange.days = numberValue("scheduleEditDateRangeDays", 1);
+      }
+
+      return {
+        name: inputValue("scheduleEditName") || config.name || schedule.name,
+        trigger,
+        repeat,
+        job: {
+          source_id: inputValue("scheduleEditSourceId") || config.job?.source_id || "",
+          symbols: listValue("scheduleEditSymbols"),
+          frequencies: listValue("scheduleEditFrequencies"),
+          date_range: dateRange,
+          page_delay_seconds: numberValue("scheduleEditPageDelaySeconds", 0),
+          refresh_existing: scheduleEditInput("scheduleEditRefreshExisting").checked,
+        },
+        overlap_policy: inputValue("scheduleEditOverlapPolicy") || "skip",
+      };
+    }
+
+    async function readApiError(response) {
+      try {
+        const errorPayload = await response.json();
+        return errorPayload.error || errorPayload.message || `HTTP ${response.status}`;
+      } catch (error) {
+        return `HTTP ${response.status}`;
+      }
+    }
+
+    async function toggleSchedule(scheduleId) {
+      const schedule = scheduleById(scheduleId);
+      if (!schedule) {
+        return;
+      }
+      setScheduleActionError("");
+      try {
+        const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/${schedule.enabled ? "disable" : "enable"}`), dataApiMutationOptions("POST"));
+        if (!response.ok) {
+          setScheduleActionError(await readApiError(response));
+          return;
+        }
+        await loadDataMonitor();
+      } catch (error) {
+        setScheduleActionError(error.message);
+      }
+    }
+
+    async function runScheduleNow(scheduleId) {
+      const schedule = scheduleById(scheduleId);
+      if (!schedule) {
+        return;
+      }
+      setScheduleActionError("");
+      try {
+        const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/run-now`), dataApiMutationOptions("POST"));
+        if (!response.ok) {
+          setScheduleActionError(await readApiError(response));
+          return;
+        }
+        await loadDataMonitor();
+      } catch (error) {
+        setScheduleActionError(error.message);
+      }
+    }
+
+    async function saveScheduleEdits(event) {
+      event.preventDefault();
+      const schedule = scheduleById(dataMonitorState.editingScheduleId);
+      if (!schedule) {
+        closeScheduleEditor();
+        return;
+      }
+      const payload = buildScheduleEditPayload(schedule);
+      setScheduleEditError("");
+      try {
+        const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}`), dataApiMutationOptions("PATCH", payload));
+        if (!response.ok) {
+          setScheduleEditError(await readApiError(response));
+          return;
+        }
+        closeScheduleEditor();
+        await loadDataMonitor();
+      } catch (error) {
+        setScheduleEditError(error.message);
+      }
     }
 
     function renderScheduleRunRows() {
@@ -1311,6 +1796,10 @@ def render_workbench_index_html(
     document.getElementById("dataSourceDetailsButton").addEventListener("click", openDataSourceDrawer);
     document.getElementById("dataSourceDrawerCloseButton").addEventListener("click", closeDataSourceDrawer);
     document.getElementById("dataSourceDrawerBackdrop").addEventListener("click", closeDataSourceDrawer);
+    document.getElementById("scheduleEditForm").addEventListener("submit", saveScheduleEdits);
+    document.getElementById("scheduleEditCloseButton").addEventListener("click", closeScheduleEditor);
+    document.getElementById("scheduleEditDismissButton").addEventListener("click", closeScheduleEditor);
+    document.getElementById("scheduleEditBackdrop").addEventListener("click", closeScheduleEditor);
     document.getElementById("taskSymbolSearch").addEventListener("input", (event) => {
       const source = selectedSource();
       if (!source) return;

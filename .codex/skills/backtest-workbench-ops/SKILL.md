@@ -46,8 +46,12 @@ When verifying the workbench home data-source monitor:
   for an active schedule rather than relying on crawl task `updated_at`.
 - The `Details` drawer should provide source tabs, one tab per configured data
   source.
-- The drawer should show schedules read-only with status, trigger, repeat,
-  next run, last job, and recent schedule runs before the crawl task table.
+- The drawer should show schedules with status, trigger, repeat, next run, last
+  job, and recent schedule runs before the crawl task table.
+- Schedule rows expose operational controls backed by data-source HTTP APIs:
+  enable/disable via `POST /api/data/schedules/<schedule_id>/enable|disable`,
+  immediate execution via `POST /api/data/schedules/<schedule_id>/run-now`, and
+  basic edits via `PATCH /api/data/schedules/<schedule_id>`.
 - Within a source tab, the task table should support server-side pagination,
   symbol search, frequency multi-select, and status multi-select. `last_error`
   is display-only.

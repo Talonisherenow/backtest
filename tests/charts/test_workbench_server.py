@@ -12,7 +12,7 @@ def test_render_workbench_index_html_links_both_chart_apps():
     assert "K-line Viewer" in html
 
 
-def test_render_workbench_index_html_hosts_readonly_data_source_monitor():
+def test_render_workbench_index_html_hosts_data_source_monitor():
     html = render_workbench_index_html(
         data_api_base_url="http://127.0.0.1:8768/",
         data_api_token="monitor-token",
@@ -33,7 +33,7 @@ def test_render_workbench_index_html_hosts_readonly_data_source_monitor():
     assert 'id="dataScheduleSummary"' in html
     assert 'id="dataScheduleRows"' in html
     assert 'id="dataScheduleRunRows"' in html
-    assert "Read-only crawl task and schedule monitor" in html
+    assert "Schedule controls and crawl task monitor" in html
     assert "Schedule" in html
     assert "Recent Runs" in html
     assert "Trigger" in html
@@ -57,6 +57,32 @@ def test_render_workbench_index_html_hosts_readonly_data_source_monitor():
     assert "Submit" not in html
     assert "Retry" not in html
     assert "Cancel" not in html
+
+
+def test_render_workbench_index_html_supports_schedule_controls():
+    html = render_workbench_index_html(
+        data_api_base_url="http://127.0.0.1:8768/",
+        data_api_token="monitor-token",
+    )
+
+    assert "Actions" in html
+    assert 'data-schedule-action="toggle"' in html
+    assert 'data-schedule-action="run"' in html
+    assert 'data-schedule-action="edit"' in html
+    assert 'id="scheduleEditDialog"' in html
+    assert 'id="scheduleEditForm"' in html
+    assert 'id="scheduleEditName"' in html
+    assert 'id="scheduleEditTriggerType"' in html
+    assert 'id="scheduleEditRepeatMode"' in html
+    assert 'id="scheduleEditSymbols"' in html
+    assert 'id="scheduleEditDateRangeType"' in html
+    assert 'id="scheduleEditRefreshExisting"' in html
+    assert "function toggleSchedule(scheduleId)" in html
+    assert "function openScheduleEditor(scheduleId)" in html
+    assert "function saveScheduleEdits(event)" in html
+    assert 'fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/${schedule.enabled ? "disable" : "enable"}`), dataApiMutationOptions("POST"))' in html
+    assert 'fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/run-now`), dataApiMutationOptions("POST"))' in html
+    assert 'fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}`), dataApiMutationOptions("PATCH", payload))' in html
 
 
 def test_build_kline_shell_payload_includes_remote_data_api_base_url():
