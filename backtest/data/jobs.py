@@ -37,6 +37,7 @@ class DataSyncJobConfig(BaseModel):
     metadata: Path = Path("data/metadata.sqlite")
     output_dir: Path = Path("runs/data_jobs")
     page_delay_seconds: float = Field(default=0.0, ge=0)
+    refresh_existing: bool = False
     retry: RetryConfig = Field(default_factory=RetryConfig)
 
     @field_validator("name")
@@ -221,6 +222,7 @@ class MarketDataJobRunner:
                     frequency=item.frequency,
                     adjust=item.adjust,
                     source=item.source,
+                    refresh_existing=config.refresh_existing,
                 )
                 return JobItemResult(
                     job_name=config.name,

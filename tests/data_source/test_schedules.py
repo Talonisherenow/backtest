@@ -259,6 +259,7 @@ def test_job_template_compiles_to_existing_data_job_payload(tmp_path: Path):
     assert payload["bars_root"] == str(tmp_path / "bitget" / "bars")
     assert payload["metadata"] == str(tmp_path / "bitget" / "metadata.sqlite")
     assert payload["page_delay_seconds"] == 0.35
+    assert payload["refresh_existing"] is True
     assert payload["retry"]["max_attempts"] == 5
 
 

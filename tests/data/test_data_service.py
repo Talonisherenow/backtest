@@ -197,6 +197,45 @@ def test_data_sync_service_keeps_catalog_coverage_when_appending_same_partition(
     assert records[0].rows == 4
 
 
+def test_data_sync_service_can_refresh_existing_coverage(tmp_path: Path):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    catalog = DataCatalog(metadata)
+    catalog.upsert(
+        CatalogRecord(
+            symbol="BTC/USDT",
+            frequency=Frequency.HOUR_1,
+            adjust=AdjustMode.NONE,
+            start_date=date(2026, 5, 19),
+            end_date=date(2026, 5, 19),
+            rows=8,
+            source="ccxt:bitget",
+            cache_path=tmp_path / "existing.parquet",
+            updated_at=metadata.now(),
+        )
+    )
+    service = DataSyncService(
+        provider=FakeProvider(),
+        store=ParquetBarStore(tmp_path / "bars"),
+        catalog=catalog,
+        tasks=CrawlTaskManager(metadata),
+    )
+
+    service.sync(
+        symbols=["BTC/USDT"],
+        start_date=date(2026, 5, 19),
+        end_date=date(2026, 5, 19),
+        frequency=Frequency.HOUR_1,
+        adjust=AdjustMode.NONE,
+        source="ccxt:bitget",
+        refresh_existing=True,
+    )
+
+    tasks = service.tasks.list_tasks()
+    assert len(tasks) == 1
+    assert tasks[0].symbol == "BTC/USDT"
+    assert tasks[0].status == "success"
+
+
 def test_data_sync_service_consumes_retrying_tasks_before_creating_missing_tasks(
     tmp_path: Path,
 ):

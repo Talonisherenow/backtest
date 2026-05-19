@@ -57,6 +57,7 @@ Body:
   "metadata": "data/crypto/bitget/metadata.sqlite",
   "output_dir": "runs/crypto_market_data/bitget_core",
   "page_delay_seconds": 0.35,
+  "refresh_existing": false,
   "retry": {
     "max_attempts": 5,
     "request_delay_seconds": 0.5,
@@ -67,6 +68,8 @@ Body:
 ```
 
 Paths are server-side paths on the data-source machine.
+For one-shot jobs, `refresh_existing=false` means missing ranges only; set it to
+`true` when the user explicitly wants to refresh an already cached date range.
 
 ## Retry Failed
 
@@ -129,7 +132,8 @@ Schedule body example:
     "source_id": "bitget",
     "symbols": ["BTC/USDT", "ETH/USDT"],
     "frequencies": ["1h"],
-    "date_range": {"type": "last_n_days", "days": 7}
+    "date_range": {"type": "last_n_days", "days": 7},
+    "refresh_existing": true
   },
   "overlap_policy": "skip"
 }
@@ -139,6 +143,11 @@ Schedule body example:
 set, the backend will not submit the first scheduled crawl before that concrete
 time; for `daily` and `weekly`, the first run is the first configured wall-clock
 slot at or after `start_at`.
+
+`job.refresh_existing` defaults to `true` for schedules. Keep it true for
+intraday recurring refreshes such as BTC/USDT 1h so each scheduled run creates a
+fresh crawl task even when the date is already present in the catalog. Set it to
+`false` only for missing-range backfills.
 
 The schedule `job` template uses `source_id`; the backend maps that source to
 server-side paths and provider defaults. Do not ask IM users for server paths

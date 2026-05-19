@@ -101,6 +101,7 @@ class ScheduleJobTemplate(BaseModel):
     exchange: str | None = None
     adjust: AdjustMode | None = None
     page_delay_seconds: float = Field(default=0.0, ge=0)
+    refresh_existing: bool = True
     retry: RetryConfig = Field(default_factory=RetryConfig)
 
     @field_validator("source_id")
@@ -270,6 +271,7 @@ def build_job_payload(
         "metadata": str(spec.metadata_path),
         "output_dir": str(Path("runs/data_jobs") / safe_name),
         "page_delay_seconds": schedule.job.page_delay_seconds,
+        "refresh_existing": schedule.job.refresh_existing,
         "retry": schedule.job.retry.model_dump(mode="json"),
     }
 
@@ -614,6 +616,7 @@ class DataSourceScheduleService:
                     "symbols": ["BTC/USDT"],
                     "frequencies": ["1h"],
                     "date_range": {"type": "last_n_days", "days": 7},
+                    "refresh_existing": True,
                 },
                 "overlap_policy": "skip",
             },

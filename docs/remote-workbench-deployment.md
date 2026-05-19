@@ -381,7 +381,8 @@ curl -sS https://data.example.com/api/data/schedules \
       "source_id": "bitget",
       "symbols": ["BTC/USDT", "ETH/USDT"],
       "frequencies": ["1h"],
-      "date_range": {"type": "last_n_days", "days": 7}
+      "date_range": {"type": "last_n_days", "days": 7},
+      "refresh_existing": true
     },
     "overlap_policy": "skip"
   }'
@@ -389,6 +390,8 @@ curl -sS https://data.example.com/api/data/schedules \
 
 `start_at` 可用于 `interval`、`daily`、`weekly`，表示最早开始执行的具体时间点。
 对 `daily` / `weekly` 来说，第一次执行会落到 `start_at` 之后的第一个匹配本地墙钟时间。
+定时任务的 `job.refresh_existing` 默认是 `true`，适合 BTC/USDT 1h 这类盘中刷新；
+它会在日期已经被 catalog 覆盖时仍然创建新的 crawl task。
 
 确认 schedule 后再开启：
 

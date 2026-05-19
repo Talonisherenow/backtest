@@ -37,6 +37,8 @@ For scheduled data jobs, also confirm:
 - whether the schedule should start enabled
 - `overlap_policy`, defaulting to `skip`
 - date range mode inside the job template, usually `last_n_days` for recurring refreshes
+- `refresh_existing`, defaulting to `true` for scheduled jobs so intraday
+  refreshes create a crawl task even when the catalog already covers the date
 
 Schedule job templates use `source_id` and let the data-source backend map
 server-side paths and provider defaults. Prefer `GET /api/data/schedule-options`
