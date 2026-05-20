@@ -101,6 +101,32 @@ def test_interval_schedule_defaults_to_disabled_and_computes_next_run():
     assert next_run.isoformat() == "2026-05-18T09:00:00+08:00"
 
 
+def test_interval_schedule_supports_second_level_precision():
+    schedule = DataScheduleConfig.model_validate(
+        _schedule_payload(
+            trigger={
+                "type": "interval",
+                "every": 15,
+                "unit": "seconds",
+                "start_at": "2026-05-18T09:00:05+08:00",
+                "timezone": "Asia/Shanghai",
+            },
+            repeat={"mode": "forever"},
+        )
+    )
+
+    next_run = compute_next_run_at(
+        schedule,
+        now=datetime.fromisoformat("2026-05-18T09:00:20+08:00"),
+        run_count=0,
+        after=True,
+    )
+
+    assert schedule.trigger.unit == "seconds"
+    assert next_run is not None
+    assert next_run.isoformat() == "2026-05-18T09:00:35+08:00"
+
+
 def test_repeat_count_exhaustion_has_no_next_run():
     schedule = DataScheduleConfig.model_validate(_schedule_payload())
 
@@ -261,6 +287,39 @@ def test_job_template_compiles_to_existing_data_job_payload(tmp_path: Path):
     assert payload["page_delay_seconds"] == 0.35
     assert payload["refresh_existing"] is True
     assert payload["retry"]["max_attempts"] == 5
+
+
+def test_job_template_accepts_intraday_relative_range(tmp_path: Path):
+    schedule = DataScheduleConfig.model_validate(
+        _schedule_payload(
+            name="bitget-fast-refresh",
+            job={
+                "source_id": "bitget",
+                "symbols": ["BTC/USDT"],
+                "frequencies": ["1m"],
+                "date_range": {
+                    "type": "last_n_days",
+                    "lookback_value": 180,
+                    "lookback_unit": "minutes",
+                    "end_offset_value": 15,
+                    "end_offset_unit": "minutes",
+                },
+            },
+        )
+    )
+
+    payload = build_job_payload(
+        schedule,
+        _server_config(tmp_path),
+        now=datetime.fromisoformat("2026-05-18T01:10:00+08:00"),
+    )
+
+    assert schedule.job.date_range.lookback_value == 180
+    assert schedule.job.date_range.lookback_unit == "minutes"
+    assert schedule.job.date_range.end_offset_value == 15
+    assert schedule.job.date_range.end_offset_unit == "minutes"
+    assert payload["start_date"] == "2026-05-17"
+    assert payload["end_date"] == "2026-05-18"
 
 
 def test_job_template_compiles_a_share_defaults(tmp_path: Path):
@@ -462,6 +521,61 @@ def test_scheduler_tick_submits_due_schedule_once(tmp_path: Path):
     assert updated.status == "completed"
     assert updated.enabled is False
     assert updated.next_run_at is None
+
+
+def test_scheduler_execution_delay_preserves_scheduled_range_anchor(tmp_path: Path):
+    submitted = []
+    current_now = {"value": datetime.fromisoformat("2026-05-17T23:59:00+08:00")}
+
+    def submit_job(payload):
+        submitted.append(payload)
+        return type("Snapshot", (), {"job_id": "job-1", "status": "submitted"})()
+
+    service = DataSourceScheduleService(
+        store=DataSourceScheduleStore(
+            tmp_path / "schedules.sqlite",
+            now=lambda: current_now["value"],
+        ),
+        server_config=_server_config(tmp_path),
+        submit_job=submit_job,
+        now=lambda: current_now["value"],
+    )
+    snapshot = service.create(
+        _schedule_payload(
+            name="bitget-delayed",
+            enabled=True,
+            trigger={
+                "type": "once",
+                "run_at": "2026-05-18T00:00:00+08:00",
+                "execution_delay_seconds": 60,
+            },
+            repeat={"mode": "forever"},
+            job={
+                "source_id": "bitget",
+                "symbols": ["BTC/USDT"],
+                "frequencies": ["1m"],
+                "date_range": {
+                    "type": "last_n_days",
+                    "lookback_value": 1,
+                    "lookback_unit": "minutes",
+                },
+            },
+        )
+    )
+    scheduler = DataSourceScheduler(service=service, poll_seconds=0.01)
+
+    assert snapshot.next_run_at is not None
+    assert snapshot.next_run_at.isoformat() == "2026-05-18T00:01:00+08:00"
+
+    current_now["value"] = datetime.fromisoformat("2026-05-18T00:00:00+08:00")
+    scheduler.tick()
+    assert submitted == []
+
+    current_now["value"] = datetime.fromisoformat("2026-05-18T00:01:00+08:00")
+    scheduler.tick()
+
+    assert submitted[0]["start_date"] == "2026-05-17"
+    assert submitted[0]["end_date"] == "2026-05-18"
 
 
 def test_scheduler_tick_skips_when_previous_job_is_still_running(tmp_path: Path):

@@ -34,7 +34,7 @@ class DataSourceServerConfig:
     default_window_size: int = 300
     api_token: str | None = None
     schedule_db_path: Path = Path("data/data_source_schedules.sqlite")
-    scheduler_poll_seconds: float = 5.0
+    scheduler_poll_seconds: float = 1.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "schedule_db_path", Path(self.schedule_db_path))

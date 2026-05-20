@@ -22,6 +22,7 @@ from backtest.data_source.config import DataSourceServerConfig
 
 WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 DEFAULT_TIMEZONE = "Asia/Shanghai"
+RangeUnit = Literal["minutes", "hours", "days"]
 
 
 class TriggerConfig(BaseModel):
@@ -30,9 +31,10 @@ class TriggerConfig(BaseModel):
     run_at: datetime | None = None
     start_at: datetime | None = None
     every: int | None = Field(default=None, ge=1)
-    unit: Literal["minutes", "hours", "days"] | None = None
+    unit: Literal["seconds", "minutes", "hours", "days"] | None = None
     time: str | None = None
     days_of_week: list[str] = Field(default_factory=list)
+    execution_delay_seconds: float = Field(default=0.0, ge=0)
 
     @field_validator("days_of_week")
     @classmethod
@@ -77,18 +79,58 @@ class DateRangeConfig(BaseModel):
     type: Literal["fixed", "last_n_days"]
     start_date: date | None = None
     end_date: date | None = None
+    start_at: datetime | None = None
+    end_at: datetime | None = None
     days: int | None = Field(default=None, ge=1)
     end_offset_days: int = Field(default=0, ge=0)
+    lookback_value: int | None = Field(default=None, ge=1)
+    lookback_unit: RangeUnit | None = None
+    end_offset_value: int | None = Field(default=None, ge=0)
+    end_offset_unit: RangeUnit | None = None
 
     @model_validator(mode="after")
     def validate_range(self) -> "DateRangeConfig":
         if self.type == "fixed":
-            if self.start_date is None or self.end_date is None:
-                raise ValueError("start_date and end_date are required for fixed date_range")
-            if self.end_date < self.start_date:
-                raise ValueError("end_date must be on or after start_date")
-        if self.type == "last_n_days" and self.days is None:
-            raise ValueError("days is required for last_n_days date_range")
+            has_dates = self.start_date is not None or self.end_date is not None
+            has_times = self.start_at is not None or self.end_at is not None
+            if has_times:
+                if self.start_at is None or self.end_at is None:
+                    raise ValueError("start_at and end_at are required for fixed date_range")
+                if self.end_at < self.start_at:
+                    raise ValueError("end_at must be on or after start_at")
+            if has_dates:
+                if self.start_date is None or self.end_date is None:
+                    raise ValueError("start_date and end_date are required for fixed date_range")
+                if self.end_date < self.start_date:
+                    raise ValueError("end_date must be on or after start_date")
+            if not has_dates and not has_times:
+                raise ValueError(
+                    "start_date/end_date or start_at/end_at are required for fixed date_range"
+                )
+            if has_times and not has_dates:
+                self.start_date = self.start_at.date() if self.start_at else None
+                self.end_date = self.end_at.date() if self.end_at else None
+            return self
+        if self.lookback_value is None and self.days is None:
+            raise ValueError("days or lookback_value is required for last_n_days date_range")
+        if self.lookback_value is None:
+            self.lookback_value = self.days
+        if self.lookback_unit is None:
+            self.lookback_unit = "days"
+        if self.days is None and self.lookback_unit == "days":
+            self.days = self.lookback_value
+        if self.end_offset_value is None:
+            self.end_offset_value = self.end_offset_days
+        if self.end_offset_unit is None:
+            self.end_offset_unit = "days"
+        if self.end_offset_unit == "days":
+            self.end_offset_days = self.end_offset_value or 0
+        if self.lookback_unit == "days" and self.days is None:
+            self.days = self.lookback_value
+        if self.days is not None and self.days < 1:
+            raise ValueError("days must be greater than or equal to 1")
+        if self.end_offset_days < 0:
+            raise ValueError("end_offset_days must be greater than or equal to 0")
         return self
 
 
@@ -217,7 +259,7 @@ def compute_next_run_at(
         candidate = _aware(trigger.run_at, zone)
         if run_count > 0 or after:
             return None
-        return candidate if candidate >= local_now else None
+        return _with_execution_delay(candidate, trigger) if candidate >= local_now else None
     if trigger.type == "interval":
         candidate = _next_interval(trigger, local_now, after=after)
     elif trigger.type == "daily":
@@ -238,7 +280,7 @@ def compute_next_run_at(
     if schedule.repeat.mode == "until" and schedule.repeat.until is not None:
         if candidate > _aware(schedule.repeat.until, zone):
             return None
-    return candidate
+    return _with_execution_delay(candidate, trigger)
 
 
 def build_job_payload(
@@ -595,9 +637,12 @@ class DataSourceScheduleService:
         return {
             "timezone_default": DEFAULT_TIMEZONE,
             "trigger_types": ["once", "interval", "daily", "weekly"],
+            "interval_units": ["seconds", "minutes", "hours", "days"],
+            "execution_delay_units": ["seconds", "minutes", "hours"],
             "repeat_modes": ["forever", "count", "until"],
             "overlap_policies": ["skip", "allow"],
             "date_range_types": ["fixed", "last_n_days"],
+            "range_units": ["minutes", "hours", "days"],
             "frequencies": _frequency_values(),
             "sources": [self._source_options(source) for source in self.server_config.sources],
             "example": {
@@ -609,13 +654,18 @@ class DataSourceScheduleService:
                     "unit": "hours",
                     "start_at": "2026-05-20T09:00:00+08:00",
                     "timezone": DEFAULT_TIMEZONE,
+                    "execution_delay_seconds": 60,
                 },
                 "repeat": {"mode": "count", "count": 24},
                 "job": {
                     "source_id": "bitget",
                     "symbols": ["BTC/USDT"],
                     "frequencies": ["1h"],
-                    "date_range": {"type": "last_n_days", "days": 7},
+                    "date_range": {
+                        "type": "last_n_days",
+                        "lookback_value": 7,
+                        "lookback_unit": "days",
+                    },
                     "refresh_existing": True,
                 },
                 "overlap_policy": "skip",
@@ -692,7 +742,16 @@ class DataSourceScheduleService:
             if not manual and self._should_skip_for_overlap(snapshot):
                 return self._record_skipped(snapshot, due_at=due_at, triggered_at=triggered_at)
 
-            payload = build_job_payload(snapshot.config, self.server_config, now=triggered_at)
+            payload = build_job_payload(
+                snapshot.config,
+                self.server_config,
+                now=_job_payload_anchor(
+                    snapshot.config,
+                    due_at=due_at,
+                    triggered_at=triggered_at,
+                    manual=manual,
+                ),
+            )
             job = self.submit_job(payload)
             job_id = str(_value(job, "job_id"))
             next_count = snapshot.run_count + 1
@@ -877,9 +936,29 @@ def _aware(value: datetime | None, zone: ZoneInfo) -> datetime:
     return value.astimezone(zone)
 
 
+def _job_payload_anchor(
+    schedule: DataScheduleConfig,
+    *,
+    due_at: datetime,
+    triggered_at: datetime,
+    manual: bool,
+) -> datetime:
+    if manual or schedule.trigger.execution_delay_seconds <= 0:
+        return triggered_at
+    zone = ZoneInfo(schedule.trigger.timezone)
+    return _aware(due_at, zone) - timedelta(seconds=schedule.trigger.execution_delay_seconds)
+
+
+def _with_execution_delay(candidate: datetime, trigger: TriggerConfig) -> datetime:
+    if trigger.execution_delay_seconds <= 0:
+        return candidate
+    return candidate + timedelta(seconds=trigger.execution_delay_seconds)
+
+
 def _next_interval(trigger: TriggerConfig, now: datetime, *, after: bool) -> datetime:
     start = _aware(trigger.start_at, now.tzinfo) if trigger.start_at else now
     delta = {
+        "seconds": timedelta(seconds=trigger.every or 1),
         "minutes": timedelta(minutes=trigger.every or 1),
         "hours": timedelta(hours=trigger.every or 1),
         "days": timedelta(days=trigger.every or 1),
@@ -925,13 +1004,51 @@ def _next_weekly(trigger: TriggerConfig, now: datetime, *, after: bool) -> datet
 
 
 def _date_range(config: DateRangeConfig, *, now: datetime) -> tuple[date, date]:
+    start_at, end_at = _date_range_window(config, now=now)
+    return start_at.date(), end_at.date()
+
+
+def _date_range_window(config: DateRangeConfig, *, now: datetime) -> tuple[datetime, datetime]:
+    zone = now.tzinfo or ZoneInfo(DEFAULT_TIMEZONE)
     if config.type == "fixed":
+        if config.start_at is not None and config.end_at is not None:
+            return _aware(config.start_at, zone), _aware(config.end_at, zone)
         if config.start_date is None or config.end_date is None:
-            raise ValueError("fixed date_range requires start_date and end_date")
-        return config.start_date, config.end_date
-    end_date = now.date() - timedelta(days=config.end_offset_days)
-    start_date = end_date - timedelta(days=(config.days or 1) - 1)
-    return start_date, end_date
+            raise ValueError("fixed date_range requires start_date/end_date or start_at/end_at")
+        return (
+            datetime.combine(config.start_date, time.min, tzinfo=zone),
+            datetime.combine(config.end_date, time.max, tzinfo=zone),
+        )
+
+    lookback_value = config.lookback_value or config.days or 1
+    lookback_unit = config.lookback_unit or "days"
+    end_offset_value = (
+        config.end_offset_value
+        if config.end_offset_value is not None
+        else config.end_offset_days
+    )
+    end_offset_unit = config.end_offset_unit or "days"
+    local_now = _aware(now, zone)
+
+    if lookback_unit == "days" and end_offset_unit == "days":
+        end_date = local_now.date() - timedelta(days=end_offset_value)
+        start_date = end_date - timedelta(days=lookback_value - 1)
+        return (
+            datetime.combine(start_date, time.min, tzinfo=zone),
+            datetime.combine(end_date, time.max, tzinfo=zone),
+        )
+
+    end_at = local_now - _range_delta(end_offset_value, end_offset_unit)
+    start_at = end_at - _range_delta(lookback_value, lookback_unit)
+    return start_at, end_at
+
+
+def _range_delta(value: int, unit: RangeUnit) -> timedelta:
+    if unit == "minutes":
+        return timedelta(minutes=value)
+    if unit == "hours":
+        return timedelta(hours=value)
+    return timedelta(days=value)
 
 
 def _source_and_exchange(catalog_source: str) -> tuple[str, str | None]:

@@ -22,6 +22,40 @@ uv run backtest chart serve-workbench \
   --port 8767
 ```
 
+When the user provides a token for repeated workbench use, persist it without
+printing the value:
+
+```bash
+mkdir -p "$HOME"
+cat > "$HOME/.backtest-env" <<'EOF'
+export BACKTEST_DATA_API_TOKEN="..."
+EOF
+chmod 600 "$HOME/.backtest-env"
+
+for shell_file in "$HOME/.zshrc" "$HOME/.zprofile"; do
+  touch "$shell_file"
+  if ! grep -q 'HOME/.backtest-env' "$shell_file"; then
+    cat >> "$shell_file" <<'EOF'
+
+if [ -f "$HOME/.backtest-env" ]; then
+  . "$HOME/.backtest-env"
+fi
+EOF
+  fi
+done
+```
+
+Restart the workbench with the token coming from the environment, not from the
+command line:
+
+```bash
+zsh -lc 'uv run backtest chart serve-workbench \
+  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --data-api-base-url https://data.example.com \
+  --host 127.0.0.1 \
+  --port 8767'
+```
+
 Open:
 
 ```text
@@ -35,6 +69,9 @@ Useful probes:
 ```bash
 curl -sS http://127.0.0.1:8767/api/strategy-results
 curl -sS http://127.0.0.1:8767/api/manifest
+zsh -lc 'curl -sS -o /tmp/backtest-schedules-check.json -w "%{http_code}\n" \
+  -H "Authorization: Bearer $BACKTEST_DATA_API_TOKEN" \
+  https://data.example.com/api/data/schedules'
 ```
 
 When `--data-api-base-url` is set, the workbench home also calls the remote data

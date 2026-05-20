@@ -64,6 +64,12 @@ def test_server_config_finds_source_by_id(tmp_path: Path):
         config.source("a_share")
 
 
+def test_server_config_defaults_scheduler_poll_to_one_second(tmp_path: Path):
+    config = DataSourceServerConfig(sources=[_spec(tmp_path)])
+
+    assert config.scheduler_poll_seconds == 1.0
+
+
 def test_server_config_normalizes_api_token(tmp_path: Path):
     config = DataSourceServerConfig(sources=[_spec(tmp_path)], api_token="  secret  ")
 

@@ -23,6 +23,8 @@ Allowed:
 - start and verify `backtest chart serve-workbench`
 - configure `--data-api-base-url`
 - configure `BACKTEST_DATA_API_TOKEN` or `--data-api-token`
+- persist a user-provided data API token into the local shell environment for
+  workbench use
 - verify K-line and strategy-results pages
 
 Not allowed:
@@ -33,6 +35,20 @@ Not allowed:
 ## Workflow
 
 Read `references/workbench-runbook.md` for local and remote startup commands.
+
+If the user provides a remote data API token for the workbench:
+
+- Default to persisting it as `BACKTEST_DATA_API_TOKEN` in `~/.backtest-env`
+  unless the user asks for one-shot/no persistence.
+- Ensure `~/.zshrc` and `~/.zprofile` source `~/.backtest-env` using an
+  idempotent guard, and set `chmod 600 ~/.backtest-env`.
+- Do not echo the token in command output, final answers, process arguments, or
+  logs. Prefer passing it through environment variables rather than
+  `--data-api-token`.
+- Verify with a token-safe check: confirm the workbench payload has
+  `data_api_token`, and probe a narrow remote endpoint with
+  `Authorization: Bearer $BACKTEST_DATA_API_TOKEN`, reporting only status/byte
+  count.
 
 When verifying the workbench home data-source monitor:
 

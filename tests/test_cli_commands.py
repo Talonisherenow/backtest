@@ -927,6 +927,47 @@ def test_data_source_serve_cli_passes_server_options(tmp_path: Path, monkeypatch
     assert [source.source_id for source in captured["api"].config.sources] == ["bitget", "a_share"]
 
 
+def test_data_source_serve_cli_defaults_scheduler_poll_to_one_second(tmp_path: Path, monkeypatch):
+    from backtest.cli import data_source as data_source_cli
+
+    bitget_root = tmp_path / "crypto" / "bitget" / "bars"
+    a_share_root = tmp_path / "bars"
+    universe_path = tmp_path / "a_share_all.csv"
+    bitget_root.mkdir(parents=True)
+    a_share_root.mkdir()
+    universe_path.write_text("symbol,code,name\n000001.SZ,000001,平安银行\n", encoding="utf-8")
+    captured = {}
+
+    def fake_serve_data_source_api(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(data_source_cli, "serve_data_source_api", fake_serve_data_source_api)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "data-source",
+            "serve",
+            "--bitget-bars-root",
+            str(bitget_root),
+            "--bitget-metadata",
+            str(tmp_path / "crypto" / "bitget" / "metadata.sqlite"),
+            "--a-share-bars-root",
+            str(a_share_root),
+            "--a-share-metadata",
+            str(tmp_path / "metadata.sqlite"),
+            "--a-share-universe",
+            str(universe_path),
+            "--schedule-db",
+            str(tmp_path / "default-schedules.sqlite"),
+            "--no-scheduler",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["api"].config.scheduler_poll_seconds == 1.0
+
+
 def test_crawl_task_manager_mark_retrying_accepts_integer_task_id():
     signature = inspect.signature(CrawlTaskManager.mark_retrying)
 

@@ -246,6 +246,9 @@ def test_api_exposes_schedule_service_methods(tmp_path: Path):
     job = api.run_schedule_now(created["schedule_id"])
 
     assert options["trigger_types"] == ["once", "interval", "daily", "weekly"]
+    assert options["interval_units"] == ["seconds", "minutes", "hours", "days"]
+    assert options["execution_delay_units"] == ["seconds", "minutes", "hours"]
+    assert options["range_units"] == ["minutes", "hours", "days"]
     assert created["name"] == "api-schedule"
     assert enabled["enabled"] is True
     assert updated["config"]["job"]["symbols"] == ["000002.SZ"]

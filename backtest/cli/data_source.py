@@ -69,7 +69,7 @@ def serve(
         help="SQLite database for data-source schedule definitions and run history",
     ),
     scheduler_poll_seconds: float = typer.Option(
-        5.0,
+        1.0,
         "--scheduler-poll-seconds",
         min=0.1,
         help="How often the in-process scheduler scans for due schedules",
