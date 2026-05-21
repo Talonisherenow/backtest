@@ -66,4 +66,22 @@ Task status API notes:
   sync-job` process or data-source in-process job before treating it as active.
   Interrupted sync processes can leave stale `running` rows in metadata.
 
+Schedule API notes:
+
+- The in-process scheduler is enabled by default and `--scheduler-poll-seconds`
+  defaults to `1.0`, so updated deployments can honor second-level schedule
+  timing.
+- `GET /api/data/schedule-options` should expose `interval_units` containing
+  `seconds`, `execution_delay_units`, and `range_units` containing `minutes`,
+  `hours`, and `days`. If those fields are missing, restart/deploy the updated
+  data-source code before testing new workbench schedule edits.
+- Execution delay is stored as `trigger.execution_delay_seconds`. It delays
+  submission after the scheduled anchor while preserving the original anchor for
+  relative crawl ranges.
+- Workbench labels `Last N mins/hours/days` are represented in the API as
+  `job.date_range.type=last_n_days` plus `lookback_value` and
+  `lookback_unit=minutes|hours|days`.
+- `job.page_delay_seconds` is provider request spacing inside the crawl job; do
+  not use it to delay schedule execution.
+
 For public exposure, verify the chain in order: source loopback, VPS loopback, public HTTPS.

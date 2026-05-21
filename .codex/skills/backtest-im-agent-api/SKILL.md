@@ -1,7 +1,6 @@
 ---
 name: backtest-im-agent-api
 description: Use when a server-side IM agent must answer backtest data-source, crawler, crawl task, K-line, inventory, A-share, crypto, Bitget, or API-only market-data requests.
-category: software-development
 ---
 
 # Backtest IM Agent API

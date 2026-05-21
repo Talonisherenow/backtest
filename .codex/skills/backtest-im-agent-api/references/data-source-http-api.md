@@ -125,15 +125,21 @@ Schedule body example:
     "every": 1,
     "unit": "hours",
     "start_at": "2026-05-20T09:00:00+08:00",
-    "timezone": "Asia/Shanghai"
+    "timezone": "Asia/Shanghai",
+    "execution_delay_seconds": 60
   },
   "repeat": {"mode": "count", "count": 24},
   "job": {
     "source_id": "bitget",
     "symbols": ["BTC/USDT", "ETH/USDT"],
     "frequencies": ["1h"],
-    "date_range": {"type": "last_n_days", "days": 7},
-    "refresh_existing": true
+    "date_range": {
+      "type": "last_n_days",
+      "lookback_value": 7,
+      "lookback_unit": "days"
+    },
+    "refresh_existing": true,
+    "page_delay_seconds": 0
   },
   "overlap_policy": "skip"
 }
@@ -144,6 +150,22 @@ set, the backend will not submit the first scheduled crawl before that concrete
 time; for `daily` and `weekly`, the first run is the first configured wall-clock
 slot at or after `start_at`.
 
+`trigger.unit` for interval schedules may be `seconds`, `minutes`, `hours`, or
+`days` when the updated data-source server is deployed. The scheduler poll
+interval defaults to one second.
+
+`trigger.execution_delay_seconds` delays submission after the scheduled anchor.
+For example, a 10:00 trigger with 60 seconds of execution delay submits at 10:01.
+Relative crawl ranges are still anchored to the original scheduled time.
+
+For recurring intraday ranges, use `date_range.type=last_n_days` with
+`lookback_value` and `lookback_unit=minutes|hours|days`. UI labels such as
+`Last N mins` and `Last N hours` are friendly names for this same API shape, not
+separate `type` values.
+
+`job.page_delay_seconds` is provider request throttling inside the crawl job. It
+does not delay schedule execution.
+
 `job.refresh_existing` defaults to `true` for schedules. Keep it true for
 intraday recurring refreshes such as BTC/USDT 1h so each scheduled run creates a
 fresh crawl task even when the date is already present in the catalog. Set it to
@@ -152,6 +174,12 @@ fresh crawl task even when the date is already present in the catalog. Set it to
 The schedule `job` template uses `source_id`; the backend maps that source to
 server-side paths and provider defaults. Do not ask IM users for server paths
 unless they explicitly need a one-shot `/api/data/jobs` payload override.
+
+Compatibility check: if `GET /api/data/schedule-options` does not include
+`execution_delay_units`, or a create/update response omits
+`config.trigger.execution_delay_seconds` after the caller sent it, the API server
+is older than this contract. Do not tell the user the execution delay was saved;
+ask an operator to deploy/restart the updated data-source service.
 
 ## Status Meaning
 

@@ -51,12 +51,26 @@ Flow:
 
 1. Ensure an API client is configured. Run access discovery only if the client is missing, unvalidated, changed, or currently failing.
 2. Call `GET /api/data/schedule-options` when supported fields, source defaults, frequencies, trigger types, repeat modes, or date range types are unknown.
-3. Identify trigger time, optional concrete `start_at`, repeat policy, symbols, frequencies, source, date range, `refresh_existing`, retry policy, overlap policy, and whether the schedule should start enabled.
+3. Identify trigger time, optional concrete `start_at`, optional execution
+   delay, repeat policy, symbols, frequencies, source, date range,
+   `refresh_existing`, retry policy, overlap policy, request gap, and whether
+   the schedule should start enabled.
 4. Fill defaults where safe: `timezone=Asia/Shanghai`, `enabled=false` for newly created schedules, and `overlap_policy=skip`.
 5. Ask one concise follow-up if a required field remains ambiguous.
-6. Show the final schedule summary, including trigger, start time when provided, repeat count or stop condition, source, symbols, frequencies, date range, refresh policy, retry policy, overlap policy, and enabled state.
+6. Show the final schedule summary, including trigger, start time when provided,
+   execution delay when nonzero, repeat count or stop condition, source,
+   symbols, frequencies, date range, refresh policy, request gap, retry policy,
+   overlap policy, and enabled state.
 7. Call schedule write endpoints only after explicit confirmation.
 8. Return `schedule_id`, enabled state, `next_run_at`, and the next status-check action.
+
+Use `execution_delay_seconds` for "10:00 trigger but 10:01 submit" style
+requests. Use `page_delay_seconds` only when the user wants to slow provider
+page requests during the crawl.
+
+When the user says "last N minutes/hours/days", keep the API
+`date_range.type=last_n_days` and set `lookback_value` plus
+`lookback_unit=minutes|hours|days`.
 
 For enable, disable, delete, and run-now requests, confirm the target schedule id
 or exact schedule name before writing. `run-now` submits a normal data job

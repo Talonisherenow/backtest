@@ -54,6 +54,9 @@ When verifying the workbench home data-source monitor:
 
 - The compact home summary should stay visible below the header when
   `--data-api-base-url` is configured.
+- The data-source details open as a top drawer with primary tabs for
+  `Schedules` and `Crawl Tasks`, so schedule status and task rows do not compete
+  in one long panel.
 - The crawl-task summary is backed by `/api/data/tasks/summary?source_id=<source_id>`,
   not by a full task list fetch.
 - The schedule summary and drawer table are backed by `/api/data/schedules`.
@@ -68,9 +71,39 @@ When verifying the workbench home data-source monitor:
   enable/disable via `POST /api/data/schedules/<schedule_id>/enable|disable`,
   immediate execution via `POST /api/data/schedules/<schedule_id>/run-now`, and
   basic edits via `PATCH /api/data/schedules/<schedule_id>`.
+- Enable and disable are mutating actions; the UI should highlight the action
+  state and ask for confirmation before calling the API.
+- The schedule and recent-run tables should have their own pagination controls,
+  independent of crawl-task pagination.
+- Schedule rows, schedule runs, and crawl-task rows should show the crawl data
+  range when the API provides it.
 - Within a source tab, the task table should support server-side pagination,
   symbol search, frequency multi-select, and status multi-select. `last_error`
   is display-only.
+- The schedule editor uses one native `datetime-local` control for `start_at`
+  and `run_at`, with second precision where the browser supports it. Do not
+  split start time into separate date and time text inputs.
+- Interval schedules support seconds, minutes, hours, and days. The data-source
+  scheduler default poll interval is one second, so second-level schedule times
+  require the updated backend to be running.
+- `trigger.execution_delay_seconds` means "submit after the scheduled anchor",
+  such as 10:00 plus a 60-second execution delay submitting at 10:01. It is
+  different from request throttling inside a crawl job.
+- `job.page_delay_seconds` should be shown as request gap/request delay seconds:
+  it spaces provider page requests to reduce rate-limit pressure, not schedule
+  execution time.
+- The frequency picker in the schedule editor is a dropdown multi-select that
+  displays the chosen values, usually offering `1d`, `4h`, `1h`, `15m`, and
+  `1m` when supported by the source.
+- The workbench range labels `Last N mins`, `Last N hours`, and `Last N days`
+  map to the API's `job.date_range.type=last_n_days` with
+  `lookback_value` plus `lookback_unit=minutes|hours|days`; do not invent
+  separate API types named `last_n_minutes` or `last_n_hours`.
+- If `GET /api/data/schedule-options` lacks `execution_delay_units`, or a
+  successful schedule `PATCH` response does not echo
+  `config.trigger.execution_delay_seconds`, the remote data-source server is
+  older than the workbench UI. Report that the updated data-source API must be
+  deployed/restarted before execution delay can persist.
 - If the drawer shows a task stuck in `running`, ask data-source ops to compare
   metadata status with actual sync-job processes before assuming a crawl is
   still active.
