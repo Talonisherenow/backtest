@@ -919,6 +919,8 @@ HTML_TEMPLATE = """<!doctype html>
     const payload = JSON.parse(document.getElementById("kline-payload").textContent);
     const dynamicMode = payload.mode === "dynamic";
     const DYNAMIC_BUFFER_MULTIPLIER = 3;
+    const KLINE_DISPLAY_TIME_ZONE = "Asia/Shanghai";
+    const KLINE_DISPLAY_TIME_ZONE_OFFSET = "+08:00";
     let sources = normalizeSources(payload);
     const state = {
       sourceId: sources[0]?.source_id || "default",
@@ -1044,6 +1046,84 @@ HTML_TEMPLATE = """<!doctype html>
         return state.seriesData;
       }
       return currentSeries(item);
+    }
+
+    function hasExplicitTimeZone(value) {
+      return /(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(String(value || "").trim());
+    }
+
+    function parseBarDateTime(value, frequency) {
+      if (!value) return null;
+      if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+      }
+      const text = String(value).trim();
+      const dateOnly = text.match(/^(\\d{4}-\\d{2}-\\d{2})$/);
+      if (dateOnly) {
+        return new Date(`${dateOnly[1]}T00:00:00Z`);
+      }
+      const dateTime = text.match(/^(\\d{4}-\\d{2}-\\d{2})[T ](\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?)(.*)$/);
+      if (dateTime && !hasExplicitTimeZone(text)) {
+        return new Date(`${dateTime[1]}T${dateTime[2]}Z`);
+      }
+      const parsed = new Date(text);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function displayDateTimeParts(value, frequency) {
+      const date = parseBarDateTime(value, frequency);
+      if (!date) return null;
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: KLINE_DISPLAY_TIME_ZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(date);
+      return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+    }
+
+    function formatBarDateTime(value, frequency) {
+      if (!value) return "";
+      if ((frequency || state.frequency) === "1d") {
+        return String(value).slice(0, 10);
+      }
+      const parts = displayDateTimeParts(value, frequency);
+      if (!parts) return String(value);
+      return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+    }
+
+    function formatBarRange(startValue, endValue, frequency) {
+      return [formatBarDateTime(startValue, frequency), formatBarDateTime(endValue, frequency)]
+        .filter(Boolean)
+        .join(" to ");
+    }
+
+    function utcDateTimeString(date) {
+      return [
+        date.getUTCFullYear(),
+        String(date.getUTCMonth() + 1).padStart(2, "0"),
+        String(date.getUTCDate()).padStart(2, "0"),
+      ].join("-") + "T" + [
+        String(date.getUTCHours()).padStart(2, "0"),
+        String(date.getUTCMinutes()).padStart(2, "0"),
+        String(date.getUTCSeconds()).padStart(2, "0"),
+      ].join(":");
+    }
+
+    function jumpInputToApiValue(value, daily) {
+      if (!value) return "";
+      const text = String(value).trim();
+      if (daily) {
+        return text.slice(0, 10);
+      }
+      const normalized = text.includes("T") ? text : text.replace(" ", "T");
+      const withSeconds = normalized.length === 16 ? `${normalized}:00` : normalized;
+      const date = new Date(`${withSeconds}${KLINE_DISPLAY_TIME_ZONE_OFFSET}`);
+      return Number.isNaN(date.getTime()) ? text : utcDateTimeString(date);
     }
 
     function populateBoards() {
@@ -1234,7 +1314,10 @@ HTML_TEMPLATE = """<!doctype html>
     }
 
     function currentJumpStart() {
-      return jumpTimeInput.value.trim() || firstVisibleBarDate(activeSeries(selectedItem()));
+      const series = activeSeries(selectedItem());
+      const daily = (series?.frequency || state.frequency) === "1d";
+      const raw = jumpTimeInput.value.trim();
+      return raw ? jumpInputToApiValue(raw, daily) : firstVisibleBarDate(series);
     }
 
     function syncJumpInputToWindow(series, bars) {
@@ -1297,8 +1380,8 @@ HTML_TEMPLATE = """<!doctype html>
       const totalLabel = compact(total);
       windowRowsMeta.textContent = loaded ? `Rows ${startRow}-${endRow} / ${totalLabel}` : (total ? `Rows 0 / ${compact(total)}` : "No bars");
       windowTimeMeta.textContent = loaded
-        ? `${bars[0].date} to ${bars[bars.length - 1].date}`
-        : [series?.first_bar, series?.last_bar].filter(Boolean).join(" to ") || "No window selected";
+        ? formatBarRange(bars[0].date, bars[bars.length - 1].date, series?.frequency || state.frequency)
+        : formatBarRange(series?.first_bar, series?.last_bar, series?.frequency || state.frequency) || "No window selected";
       windowMeta.title = [windowRowsMeta.textContent, windowTimeMeta.textContent].filter(Boolean).join(" | ");
       syncJumpInputToWindow(series, bars);
       olderPageButton.disabled = state.loading || !loaded || offset <= 0;
@@ -1314,7 +1397,7 @@ HTML_TEMPLATE = """<!doctype html>
       jumpTimeInput.step = String(frequencyStepSeconds(frequency));
       jumpTimeInput.min = toJumpInputValue(series?.first_bar || "", daily);
       jumpTimeInput.max = toJumpInputValue(series?.last_bar || "", daily);
-      jumpTimeInput.title = [series?.first_bar, series?.last_bar].filter(Boolean).join(" to ");
+      jumpTimeInput.title = formatBarRange(series?.first_bar, series?.last_bar, frequency);
     }
 
     function frequencyStepSeconds(frequency) {
@@ -1335,14 +1418,12 @@ HTML_TEMPLATE = """<!doctype html>
       if (!value) {
         return "";
       }
-      const text = String(value);
       if (daily) {
-        return text.slice(0, 10);
+        return String(value).slice(0, 10);
       }
-      if (text.includes("T")) {
-        return text.slice(0, 16);
-      }
-      return `${text.slice(0, 10)}T00:00`;
+      const parts = displayDateTimeParts(value, state.frequency);
+      if (!parts) return "";
+      return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
     }
 
     function movingAverage(bars, days) {
@@ -1368,7 +1449,7 @@ HTML_TEMPLATE = """<!doctype html>
         metric("Source", currentSource().source_label || currentSource().source_id || "Cache"),
         metric("Symbol", `${item.symbol} ${item.name || ""}`),
         metric("Frequency", series?.frequency || state.frequency),
-        metric("Time Span", `${first.date} to ${last.date}`),
+        metric("Time Span", formatBarRange(first.date, last.date, series?.frequency || state.frequency)),
         metric("Close", fixed(last.close)),
         metric("Change", `${fixed(change)} (${fixed(changePct)}%)`),
       ].join("");
@@ -1412,7 +1493,7 @@ HTML_TEMPLATE = """<!doctype html>
       const bars = visibleBars(series);
       updateWindowControls(series, bars);
       renderSummary(item, series, bars);
-      const x = bars.map((bar) => bar.date);
+      const x = bars.map((bar) => formatBarDateTime(bar.date, series?.frequency || state.frequency));
       const upColor = "#d32f2f";
       const downColor = "#00897b";
       const volumeColors = bars.map((bar) => Number(bar.close) >= Number(bar.open) ? upColor : downColor);
@@ -1521,7 +1602,7 @@ HTML_TEMPLATE = """<!doctype html>
         const rows = series.map((entry) => {
           const active = item.symbol === state.symbol && entry.frequency === state.frequency ? " active" : "";
           const years = Array.isArray(entry.years) ? entry.years.join(", ") : "";
-          const range = [entry.first_bar, entry.last_bar].filter(Boolean).join(" to ");
+          const range = formatBarRange(entry.first_bar, entry.last_bar, entry.frequency);
           const details = [
             range,
             `${compact(entry.rows || (entry.bars || []).length)} rows`,

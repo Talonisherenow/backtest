@@ -304,6 +304,10 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "default_window_overlap ?? 0.8" in html
     assert "windowMeta.title" in html
     assert "windowRowsMeta.textContent" in html
+    assert 'const KLINE_DISPLAY_TIME_ZONE = "Asia/Shanghai";' in html
+    assert "function formatBarDateTime(value, frequency)" in html
+    assert "function jumpInputToApiValue(value, daily)" in html
+    assert "bars.map((bar) => formatBarDateTime(bar.date, series?.frequency || state.frequency))" in html
     assert "loaded_rows" in html
     assert "status-symbol-group" in html
     assert "sourceButtons" in html

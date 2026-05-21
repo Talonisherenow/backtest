@@ -78,6 +78,9 @@ def test_render_workbench_index_html_hosts_data_source_monitor():
     assert "function renderScheduleRunRows()" in html
     assert "function formatTaskRange(task)" in html
     assert "function formatScheduleDateRange(schedule, anchorValue)" in html
+    assert 'const WORKBENCH_DISPLAY_TIME_ZONE = "Asia/Shanghai";' in html
+    assert "timeZone: WORKBENCH_DISPLAY_TIME_ZONE" in html
+    assert "function datePartsInDisplayZone(value)" in html
     assert "task.start_date" in html
     assert "task.end_date" in html
     assert "DATA_MONITOR_REFRESH_MS = 10000" in html

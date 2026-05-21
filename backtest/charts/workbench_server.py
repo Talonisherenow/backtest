@@ -1285,6 +1285,8 @@ def render_workbench_index_html(
   <script>
     const payload = JSON.parse(document.getElementById("workbench-index-payload").textContent);
     const DATA_MONITOR_REFRESH_MS = 10000;
+    const WORKBENCH_DISPLAY_TIME_ZONE = "Asia/Shanghai";
+    const WORKBENCH_DISPLAY_TIME_ZONE_OFFSET = "+08:00";
     let dataMonitorTimer = null;
     let taskSearchTimer = null;
     let dataMonitorState = {
@@ -1348,11 +1350,65 @@ def render_workbench_index_html(
       return task.updated_at || task.finished_at || task.started_at || task.created_at || "";
     }
 
+    function hasExplicitTimeZone(value) {
+      return /(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(String(value).trim());
+    }
+
+    function parseWorkbenchDateTime(value) {
+      if (!value) return "";
+      if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+      }
+      const text = String(value).trim();
+      const dateOnly = text.match(/^(\\d{4}-\\d{2}-\\d{2})$/);
+      if (dateOnly) {
+        return new Date(`${dateOnly[1]}T00:00:00${WORKBENCH_DISPLAY_TIME_ZONE_OFFSET}`);
+      }
+      const dateTime = text.match(/^(\\d{4}-\\d{2}-\\d{2})[T ](\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?)(.*)$/);
+      if (dateTime && !hasExplicitTimeZone(text)) {
+        return new Date(`${dateTime[1]}T${dateTime[2]}${WORKBENCH_DISPLAY_TIME_ZONE_OFFSET}`);
+      }
+      const parsed = new Date(text);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function displayDateTimeParts(value) {
+      const date = parseWorkbenchDateTime(value);
+      if (!date) return null;
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: WORKBENCH_DISPLAY_TIME_ZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(date);
+      return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+    }
+
+    function datePartsInDisplayZone(value) {
+      if (!value) return null;
+      const text = String(value);
+      const dateOnly = text.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (dateOnly) {
+        return { year: dateOnly[1], month: dateOnly[2], day: dateOnly[3] };
+      }
+      const parts = displayDateTimeParts(value);
+      return parts ? { year: parts.year, month: parts.month, day: parts.day } : null;
+    }
+
     function formatClock(value) {
       if (!value) return "";
-      const date = value instanceof Date ? value : new Date(value);
-      if (Number.isNaN(date.getTime())) return String(value);
-      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const date = parseWorkbenchDateTime(value);
+      if (!date) return String(value);
+      return date.toLocaleTimeString([], {
+        timeZone: WORKBENCH_DISPLAY_TIME_ZONE,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
     }
 
     function sourceLabel(source) {
@@ -1361,9 +1417,10 @@ def render_workbench_index_html(
 
     function formatDateTime(value) {
       if (!value) return "";
-      const date = value instanceof Date ? value : new Date(value);
-      if (Number.isNaN(date.getTime())) return String(value);
+      const date = parseWorkbenchDateTime(value);
+      if (!date) return String(value);
       return date.toLocaleString([], {
+        timeZone: WORKBENCH_DISPLAY_TIME_ZONE,
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -1382,16 +1439,9 @@ def render_workbench_index_html(
 
     function localDate(value) {
       if (!value) return null;
-      if (value instanceof Date) {
-        return Number.isNaN(value.getTime()) ? null : new Date(value.getFullYear(), value.getMonth(), value.getDate());
-      }
-      const text = String(value);
-      const dateOnly = text.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
-      if (dateOnly) {
-        return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
-      }
-      const parsed = new Date(text);
-      return Number.isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+      const parts = datePartsInDisplayZone(value);
+      if (!parts) return null;
+      return new Date(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
     }
 
     function addDays(date, days) {
@@ -1401,15 +1451,13 @@ def render_workbench_index_html(
     }
 
     function addRangeTime(date, amount, unit) {
-      const result = new Date(date.getTime());
       if (unit === "minutes") {
-        result.setMinutes(result.getMinutes() + amount);
-      } else if (unit === "hours") {
-        result.setHours(result.getHours() + amount);
-      } else {
-        result.setDate(result.getDate() + amount);
+        return new Date(date.getTime() + amount * 60 * 1000);
       }
-      return result;
+      if (unit === "hours") {
+        return new Date(date.getTime() + amount * 60 * 60 * 1000);
+      }
+      return new Date(date.getTime() + amount * 24 * 60 * 60 * 1000);
     }
 
     function safeRangeUnit(unit) {
@@ -1966,10 +2014,9 @@ def render_workbench_index_html(
 
     function toDatetimeLocalValue(value) {
       if (!value) return "";
-      const text = String(value);
-      const match = text.match(/^(\\d{4}-\\d{2}-\\d{2})[T ](\\d{2}:\\d{2}(?::\\d{2})?)/);
-      if (!match) return "";
-      return `${match[1]}T${match[2].length === 5 ? `${match[2]}:00` : match[2]}`;
+      const parts = displayDateTimeParts(value);
+      if (!parts) return "";
+      return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
     }
 
     function dateToDatetimeLocalValue(value, endOfDay = false) {
