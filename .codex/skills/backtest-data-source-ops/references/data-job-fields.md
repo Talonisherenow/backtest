@@ -22,6 +22,18 @@ Defaults:
 - crypto: `source=ccxt`, `adjust=none`, `frequencies=[1d, 4h, 1h, 30m, 15m, 5m, 1m]`
 - A-share: `source=akshare`, `adjust=qfq`, `frequencies=[1d]`
 
+Closed candle policy:
+
+- Crypto CCXT jobs use closed candles by default. The provider drops the current
+  incomplete candle (`drop_incomplete=true`) even when an exchange endpoint can
+  return a partial bar.
+- A bar timestamp is the interval start/open time, not the time at which the bar
+  becomes final. Beijing `17:00` on `1h` means the `17:00-18:00` candle; Beijing
+  `16:00` on `4h` means the `16:00-20:00` candle.
+- If the latest expected candle is still open, a successful crawl that stops at
+  the previous closed bar is normal. Do not retry or restart the crawler solely
+  for that gap.
+
 For crypto, confirm `exchange`. If the user did not name one, infer it only from an existing repo default or ask.
 
 For A-share, do not use crypto intraday frequencies. AkShare currently accepts daily bars.

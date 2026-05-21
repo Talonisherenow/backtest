@@ -99,6 +99,19 @@ When verifying the workbench home data-source monitor:
   map to the API's `job.date_range.type=last_n_days` with
   `lookback_value` plus `lookback_unit=minutes|hours|days`; do not invent
   separate API types named `last_n_minutes` or `last_n_hours`.
+- Workbench display times should be `Asia/Shanghai`. For `/kline`, intraday
+  bar timestamps from the API/cache are UTC interval-open times; convert them
+  to `Asia/Shanghai` for the row range, summary cards, chart axes, hover
+  labels, and `Jump to` input. The `Jump to` input accepts the Shanghai display
+  time and converts it back to the API's UTC interval-open timestamp.
+- The `/kline` HTML is generated when `serve-workbench` starts. Restart the
+  workbench after changing K-line viewer server/template code before judging the
+  browser output.
+- Do not treat a missing current 1h or 4h candle as a crawl failure until the
+  interval has closed. Crypto candle timestamps represent the interval start;
+  for example, Beijing `17:00` on `1h` is the `17:00-18:00` open candle.
+  The CCXT-backed provider drops incomplete current candles by default, even if
+  the exchange API can return partial candles.
 - If `GET /api/data/schedule-options` lacks `execution_delay_units`, or a
   successful schedule `PATCH` response does not echo
   `config.trigger.execution_delay_seconds`, the remote data-source server is

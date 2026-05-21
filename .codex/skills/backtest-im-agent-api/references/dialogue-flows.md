@@ -81,6 +81,18 @@ for job execution status.
 
 For health, source list, K-line, job, schedule, task, or inventory questions, call the narrowest read endpoint through the configured API client. Use `/api/data/tasks/summary` for totals and paginated `/api/data/tasks` for rows. Run access discovery only when the user asks for a connectivity check or the direct call fails with configuration, authorization, base URL, or forwarding symptoms.
 
+For "latest K-line is missing" questions, check candle semantics before
+escalating:
+
+1. Identify source, symbol, frequency, and the user's timezone, defaulting to
+   `Asia/Shanghai` for this workbench.
+2. Read the latest cached bars with `/api/kline/bars`.
+3. Compare the expected newest bar to the current interval. Crypto timestamps
+   are interval-open times and CCXT-backed data drops incomplete current
+   candles, so the latest open 1h/4h candle can be absent normally.
+4. Only if the missing candle should already be closed, read schedule runs,
+   `/api/data/jobs/<job_id>`, and crawl tasks for evidence of failure.
+
 If the user asks why a task is stuck or whether a crawler is still running, first read job/task state through the API. Do not inspect processes or logs from IM. If the API state is ambiguous, report the ambiguity and hand off process/log verification to a data-source operator.
 
 ## Operations Requests

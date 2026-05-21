@@ -65,6 +65,14 @@ Task status API notes:
 - If a task is shown as `running`, confirm there is a real `backtest data
   sync-job` process or data-source in-process job before treating it as active.
   Interrupted sync processes can leave stale `running` rows in metadata.
+- If latest K-line data appears missing, compare the expected bar to the current
+  interval before blaming the scheduler. Crypto bar timestamps are interval
+  start/open times, and the CCXT-backed provider drops incomplete current
+  candles by default. At Beijing `17:09`, the `17:00` 1h candle and `16:00` 4h
+  candle are still open and should not be cached as complete bars yet.
+- A schedule/job/task can be `success` while the current open candle is absent.
+  Only diagnose crawler failure after the expected candle's interval has closed
+  or after direct API/job/task evidence shows an error.
 
 Schedule API notes:
 

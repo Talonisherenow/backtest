@@ -102,6 +102,29 @@ Current monitor expectations:
   after the scheduled anchor. Request gap is `job.page_delay_seconds`: it delays
   provider page requests inside a crawl.
 
+K-line viewer expectations:
+
+- Display intraday K-line times in `Asia/Shanghai`. The API/cache stores
+  crypto intraday timestamps as UTC interval-open values; the workbench should
+  convert them before showing row ranges, summary spans, axis labels, hover
+  labels, and the `Jump to` value.
+- The `Jump to` control accepts the Shanghai display time and sends the matching
+  UTC interval-open timestamp to the API.
+- If a user expects the latest 1h/4h candle, first check whether that candle is
+  still open. A `17:00` 1h candle covers `17:00-18:00`, and a `16:00` 4h candle
+  covers `16:00-20:00`; CCXT-backed crawls drop these incomplete candles by
+  default until the interval closes.
+- Restart `serve-workbench` after changing K-line viewer code. The `/kline`
+  page is rendered at server startup, so a browser refresh alone may still show
+  the previous template.
+
+Useful K-line probes:
+
+```bash
+curl -sS http://127.0.0.1:8767/kline | rg "KLINE_DISPLAY_TIME_ZONE|formatBarDateTime|jumpInputToApiValue"
+curl -sS "http://127.0.0.1:8767/api/bars?source_id=bitget&symbol=BTC%2FUSDT&frequency=1h&adjust=none&limit=3&anchor=latest"
+```
+
 Before blaming the workbench for schedule-save behavior, confirm the remote
 server supports the same schedule contract as the UI:
 

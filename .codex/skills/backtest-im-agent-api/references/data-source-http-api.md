@@ -34,6 +34,18 @@ GET /api/data/schedules/<schedule_id>/runs
 frequency totals. `frequency` and `status` can be repeated to express
 multi-select filters.
 
+Latest K-line semantics:
+
+- `/api/kline/bars` returns cached bars. For crypto CCXT-backed data, the cache
+  normally contains completed candles only; the current open candle may be
+  absent even when the exchange can return a partial candle.
+- Bar timestamps represent interval start/open time. A Beijing `17:00` `1h`
+  bar covers `17:00-18:00`, and a Beijing `16:00` `4h` bar covers `16:00-20:00`.
+- When a user asks why the newest bar is missing, first determine whether the
+  expected bar is still open. If it is open, explain the closed-candle policy.
+  If it should already be closed, then inspect schedule runs, jobs, and crawl
+  tasks before calling it a crawler failure.
+
 ## Submit Job
 
 ```text
