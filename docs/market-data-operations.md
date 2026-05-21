@@ -299,3 +299,71 @@ curl http://SERVER_IP:8768/api/kline/manifest
 - 每个交易所建议独立 `bars_root` 和 `metadata`。
 - 多次运行同一个 job 会自动跳过已覆盖区间，只补缺口。
 - 如果交易所限流，调大 `page_delay_seconds` 或 retry cooldown。
+
+## Data Source Scheduled Jobs
+
+如果已经运行 `backtest data-source serve`，也可以通过 data-source HTTP API
+管理内置定时任务。它不会创建新的爬取链路；到点后会复用现有
+`POST /api/data/jobs` 提交数据爬取任务。
+
+查看后端支持的 schedule 字段、source 默认值和示例：
+
+```bash
+curl -sS http://127.0.0.1:8768/api/data/schedule-options \
+  -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN"
+```
+
+创建一个默认关闭的 schedule：
+
+```bash
+curl -sS http://127.0.0.1:8768/api/data/schedules \
+  -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "bitget-hourly",
+    "trigger": {
+      "type": "interval",
+      "every": 1,
+      "unit": "hours",
+      "start_at": "2026-05-20T09:00:00+08:00",
+      "timezone": "Asia/Shanghai"
+    },
+    "repeat": {"mode": "count", "count": 24},
+    "job": {
+      "source_id": "bitget",
+      "symbols": ["BTC/USDT", "ETH/USDT"],
+      "frequencies": ["1h"],
+      "date_range": {"type": "last_n_days", "days": 7},
+      "refresh_existing": true
+    },
+    "overlap_policy": "skip"
+  }'
+```
+
+`start_at` 可用于 `interval`、`daily`、`weekly`，表示最早开始执行的具体时间点。
+对 `daily` / `weekly` 来说，第一次执行会落到 `start_at` 之后的第一个匹配本地墙钟时间。
+定时任务的 `job.refresh_existing` 默认是 `true`，适合 BTC/USDT 1h 这类盘中刷新；
+它会在日期已经被 catalog 覆盖时仍然创建新的 crawl task。
+
+确认无误后开启：
+
+```bash
+curl -sS -X POST http://127.0.0.1:8768/api/data/schedules/<schedule_id>/enable \
+  -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN"
+```
+
+其他常用操作：
+
+```bash
+curl -sS http://127.0.0.1:8768/api/data/schedules \
+  -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN"
+
+curl -sS -X POST http://127.0.0.1:8768/api/data/schedules/<schedule_id>/disable \
+  -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN"
+
+curl -sS -X POST http://127.0.0.1:8768/api/data/schedules/<schedule_id>/run-now \
+  -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN"
+
+curl -sS http://127.0.0.1:8768/api/data/schedules/<schedule_id>/runs \
+  -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN"
+```

@@ -45,6 +45,14 @@ def make_data_source_handler(api: DataSourceApi):
                     self._send_json(200, api.tasks(**self._task_args(query)))
                 elif parsed.path == "/api/data/inventory":
                     self._send_json(200, api.inventory(self._required(query, "source_id")))
+                elif parsed.path == "/api/data/schedule-options":
+                    self._send_json(200, api.schedule_options())
+                elif parsed.path == "/api/data/schedules":
+                    self._send_json(200, api.schedules())
+                elif parsed.path.endswith("/runs") and parsed.path.startswith("/api/data/schedules/"):
+                    self._send_json(200, api.schedule_runs(self._schedule_id_for_suffix(parsed.path, "/runs")))
+                elif parsed.path.startswith("/api/data/schedules/"):
+                    self._send_json(200, api.schedule(parsed.path.rsplit("/", 1)[-1]))
                 elif parsed.path == "/api/data/jobs":
                     self._send_json(200, api.jobs())
                 elif parsed.path.startswith("/api/data/jobs/"):
@@ -62,7 +70,15 @@ def make_data_source_handler(api: DataSourceApi):
                 return
             parsed = urlparse(self.path)
             try:
-                if parsed.path == "/api/data/jobs":
+                if parsed.path == "/api/data/schedules":
+                    self._send_json(200, api.create_schedule(self._read_json()))
+                elif parsed.path.endswith("/enable") and parsed.path.startswith("/api/data/schedules/"):
+                    self._send_json(200, api.enable_schedule(self._schedule_id_for_suffix(parsed.path, "/enable")))
+                elif parsed.path.endswith("/disable") and parsed.path.startswith("/api/data/schedules/"):
+                    self._send_json(200, api.disable_schedule(self._schedule_id_for_suffix(parsed.path, "/disable")))
+                elif parsed.path.endswith("/run-now") and parsed.path.startswith("/api/data/schedules/"):
+                    self._send_json(200, api.run_schedule_now(self._schedule_id_for_suffix(parsed.path, "/run-now")))
+                elif parsed.path == "/api/data/jobs":
                     self._send_json(200, api.submit_job(self._read_json()))
                 elif parsed.path == "/api/data/retry-failed":
                     payload = self._read_json()
@@ -75,6 +91,41 @@ def make_data_source_handler(api: DataSourceApi):
             except ValueError as exc:
                 self._send_json(400, {"error": str(exc)})
             except json.JSONDecodeError as exc:
+                self._send_json(400, {"error": str(exc)})
+            except Exception as exc:
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+
+        def do_PATCH(self) -> None:
+            if not self._is_authorized():
+                self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
+                return
+            parsed = urlparse(self.path)
+            try:
+                if parsed.path.startswith("/api/data/schedules/"):
+                    self._send_json(
+                        200,
+                        api.update_schedule(parsed.path.rsplit("/", 1)[-1], self._read_json()),
+                    )
+                else:
+                    self._send_json(404, {"error": "Not found"})
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+            except json.JSONDecodeError as exc:
+                self._send_json(400, {"error": str(exc)})
+            except Exception as exc:
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+
+        def do_DELETE(self) -> None:
+            if not self._is_authorized():
+                self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
+                return
+            parsed = urlparse(self.path)
+            try:
+                if parsed.path.startswith("/api/data/schedules/"):
+                    self._send_json(200, api.delete_schedule(parsed.path.rsplit("/", 1)[-1]))
+                else:
+                    self._send_json(404, {"error": "Not found"})
+            except ValueError as exc:
                 self._send_json(400, {"error": str(exc)})
             except Exception as exc:
                 self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
@@ -143,6 +194,10 @@ def make_data_source_handler(api: DataSourceApi):
             values = query.get(key)
             return values[0] if values else None
 
+        @staticmethod
+        def _schedule_id_for_suffix(path: str, suffix: str) -> str:
+            return path.removeprefix("/api/data/schedules/").removesuffix(suffix).strip("/")
+
         def _send_json(self, status: int, payload: Any) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
@@ -162,7 +217,7 @@ def make_data_source_handler(api: DataSourceApi):
 
         def _cors_headers(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     return DataSourceRequestHandler

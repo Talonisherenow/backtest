@@ -42,9 +42,56 @@ Flow:
 4. Call `POST /api/data/retry-failed` only after confirmation.
 5. Report queued count and task ids.
 
+## Schedule Management
+
+User intent examples: "每小时帮我补 BTC 数据", "创建一个定时任务", "打开这个任务",
+"关闭这个周期任务", "执行 24 次后停止".
+
+Flow:
+
+1. Ensure an API client is configured. Run access discovery only if the client is missing, unvalidated, changed, or currently failing.
+2. Call `GET /api/data/schedule-options` when supported fields, source defaults, frequencies, trigger types, repeat modes, or date range types are unknown.
+3. Identify trigger time, optional concrete `start_at`, optional execution
+   delay, repeat policy, symbols, frequencies, source, date range,
+   `refresh_existing`, retry policy, overlap policy, request gap, and whether
+   the schedule should start enabled.
+4. Fill defaults where safe: `timezone=Asia/Shanghai`, `enabled=false` for newly created schedules, and `overlap_policy=skip`.
+5. Ask one concise follow-up if a required field remains ambiguous.
+6. Show the final schedule summary, including trigger, start time when provided,
+   execution delay when nonzero, repeat count or stop condition, source,
+   symbols, frequencies, date range, refresh policy, request gap, retry policy,
+   overlap policy, and enabled state.
+7. Call schedule write endpoints only after explicit confirmation.
+8. Return `schedule_id`, enabled state, `next_run_at`, and the next status-check action.
+
+Use `execution_delay_seconds` for "10:00 trigger but 10:01 submit" style
+requests. Use `page_delay_seconds` only when the user wants to slow provider
+page requests during the crawl.
+
+When the user says "last N minutes/hours/days", keep the API
+`date_range.type=last_n_days` and set `lookback_value` plus
+`lookback_unit=minutes|hours|days`.
+
+For enable, disable, delete, and run-now requests, confirm the target schedule id
+or exact schedule name before writing. `run-now` submits a normal data job
+through the existing job path; after it returns, use `/api/data/jobs/<job_id>`
+for job execution status.
+
 ## Read Requests
 
-For health, source list, K-line, job, task, or inventory questions, call the narrowest read endpoint through the configured API client. Use `/api/data/tasks/summary` for totals and paginated `/api/data/tasks` for rows. Run access discovery only when the user asks for a connectivity check or the direct call fails with configuration, authorization, base URL, or forwarding symptoms.
+For health, source list, K-line, job, schedule, task, or inventory questions, call the narrowest read endpoint through the configured API client. Use `/api/data/tasks/summary` for totals and paginated `/api/data/tasks` for rows. Run access discovery only when the user asks for a connectivity check or the direct call fails with configuration, authorization, base URL, or forwarding symptoms.
+
+For "latest K-line is missing" questions, check candle semantics before
+escalating:
+
+1. Identify source, symbol, frequency, and the user's timezone, defaulting to
+   `Asia/Shanghai` for this workbench.
+2. Read the latest cached bars with `/api/kline/bars`.
+3. Compare the expected newest bar to the current interval. Crypto timestamps
+   are interval-open times and CCXT-backed data drops incomplete current
+   candles, so the latest open 1h/4h candle can be absent normally.
+4. Only if the missing candle should already be closed, read schedule runs,
+   `/api/data/jobs/<job_id>`, and crawl tasks for evidence of failure.
 
 If the user asks why a task is stuck or whether a crawler is still running, first read job/task state through the API. Do not inspect processes or logs from IM. If the API state is ambiguous, report the ambiguity and hand off process/log verification to a data-source operator.
 

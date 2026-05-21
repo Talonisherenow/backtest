@@ -26,7 +26,7 @@ Allowed:
 - start and inspect `backtest data-source serve`
 - inspect and maintain frpc/frps/Nginx deployment
 - inspect logs, ports, and launch services
-- submit, inspect, and retry crawl jobs after confirmation
+- submit, inspect, schedule, enable/disable, and retry crawl jobs after confirmation
 
 Not the right skill for:
 
@@ -48,6 +48,8 @@ curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1:8768/api/data-sources
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" "http://127.0.0.1:8768/api/data/tasks/summary?source_id=bitget"
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" "http://127.0.0.1:8768/api/data/tasks?source_id=bitget&page=1&page_size=50&symbol=BTC&frequency=1d&status=success"
+curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1:8768/api/data/schedule-options
+curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1:8768/api/data/schedules
 uv run backtest data tasks --metadata data/crypto/bitget/metadata.sqlite
 uv run backtest data inventory --metadata data/crypto/bitget/metadata.sqlite
 ```
@@ -63,5 +65,31 @@ Task status API notes:
 - If a task is shown as `running`, confirm there is a real `backtest data
   sync-job` process or data-source in-process job before treating it as active.
   Interrupted sync processes can leave stale `running` rows in metadata.
+- If latest K-line data appears missing, compare the expected bar to the current
+  interval before blaming the scheduler. Crypto bar timestamps are interval
+  start/open times, and the CCXT-backed provider drops incomplete current
+  candles by default. At Beijing `17:09`, the `17:00` 1h candle and `16:00` 4h
+  candle are still open and should not be cached as complete bars yet.
+- A schedule/job/task can be `success` while the current open candle is absent.
+  Only diagnose crawler failure after the expected candle's interval has closed
+  or after direct API/job/task evidence shows an error.
+
+Schedule API notes:
+
+- The in-process scheduler is enabled by default and `--scheduler-poll-seconds`
+  defaults to `1.0`, so updated deployments can honor second-level schedule
+  timing.
+- `GET /api/data/schedule-options` should expose `interval_units` containing
+  `seconds`, `execution_delay_units`, and `range_units` containing `minutes`,
+  `hours`, and `days`. If those fields are missing, restart/deploy the updated
+  data-source code before testing new workbench schedule edits.
+- Execution delay is stored as `trigger.execution_delay_seconds`. It delays
+  submission after the scheduled anchor while preserving the original anchor for
+  relative crawl ranges.
+- Workbench labels `Last N mins/hours/days` are represented in the API as
+  `job.date_range.type=last_n_days` plus `lookback_value` and
+  `lookback_unit=minutes|hours|days`.
+- `job.page_delay_seconds` is provider request spacing inside the crawl job; do
+  not use it to delay schedule execution.
 
 For public exposure, verify the chain in order: source loopback, VPS loopback, public HTTPS.

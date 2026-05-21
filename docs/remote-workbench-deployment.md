@@ -352,6 +352,70 @@ curl -sS https://data.example.com/api/data/retry-failed \
   -d '{"source_id":"bitget"}'
 ```
 
+## Manage Scheduled Data Jobs Remotely
+
+先查看远端 data-source 支持的 schedule 字段和 source 默认值：
+
+```bash
+curl -sS https://data.example.com/api/data/schedule-options \
+  -H "Authorization: Bearer CHANGE_ME_BACKTEST_API_TOKEN"
+```
+
+创建一个默认关闭的定时任务：
+
+```bash
+curl -sS https://data.example.com/api/data/schedules \
+  -H "Authorization: Bearer CHANGE_ME_BACKTEST_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "bitget-hourly",
+    "trigger": {
+      "type": "interval",
+      "every": 1,
+      "unit": "hours",
+      "start_at": "2026-05-20T09:00:00+08:00",
+      "timezone": "Asia/Shanghai"
+    },
+    "repeat": {"mode": "count", "count": 24},
+    "job": {
+      "source_id": "bitget",
+      "symbols": ["BTC/USDT", "ETH/USDT"],
+      "frequencies": ["1h"],
+      "date_range": {"type": "last_n_days", "days": 7},
+      "refresh_existing": true
+    },
+    "overlap_policy": "skip"
+  }'
+```
+
+`start_at` 可用于 `interval`、`daily`、`weekly`，表示最早开始执行的具体时间点。
+对 `daily` / `weekly` 来说，第一次执行会落到 `start_at` 之后的第一个匹配本地墙钟时间。
+定时任务的 `job.refresh_existing` 默认是 `true`，适合 BTC/USDT 1h 这类盘中刷新；
+它会在日期已经被 catalog 覆盖时仍然创建新的 crawl task。
+
+确认 schedule 后再开启：
+
+```bash
+curl -sS -X POST https://data.example.com/api/data/schedules/<schedule_id>/enable \
+  -H "Authorization: Bearer CHANGE_ME_BACKTEST_API_TOKEN"
+```
+
+可用这些接口管理后续状态：
+
+```bash
+curl -sS https://data.example.com/api/data/schedules \
+  -H "Authorization: Bearer CHANGE_ME_BACKTEST_API_TOKEN"
+
+curl -sS -X POST https://data.example.com/api/data/schedules/<schedule_id>/disable \
+  -H "Authorization: Bearer CHANGE_ME_BACKTEST_API_TOKEN"
+
+curl -sS -X POST https://data.example.com/api/data/schedules/<schedule_id>/run-now \
+  -H "Authorization: Bearer CHANGE_ME_BACKTEST_API_TOKEN"
+
+curl -sS https://data.example.com/api/data/schedules/<schedule_id>/runs \
+  -H "Authorization: Bearer CHANGE_ME_BACKTEST_API_TOKEN"
+```
+
 ## Security Notes
 
 - 不要裸露 `backtest data-source serve` 到公网。
@@ -360,3 +424,4 @@ curl -sS https://data.example.com/api/data/retry-failed \
 - Nginx 层可以继续叠加 Basic Auth、IP allowlist 或 mTLS。
 - API token 是项目层最后一道门；即使 Nginx 配错，未带 bearer token 的请求也会被拒绝。
 - `/api/data/jobs` 会触发内网数据源机器执行 crawl job，只给自己的客户端 token。
+- `/api/data/schedules` 会创建可长期触发 crawl job 的规则，也只给自己的客户端 token。

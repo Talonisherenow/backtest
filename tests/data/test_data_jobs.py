@@ -232,6 +232,28 @@ def test_market_data_job_runner_expands_symbols_and_frequencies(tmp_path: Path):
     assert result.total_rows == 28
 
 
+def test_market_data_job_runner_passes_refresh_existing(tmp_path: Path):
+    service = RecordingSyncService()
+    runner = MarketDataJobRunner(
+        service=service,
+        catalog=FakeCatalog(),
+        sleep=lambda seconds: None,
+        now=lambda: datetime(2025, 2, 1, 0, 0, 0),
+    )
+
+    result = runner.run(
+        _job_config(
+            tmp_path,
+            symbols=["BTC/USDT"],
+            frequencies=[Frequency.HOUR_1],
+            refresh_existing=True,
+        )
+    )
+
+    assert result.success_count == 1
+    assert service.calls[0]["refresh_existing"] is True
+
+
 def test_market_data_job_runner_retries_failed_item(tmp_path: Path):
     service = RecordingSyncService(failures_before_success=1)
     sleeps: list[float] = []

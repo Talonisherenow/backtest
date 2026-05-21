@@ -33,6 +33,7 @@ class DataSyncService:
         frequency: Frequency = Frequency.DAILY,
         adjust: AdjustMode = AdjustMode.QFQ,
         source: str = "akshare",
+        refresh_existing: bool = False,
     ) -> None:
         normalized_symbols = [normalize_symbol(symbol) for symbol in symbols]
         self._sync_retrying_tasks(
@@ -43,15 +44,19 @@ class DataSyncService:
             adjust,
             source,
         )
-        missing = self.catalog.missing_ranges(
-            normalized_symbols,
-            start_date,
-            end_date,
-            frequency,
-            adjust,
-            source=source,
+        ranges = (
+            [(symbol, start_date, end_date) for symbol in normalized_symbols]
+            if refresh_existing
+            else self.catalog.missing_ranges(
+                normalized_symbols,
+                start_date,
+                end_date,
+                frequency,
+                adjust,
+                source=source,
+            )
         )
-        for symbol, missing_start, missing_end in missing:
+        for symbol, missing_start, missing_end in ranges:
             task_id = self.tasks.create_task(
                 symbol,
                 frequency,

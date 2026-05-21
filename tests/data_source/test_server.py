@@ -15,6 +15,7 @@ from backtest.data.tasks import CrawlTaskManager
 from backtest.data_source.api import DataSourceApi
 from backtest.data_source.config import DataSourceServerConfig, DataSourceSpec
 from backtest.data_source.jobs import DataSourceJobRegistry
+from backtest.data_source.schedules import DataSourceScheduleService, DataSourceScheduleStore
 from backtest.data_source.server import make_data_source_handler
 
 
@@ -106,6 +107,15 @@ def _server(
             )
         ),
     )
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
+
+
+def _server_for_api(api: DataSourceApi):
+    from http.server import ThreadingHTTPServer
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), make_data_source_handler(api))
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server
@@ -355,6 +365,131 @@ def test_server_requires_bearer_token_when_configured(tmp_path: Path):
         )
         assert status == 200
         assert health["status"] == "ok"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_schedule_http_routes(tmp_path: Path):
+    api = _api(tmp_path)
+    api.schedule_service = DataSourceScheduleService(
+        store=DataSourceScheduleStore(
+            tmp_path / "schedules.sqlite",
+            now=lambda: datetime(2026, 5, 18, 9, 0, 0),
+        ),
+        server_config=api.config,
+        submit_job=api.submit_job,
+        get_job=api.job,
+        now=lambda: datetime(2026, 5, 18, 9, 0, 0),
+    )
+    server = _server_for_api(api)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        _, _, options = _json_request(base_url, "/api/data/schedule-options")
+        _, _, created = _json_request(
+            base_url,
+            "/api/data/schedules",
+            method="POST",
+            payload={
+                "name": "server-schedule",
+                "trigger": {"type": "once", "run_at": "2026-05-18T09:00:00+08:00"},
+                "job": {
+                    "source_id": "a_share",
+                    "symbols": ["000001.SZ"],
+                    "frequencies": ["1d"],
+                    "date_range": {
+                        "type": "fixed",
+                        "start_date": "2025-01-01",
+                        "end_date": "2025-01-02",
+                    },
+                },
+            },
+        )
+        _, _, schedules = _json_request(base_url, "/api/data/schedules")
+        _, _, enabled = _json_request(
+            base_url,
+            f"/api/data/schedules/{created['schedule_id']}/enable",
+            method="POST",
+        )
+        _, _, updated = _json_request(
+            base_url,
+            f"/api/data/schedules/{created['schedule_id']}",
+            method="PATCH",
+            payload={"job": {"symbols": ["000002.SZ"]}},
+        )
+        _, _, job = _json_request(
+            base_url,
+            f"/api/data/schedules/{created['schedule_id']}/run-now",
+            method="POST",
+        )
+        _, _, runs = _json_request(
+            base_url,
+            f"/api/data/schedules/{created['schedule_id']}/runs",
+        )
+        _, _, disabled = _json_request(
+            base_url,
+            f"/api/data/schedules/{created['schedule_id']}/disable",
+            method="POST",
+        )
+
+        assert "interval" in options["trigger_types"]
+        assert "start_at" in options["example"]["trigger"]
+        assert options["example"]["job"]["refresh_existing"] is True
+        assert schedules["schedules"][0]["schedule_id"] == created["schedule_id"]
+        assert enabled["enabled"] is True
+        assert updated["config"]["job"]["symbols"] == ["000002.SZ"]
+        assert job["status"] == "success"
+        assert runs["runs"][0]["status"] == "submitted"
+        assert disabled["enabled"] is False
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_schedule_delete_and_invalid_route_errors(tmp_path: Path):
+    api = _api(tmp_path)
+    api.schedule_service = DataSourceScheduleService(
+        store=DataSourceScheduleStore(tmp_path / "schedules.sqlite"),
+        server_config=api.config,
+        submit_job=api.submit_job,
+        get_job=api.job,
+    )
+    server = _server_for_api(api)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        _, _, created = _json_request(
+            base_url,
+            "/api/data/schedules",
+            method="POST",
+            payload={
+                "name": "delete-me",
+                "trigger": {"type": "once", "run_at": "2026-05-18T09:00:00+08:00"},
+                "job": {
+                    "source_id": "a_share",
+                    "symbols": ["000001.SZ"],
+                    "frequencies": ["1d"],
+                    "date_range": {
+                        "type": "fixed",
+                        "start_date": "2025-01-01",
+                        "end_date": "2025-01-02",
+                    },
+                },
+            },
+        )
+        _, _, deleted = _json_request(
+            base_url,
+            f"/api/data/schedules/{created['schedule_id']}",
+            method="DELETE",
+        )
+        assert deleted == {"deleted": created["schedule_id"]}
+
+        try:
+            _json_request(base_url, f"/api/data/schedules/{created['schedule_id']}")
+        except HTTPError as exc:
+            assert exc.code == 400
+            assert "Unknown schedule" in json.loads(exc.read().decode("utf-8"))["error"]
+        else:
+            raise AssertionError("expected HTTPError")
     finally:
         server.shutdown()
         server.server_close()
