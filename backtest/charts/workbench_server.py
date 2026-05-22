@@ -428,9 +428,24 @@ def render_instrument_manager_html(
     }
     .tag-count { color: var(--muted); font-size: 12px; font-weight: 800; }
     .tag-delete-button {
-      min-height: 24px;
-      padding: 0 6px;
-      font-size: 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      min-width: 22px;
+      min-height: 22px;
+      padding: 0;
+      border-color: transparent;
+      background: transparent;
+      color: #8b98a8;
+      font-size: 16px;
+      line-height: 1;
+      font-weight: 700;
+    }
+    .tag-delete-button:hover {
+      border-color: #f1b8ad;
+      background: #fff7f5;
+      color: var(--red);
     }
     .table-panel {
       display: grid;
@@ -779,7 +794,7 @@ def render_instrument_manager_html(
             <span class="tag-name">${escapeHtml(tag.name)}</span>
             <span class="tag-count">${escapeHtml(tag.member_count || 0)}</span>
           </button>
-          <button class="tag-delete-button danger" data-delete-tag-id="${escapeHtml(tag.tag_id)}" type="button">Delete</button>
+          <button class="tag-delete-button" data-delete-tag-id="${escapeHtml(tag.tag_id)}" aria-label="Delete ${escapeHtml(tag.name)}" title="Delete list" type="button">×</button>
         </div>`;
       }).join("");
       list.innerHTML = `${allItem}${tagItems}`;
