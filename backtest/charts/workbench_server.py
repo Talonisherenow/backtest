@@ -307,25 +307,10 @@ def render_instrument_manager_html(
     .subtitle { color: var(--muted); font-size: 12px; margin-top: 4px; }
     .shell {
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
       min-height: calc(100vh - 65px);
       padding: 16px 22px 20px;
-      gap: 14px;
     }
-    .summary-band {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 10px;
-    }
-    .stat {
-      min-height: 70px;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--surface);
-    }
-    .stat strong { display: block; font-size: 22px; line-height: 1; }
-    .stat span { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
     .workspace {
       display: grid;
       grid-template-columns: 220px minmax(420px, 1fr) 300px;
@@ -475,7 +460,6 @@ def render_instrument_manager_html(
     <a href="/">Workbench Home</a>
   </header>
   <section class="shell">
-    <section class="summary-band" id="instrumentSummaryBand"></section>
     <section class="workspace">
       <aside class="panel">
         <div class="panel-header">
@@ -618,17 +602,6 @@ def render_instrument_manager_html(
         || null;
     }
 
-    function renderSummary() {
-      const band = document.getElementById("instrumentSummaryBand");
-      const selectedTag = instrumentState.tags.find((tag) => tag.tag_id === instrumentState.selectedTagId);
-      band.innerHTML = `
-        <div class="stat"><strong>${escapeHtml(instrumentState.total)}</strong><span>Instruments</span></div>
-        <div class="stat"><strong>${escapeHtml(instrumentState.tags.length)}</strong><span>Lists</span></div>
-        <div class="stat"><strong>${escapeHtml(selectedTag ? selectedTag.name : "All")}</strong><span>Active list</span></div>
-        <div class="stat"><strong>${escapeHtml(instrumentState.selectedSourceId || "All")}</strong><span>Source</span></div>
-      `;
-    }
-
     function renderFilters() {
       const sourceFilter = document.getElementById("instrumentSourceFilter");
       sourceFilter.innerHTML = `<option value="">All sources</option>${instrumentState.sources.map((source) => {
@@ -715,7 +688,6 @@ def render_instrument_manager_html(
 
     function renderInstrumentManager() {
       document.getElementById("instrumentError").textContent = instrumentState.error || "";
-      renderSummary();
       renderFilters();
       renderTags();
       renderRows();

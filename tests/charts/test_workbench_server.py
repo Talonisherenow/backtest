@@ -32,6 +32,8 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert "instrument-manager-payload" in html
     assert '"data_api_base_url":"http://127.0.0.1:8768"' in html
     assert '"data_api_token":"viewer-token"' in html
+    assert 'id="instrumentSummaryBand"' not in html
+    assert "function renderSummary()" not in html
     assert 'id="instrumentRows"' in html
     assert 'id="instrumentTagList"' in html
     assert 'fetch(instrumentApiUrl(), instrumentRequestOptions())' in html
