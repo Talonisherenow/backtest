@@ -51,6 +51,12 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert ">New</button>" in html
     assert '<dialog id="instrumentCreateDialog"' in html
     assert 'id="instrumentRefreshButton"' not in html
+    assert 'id="openKlineButton"' in html
+    assert "Open K-line" in html
+    assert 'id="deleteInstrumentButton"' not in html
+    assert "Delete ${instrument.instrument_id}" not in html
+    assert "function klineUrlForInstrument(instrument)" in html
+    assert 'params.set("symbol", instrument.symbol || instrument.instrument_id);' in html
     assert "<h3>Add Instrument</h3>" not in html
     assert "function openInstrumentDialog()" in html
     assert 'fetch(instrumentApiUrl(), instrumentRequestOptions())' in html
@@ -252,6 +258,21 @@ def test_build_kline_shell_payload_includes_remote_data_api_base_url():
     }
 
 
+def test_build_kline_shell_payload_includes_default_selection():
+    payload = build_kline_shell_payload(
+        default_window_size=5000,
+        data_api_base_url="http://data-host:8768/",
+        data_api_token="viewer-token",
+        default_source_id="a_share",
+        default_symbol="000001.SZ",
+        default_frequency="1d",
+    )
+
+    assert payload["default_source_id"] == "a_share"
+    assert payload["default_symbol"] == "000001.SZ"
+    assert payload["default_frequency"] == "1d"
+
+
 def test_workbench_home_receives_remote_data_api_base_url(monkeypatch):
     captured = {}
 
@@ -417,3 +438,65 @@ def test_workbench_server_serves_instrument_manager_route(monkeypatch):
     assert sent["content_type"] == "text/html; charset=utf-8"
     assert b"Instrument Lists" in sent["body"]
     assert b"http://data-host:8768" in sent["body"]
+
+
+def test_workbench_server_serves_kline_route_with_query_default_selection(monkeypatch):
+    captured = {}
+
+    class FakeKlineService:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeStrategyService:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeServer:
+        def __init__(self, address, handler_class):
+            captured["handler_class"] = handler_class
+
+        def serve_forever(self):
+            return None
+
+        def server_close(self):
+            return None
+
+    def fake_render_kline_viewer_html(payload):
+        captured["kline_payload"] = payload
+        return "kline shell"
+
+    monkeypatch.setattr(workbench_server, "KlineCacheService", FakeKlineService)
+    monkeypatch.setattr(workbench_server, "StrategyResultsService", FakeStrategyService)
+    monkeypatch.setattr(workbench_server, "ThreadingHTTPServer", FakeServer)
+    monkeypatch.setattr(workbench_server, "render_kline_viewer_html", fake_render_kline_viewer_html)
+
+    workbench_server.serve_chart_workbench(
+        kline_sources=[],
+        results_roots=[],
+        bars_root=".",
+        default_window_size=321,
+        data_api_base_url="http://data-host:8768/",
+        data_api_token="viewer-token",
+    )
+    handler = object.__new__(captured["handler_class"])
+    handler.path = "/kline?source_id=a_share&symbol=000001.SZ&frequency=1d"
+    sent = {}
+    handler._send_bytes = lambda body, content_type, status=None: sent.update(
+        body=body,
+        content_type=content_type,
+    )
+
+    handler.do_GET()
+
+    assert sent["content_type"] == "text/html; charset=utf-8"
+    assert sent["body"] == b"kline shell"
+    assert captured["kline_payload"] == {
+        "mode": "dynamic",
+        "default_window_size": 321,
+        "links": {"workbench_home": "/"},
+        "data_api_base_url": "http://data-host:8768",
+        "data_api_token": "viewer-token",
+        "default_source_id": "a_share",
+        "default_symbol": "000001.SZ",
+        "default_frequency": "1d",
+    }

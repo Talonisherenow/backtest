@@ -651,9 +651,9 @@
     const KLINE_DISPLAY_TIME_ZONE_OFFSET = "+08:00";
     let sources = normalizeSources(payload);
     const state = {
-      sourceId: sources[0]?.source_id || "default",
-      symbol: sources[0]?.symbols?.[0]?.symbol || "",
-      frequency: sources[0]?.symbols?.[0]?.series?.[0]?.frequency || payload.frequency || "1d",
+      sourceId: payload.default_source_id || sources[0]?.source_id || "default",
+      symbol: payload.default_symbol || sources[0]?.symbols?.[0]?.symbol || "",
+      frequency: payload.default_frequency || sources[0]?.symbols?.[0]?.series?.[0]?.frequency || payload.frequency || "1d",
       board: "all",
       search: "",
       windowSize: String(payload.default_window_size || payload.limit || 300),
@@ -1412,8 +1412,16 @@
         state.board = "all";
         state.search = "";
         searchInput.value = "";
-        state.symbol = currentSymbols()[0]?.symbol || "";
-        state.frequency = seriesList(selectedItem())[0]?.frequency || manifest.frequency || "1d";
+        const requestedSymbol = payload.default_symbol || state.symbol;
+        const symbols = currentSymbols();
+        state.symbol = symbols.some((item) => item.symbol === requestedSymbol)
+          ? requestedSymbol
+          : symbols[0]?.symbol || "";
+        const requestedFrequency = payload.default_frequency || state.frequency;
+        const selectedSeries = seriesList(selectedItem());
+        state.frequency = selectedSeries.some((entry) => entry.frequency === requestedFrequency)
+          ? requestedFrequency
+          : selectedSeries[0]?.frequency || manifest.frequency || "1d";
         state.seriesData = null;
         populateBoards();
         populateSymbols();

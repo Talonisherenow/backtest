@@ -37,15 +37,26 @@ def serve_chart_workbench(
         data_api_base_url=normalized_data_api_base_url,
         data_api_token=normalized_data_api_token,
     ).encode("utf-8")
-    kline_html = render_kline_viewer_html(
-        build_kline_shell_payload(
-            default_window_size=default_window_size,
-            data_api_base_url=normalized_data_api_base_url,
-            data_api_token=normalized_data_api_token,
-        )
-    ).encode("utf-8")
     strategy_payload = {"mode": "dynamic", "title": "Strategy Results", "links": {"workbench_home": "/"}}
     strategy_html = render_strategy_results_catalog_html(strategy_payload).encode("utf-8")
+
+    def _optional_query_param(params: dict[str, list[str]], name: str) -> str | None:
+        values = params.get(name)
+        if not values:
+            return None
+        return values[0]
+
+    def _render_kline_shell(params: dict[str, list[str]]) -> bytes:
+        return render_kline_viewer_html(
+            build_kline_shell_payload(
+                default_window_size=default_window_size,
+                data_api_base_url=normalized_data_api_base_url,
+                data_api_token=normalized_data_api_token,
+                default_source_id=_optional_query_param(params, "source_id"),
+                default_symbol=_optional_query_param(params, "symbol"),
+                default_frequency=_optional_query_param(params, "frequency"),
+            )
+        ).encode("utf-8")
 
     class WorkbenchHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -55,7 +66,7 @@ def serve_chart_workbench(
                 self._send_bytes(index_html, "text/html; charset=utf-8")
                 return
             if parsed.path in {"/kline", "/kline_viewer.html", "/crypto_kline_viewer.html"}:
-                self._send_bytes(kline_html, "text/html; charset=utf-8")
+                self._send_bytes(_render_kline_shell(params), "text/html; charset=utf-8")
                 return
             if parsed.path == "/instruments":
                 self._send_bytes(instrument_html, "text/html; charset=utf-8")
@@ -205,6 +216,9 @@ def build_kline_shell_payload(
     default_window_size: int,
     data_api_base_url: str | None = None,
     data_api_token: str | None = None,
+    default_source_id: str | None = None,
+    default_symbol: str | None = None,
+    default_frequency: str | None = None,
 ) -> dict:
     payload = {
         "mode": "dynamic",
@@ -215,6 +229,12 @@ def build_kline_shell_payload(
         payload["data_api_base_url"] = data_api_base_url.rstrip("/")
     if data_api_token:
         payload["data_api_token"] = data_api_token.strip()
+    if default_source_id:
+        payload["default_source_id"] = default_source_id
+    if default_symbol:
+        payload["default_symbol"] = default_symbol
+    if default_frequency:
+        payload["default_frequency"] = default_frequency
     return payload
 
 
@@ -564,7 +584,7 @@ def render_instrument_manager_html(
             <h2>Details</h2>
             <div class="subtitle" id="instrumentDetailMeta"></div>
           </div>
-          <button class="danger" id="deleteInstrumentButton" type="button">Delete</button>
+          <button id="openKlineButton" type="button">Open K-line</button>
         </div>
         <div class="panel-body">
           <div class="detail-grid" id="instrumentDetail"></div>
@@ -684,6 +704,19 @@ def render_instrument_manager_html(
       return instrumentState.instruments.find((instrument) => instrument.instrument_id === instrumentState.selectedInstrumentId)
         || instrumentState.instruments[0]
         || null;
+    }
+
+    function klineUrlForInstrument(instrument) {
+      const params = new URLSearchParams();
+      if (instrument.source_id) params.set("source_id", instrument.source_id);
+      params.set("symbol", instrument.symbol || instrument.instrument_id);
+      return `/kline?${params.toString()}`;
+    }
+
+    function openSelectedInstrumentKline() {
+      const instrument = selectedInstrument();
+      if (!instrument) return;
+      window.location.href = klineUrlForInstrument(instrument);
     }
 
     function renderFilters() {
@@ -983,19 +1016,7 @@ def render_instrument_manager_html(
         renderInstrumentManager();
       }
     });
-    document.getElementById("deleteInstrumentButton").addEventListener("click", async () => {
-      const instrument = selectedInstrument();
-      if (!instrument || !window.confirm(`Delete ${instrument.instrument_id}?`)) return;
-      const response = await fetch(
-        dataApiUrl(`/api/instruments/${encodeURIComponent(instrument.instrument_id)}`),
-        instrumentMutationOptions("DELETE", {}),
-      );
-      if (!response.ok) {
-        instrumentState.error = await response.text();
-      }
-      instrumentState.selectedInstrumentId = "";
-      await loadInstrumentManager();
-    });
+    document.getElementById("openKlineButton").addEventListener("click", openSelectedInstrumentKline);
 
     loadInstrumentManager();
   </script>

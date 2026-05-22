@@ -356,6 +356,26 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert "Loaded" not in html
 
 
+def test_render_kline_viewer_honors_dynamic_default_selection():
+    html = render_kline_viewer_html(
+        {
+            "mode": "dynamic",
+            "default_source_id": "a_share",
+            "default_symbol": "000001.SZ",
+            "default_frequency": "1d",
+        }
+    )
+
+    assert '"default_source_id":"a_share"' in html
+    assert '"default_symbol":"000001.SZ"' in html
+    assert '"default_frequency":"1d"' in html
+    assert 'sourceId: payload.default_source_id || sources[0]?.source_id || "default"' in html
+    assert 'symbol: payload.default_symbol || sources[0]?.symbols?.[0]?.symbol || ""' in html
+    assert 'frequency: payload.default_frequency || sources[0]?.symbols?.[0]?.series?.[0]?.frequency || payload.frequency || "1d"' in html
+    assert "const requestedSymbol = payload.default_symbol || state.symbol;" in html
+    assert "const requestedFrequency = payload.default_frequency || state.frequency;" in html
+
+
 def test_render_kline_viewer_supports_remote_data_api_base_url():
     html = render_kline_viewer_html(
         {
