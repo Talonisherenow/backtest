@@ -551,9 +551,9 @@ def render_instrument_manager_html(
       gap: 8px;
       padding: 12px;
     }
-    .color-picker-field {
+    .color-preset-field {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 48px;
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
       min-height: 38px;
       border: 1px solid var(--line);
@@ -564,19 +564,27 @@ def render_instrument_manager_html(
       font-size: 12px;
       font-weight: 700;
     }
-    .color-picker {
-      width: 42px;
-      min-height: 28px;
-      padding: 0;
-      border: 0;
-      border-radius: 4px;
-      background: transparent;
-      cursor: pointer;
+    .color-swatch-list {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    .color-picker::-webkit-color-swatch-wrapper { padding: 0; }
-    .color-picker::-webkit-color-swatch {
-      border: 1px solid var(--line);
-      border-radius: 4px;
+    .color-swatch {
+      width: 24px;
+      min-width: 24px;
+      min-height: 24px;
+      padding: 0;
+      border-radius: 999px;
+      border-color: var(--line);
+      background: var(--swatch-color);
+    }
+    .color-swatch:hover {
+      border-color: #9fb1c3;
+      background: var(--swatch-color);
+    }
+    .color-swatch.active {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px #dbeafe;
     }
     .modal-actions {
       display: grid;
@@ -674,10 +682,18 @@ def render_instrument_manager_html(
       </div>
       <div class="modal-body">
         <input id="tagNameInput" type="text" autocomplete="off" placeholder="Name">
-        <label class="color-picker-field" for="tagColorInput">
+        <div class="color-preset-field" aria-label="List color">
           <span>Color</span>
-          <input id="tagColorInput" class="color-picker" type="color" value="#1d5fd1" aria-label="List color" title="List color">
-        </label>
+          <input id="tagColorInput" type="hidden" value="#1d5fd1">
+          <div id="tagColorSwatches" class="color-swatch-list" role="radiogroup" aria-label="List color">
+            <button class="color-swatch active" data-tag-color="#1d5fd1" style="--swatch-color: #1d5fd1;" type="button" role="radio" aria-label="Blue" aria-checked="true"></button>
+            <button class="color-swatch" data-tag-color="#168a5a" style="--swatch-color: #168a5a;" type="button" role="radio" aria-label="Green" aria-checked="false"></button>
+            <button class="color-swatch" data-tag-color="#d97706" style="--swatch-color: #d97706;" type="button" role="radio" aria-label="Amber" aria-checked="false"></button>
+            <button class="color-swatch" data-tag-color="#c2412d" style="--swatch-color: #c2412d;" type="button" role="radio" aria-label="Red" aria-checked="false"></button>
+            <button class="color-swatch" data-tag-color="#7c3aed" style="--swatch-color: #7c3aed;" type="button" role="radio" aria-label="Purple" aria-checked="false"></button>
+            <button class="color-swatch" data-tag-color="#64748b" style="--swatch-color: #64748b;" type="button" role="radio" aria-label="Slate" aria-checked="false"></button>
+          </div>
+        </div>
       </div>
       <div class="modal-actions">
         <button id="cancelTagDialogButton" type="button">Cancel</button>
@@ -1001,8 +1017,22 @@ def render_instrument_manager_html(
       document.getElementById("tagNameInput").focus();
     }
 
+    function selectTagColor(color) {
+      document.getElementById("tagColorInput").value = color;
+      for (const button of document.querySelectorAll("[data-tag-color]")) {
+        const active = button.dataset.tagColor === color;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-checked", active ? "true" : "false");
+      }
+    }
+
+    function resetTagColorSelection() {
+      selectTagColor("#1d5fd1");
+    }
+
     function closeTagDialog() {
       document.getElementById("tagCreateForm").reset();
+      resetTagColorSelection();
       const dialog = document.getElementById("tagCreateDialog");
       if (dialog.close) {
         dialog.close();
@@ -1087,7 +1117,11 @@ def render_instrument_manager_html(
     });
     document.getElementById("tagCreateDialog").addEventListener("cancel", () => {
       document.getElementById("tagCreateForm").reset();
+      resetTagColorSelection();
     });
+    for (const button of document.querySelectorAll("[data-tag-color]")) {
+      button.addEventListener("click", () => selectTagColor(button.dataset.tagColor || "#1d5fd1"));
+    }
     document.getElementById("instrumentSourceFilter").addEventListener("change", (event) => {
       instrumentState.selectedSourceId = event.target.value;
       loadInstrumentManager();
