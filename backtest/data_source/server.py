@@ -5,7 +5,7 @@ import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from backtest.data_source.api import DataSourceApi
 
@@ -45,6 +45,21 @@ def make_data_source_handler(api: DataSourceApi):
                     self._send_json(200, api.tasks(**self._task_args(query)))
                 elif parsed.path == "/api/data/inventory":
                     self._send_json(200, api.inventory(self._required(query, "source_id")))
+                elif parsed.path == "/api/instruments":
+                    self._send_json(200, api.instruments(**self._instrument_list_args(query)))
+                elif parsed.path.startswith("/api/instruments/"):
+                    self._send_json(
+                        200,
+                        api.instrument(
+                            self._path_id(parsed.path, "/api/instruments/"),
+                            source_id=self._optional(query, "source_id"),
+                        ),
+                    )
+                elif parsed.path == "/api/instrument-tags":
+                    self._send_json(
+                        200,
+                        api.instrument_tags(source_id=self._optional(query, "source_id")),
+                    )
                 elif parsed.path == "/api/data/schedule-options":
                     self._send_json(200, api.schedule_options())
                 elif parsed.path == "/api/data/schedules":
@@ -86,6 +101,21 @@ def make_data_source_handler(api: DataSourceApi):
                     if not source_id:
                         raise ValueError("source_id is required")
                     self._send_json(200, api.retry_failed(str(source_id)))
+                elif parsed.path == "/api/instruments":
+                    self._send_json(200, api.create_instrument(self._read_json()))
+                elif parsed.path == "/api/instrument-tags":
+                    self._send_json(200, api.create_instrument_tag(self._read_json()))
+                elif (
+                    parsed.path.startswith("/api/instrument-tags/")
+                    and parsed.path.endswith("/members")
+                ):
+                    self._send_json(
+                        200,
+                        api.add_instrument_tag_members(
+                            self._tag_id_for_members_path(parsed.path),
+                            self._read_json(),
+                        ),
+                    )
                 else:
                     self._send_json(404, {"error": "Not found"})
             except ValueError as exc:
@@ -100,11 +130,30 @@ def make_data_source_handler(api: DataSourceApi):
                 self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
                 return
             parsed = urlparse(self.path)
+            query = parse_qs(parsed.query)
             try:
                 if parsed.path.startswith("/api/data/schedules/"):
                     self._send_json(
                         200,
                         api.update_schedule(parsed.path.rsplit("/", 1)[-1], self._read_json()),
+                    )
+                elif parsed.path.startswith("/api/instruments/"):
+                    self._send_json(
+                        200,
+                        api.update_instrument(
+                            self._path_id(parsed.path, "/api/instruments/"),
+                            self._read_json(),
+                            source_id=self._optional(query, "source_id"),
+                        ),
+                    )
+                elif parsed.path.startswith("/api/instrument-tags/"):
+                    self._send_json(
+                        200,
+                        api.update_instrument_tag(
+                            self._path_id(parsed.path, "/api/instrument-tags/"),
+                            self._read_json(),
+                            source_id=self._optional(query, "source_id"),
+                        ),
                     )
                 else:
                     self._send_json(404, {"error": "Not found"})
@@ -120,12 +169,70 @@ def make_data_source_handler(api: DataSourceApi):
                 self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
                 return
             parsed = urlparse(self.path)
+            query = parse_qs(parsed.query)
             try:
                 if parsed.path.startswith("/api/data/schedules/"):
                     self._send_json(200, api.delete_schedule(parsed.path.rsplit("/", 1)[-1]))
+                elif (
+                    parsed.path.startswith("/api/instrument-tags/")
+                    and "/members/" in parsed.path
+                ):
+                    tag_id, instrument_id = self._tag_member_ids(parsed.path)
+                    self._send_json(
+                        200,
+                        api.remove_instrument_tag_member(
+                            tag_id,
+                            instrument_id,
+                            source_id=self._optional(query, "source_id"),
+                        ),
+                    )
+                elif parsed.path.startswith("/api/instruments/"):
+                    self._send_json(
+                        200,
+                        api.delete_instrument(
+                            self._path_id(parsed.path, "/api/instruments/"),
+                            source_id=self._optional(query, "source_id"),
+                        ),
+                    )
+                elif parsed.path.startswith("/api/instrument-tags/"):
+                    self._send_json(
+                        200,
+                        api.delete_instrument_tag(
+                            self._path_id(parsed.path, "/api/instrument-tags/"),
+                            source_id=self._optional(query, "source_id"),
+                        ),
+                    )
                 else:
                     self._send_json(404, {"error": "Not found"})
             except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+            except Exception as exc:
+                self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+
+        def do_PUT(self) -> None:
+            if not self._is_authorized():
+                self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
+                return
+            parsed = urlparse(self.path)
+            query = parse_qs(parsed.query)
+            try:
+                if (
+                    parsed.path.startswith("/api/instrument-tags/")
+                    and parsed.path.endswith("/members")
+                ):
+                    self._send_json(
+                        200,
+                        api.replace_instrument_tag_members(
+                            self._tag_id_for_members_path(parsed.path),
+                            self._read_json(),
+                            source_id=self._optional(query, "source_id"),
+                        ),
+                    )
+                else:
+                    self._send_json(404, {"error": "Not found"})
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+            except json.JSONDecodeError as exc:
                 self._send_json(400, {"error": str(exc)})
             except Exception as exc:
                 self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
@@ -174,6 +281,20 @@ def make_data_source_handler(api: DataSourceApi):
                 args["page_size"] = int(page_size)
             return args
 
+        def _instrument_list_args(self, query: dict[str, list[str]]) -> dict[str, Any]:
+            args: dict[str, Any] = {
+                "source_id": self._optional(query, "source_id"),
+                "q": self._optional(query, "q"),
+                "tag": self._optional(query, "tag"),
+            }
+            limit = self._optional(query, "limit")
+            offset = self._optional(query, "offset")
+            if limit is not None:
+                args["limit"] = int(limit)
+            if offset is not None:
+                args["offset"] = int(offset)
+            return args
+
         def _read_json(self) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length", "0") or "0")
             if length == 0:
@@ -198,6 +319,34 @@ def make_data_source_handler(api: DataSourceApi):
         def _schedule_id_for_suffix(path: str, suffix: str) -> str:
             return path.removeprefix("/api/data/schedules/").removesuffix(suffix).strip("/")
 
+        @staticmethod
+        def _path_id(path: str, prefix: str) -> str:
+            value = unquote(path.removeprefix(prefix).strip("/"))
+            if not value:
+                raise ValueError("path id is required")
+            return value
+
+        @staticmethod
+        def _tag_id_for_members_path(path: str) -> str:
+            suffix = path.removeprefix("/api/instrument-tags/")
+            tag_id = suffix.removesuffix("/members")
+            value = unquote(tag_id.strip("/"))
+            if not value:
+                raise ValueError("tag_id is required")
+            return value
+
+        @staticmethod
+        def _tag_member_ids(path: str) -> tuple[str, str]:
+            suffix = path.removeprefix("/api/instrument-tags/")
+            tag_id, separator, instrument_id = suffix.partition("/members/")
+            if not separator:
+                raise ValueError("tag member path is invalid")
+            decoded_tag = unquote(tag_id.strip("/"))
+            decoded_instrument = unquote(instrument_id.strip("/"))
+            if not decoded_tag or not decoded_instrument:
+                raise ValueError("tag_id and instrument_id are required")
+            return decoded_tag, decoded_instrument
+
         def _send_json(self, status: int, payload: Any) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
@@ -217,7 +366,7 @@ def make_data_source_handler(api: DataSourceApi):
 
         def _cors_headers(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     return DataSourceRequestHandler

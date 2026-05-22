@@ -324,6 +324,101 @@ def test_post_job_retry_failed_options_and_error_routes(tmp_path: Path):
         server.server_close()
 
 
+def test_instrument_http_routes(tmp_path: Path):
+    api = _api(tmp_path)
+    server = _server_for_api(api)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        _, _, created = _json_request(
+            base_url,
+            "/api/instruments",
+            method="POST",
+            payload={
+                "instrument_id": "btc/usdt",
+                "symbol": "btc/usdt",
+                "name": "Bitcoin",
+                "source_id": "a_share",
+            },
+        )
+        _, _, tag = _json_request(
+            base_url,
+            "/api/instrument-tags",
+            method="POST",
+            payload={"tag_id": "watchlist", "name": "Watchlist", "source_id": "a_share"},
+        )
+        _, _, members = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members",
+            method="POST",
+            payload={"source_id": "a_share", "instrument_ids": ["BTC/USDT"]},
+        )
+        _, _, filtered = _json_request(
+            base_url,
+            "/api/instruments?source_id=a_share&tag=Watchlist",
+        )
+        _, _, detail = _json_request(
+            base_url,
+            "/api/instruments/BTC%2FUSDT?source_id=a_share",
+        )
+        _, _, tags = _json_request(base_url, "/api/instrument-tags?source_id=a_share")
+        _, _, updated = _json_request(
+            base_url,
+            "/api/instruments/BTC%2FUSDT?source_id=a_share",
+            method="PATCH",
+            payload={"name": "BTCUSDT"},
+        )
+        _, _, replaced = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members?source_id=a_share",
+            method="PUT",
+            payload={"instrument_ids": []},
+        )
+        _, _, readded = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members?source_id=a_share",
+            method="POST",
+            payload={"instrument_ids": ["BTC/USDT"]},
+        )
+        _, _, removed = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members/BTC%2FUSDT?source_id=a_share",
+            method="DELETE",
+        )
+        _, _, renamed_tag = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist?source_id=a_share",
+            method="PATCH",
+            payload={"name": "Favorites"},
+        )
+        _, _, deleted_tag = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist?source_id=a_share",
+            method="DELETE",
+        )
+        _, _, deleted_instrument = _json_request(
+            base_url,
+            "/api/instruments/BTC%2FUSDT?source_id=a_share",
+            method="DELETE",
+        )
+
+        assert created["instrument_id"] == "BTC/USDT"
+        assert tag["name"] == "Watchlist"
+        assert members["members"][0]["instrument_id"] == "BTC/USDT"
+        assert filtered["total"] == 1
+        assert detail["tags"][0]["tag_id"] == "watchlist"
+        assert tags["tags"][0]["member_count"] == 1
+        assert updated["name"] == "BTCUSDT"
+        assert replaced["members"] == []
+        assert readded["members"][0]["instrument_id"] == "BTC/USDT"
+        assert removed["members"] == []
+        assert renamed_tag["name"] == "Favorites"
+        assert deleted_tag == {"deleted": "watchlist"}
+        assert deleted_instrument == {"deleted": "BTC/USDT"}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_server_requires_bearer_token_when_configured(tmp_path: Path):
     server = _server(tmp_path, api_token="secret-token")
     base_url = f"http://127.0.0.1:{server.server_address[1]}"

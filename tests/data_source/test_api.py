@@ -156,6 +156,35 @@ def test_tasks_inventory_and_retry_failed_serialize_real_store_records(tmp_path:
     assert api.tasks("a_share")["tasks"][0]["status"] == "retrying"
 
 
+def test_api_exposes_instrument_and_tag_methods(tmp_path: Path):
+    api = _api(tmp_path)
+
+    created = api.create_instrument(
+        {
+            "instrument_id": "btc/usdt",
+            "symbol": "btc/usdt",
+            "name": "Bitcoin",
+            "source_id": "a_share",
+            "metadata": {"base": "BTC"},
+        }
+    )
+    tag = api.create_instrument_tag(
+        {"tag_id": "watchlist", "name": "Watchlist", "source_id": "a_share"}
+    )
+    members = api.add_instrument_tag_members(
+        "watchlist",
+        {"source_id": "a_share", "instrument_ids": ["BTC/USDT"]},
+    )
+    filtered = api.instruments(source_id="a_share", tag="Watchlist")
+
+    assert created["instrument_id"] == "BTC/USDT"
+    assert created["metadata"] == {"base": "BTC"}
+    assert tag["tag_id"] == "watchlist"
+    assert members["members"][0]["instrument_id"] == "BTC/USDT"
+    assert filtered["total"] == 1
+    assert filtered["instruments"][0]["tags"][0]["name"] == "Watchlist"
+
+
 def test_submit_job_normalizes_path_fields_and_exposes_job_snapshots(tmp_path: Path):
     captured = {}
 

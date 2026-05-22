@@ -7,6 +7,7 @@ from typing import Any
 from backtest.core.enums import Frequency
 from backtest.charts.kline_service import KlineCacheService, KlineSource
 from backtest.data.catalog import DataCatalog
+from backtest.data.instruments import InstrumentStore
 from backtest.data.jobs import DataSyncJobConfig
 from backtest.data.metadata import MetadataStore
 from backtest.data.tasks import CrawlTaskManager
@@ -125,6 +126,123 @@ class DataSourceApi:
             ]
         }
 
+    def instruments(
+        self,
+        *,
+        source_id: str | None = None,
+        q: str | None = None,
+        tag: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return self._jsonify(
+            self._instrument_store(source_id).list_instruments(
+                source_id=source_id,
+                q=q,
+                tag=tag,
+                limit=limit,
+                offset=offset,
+            )
+        )
+
+    def create_instrument(self, payload: dict[str, Any]) -> dict[str, Any]:
+        source_id = self._payload_source_id(payload)
+        return self._jsonify(self._instrument_store(source_id).create_instrument(payload))
+
+    def instrument(
+        self,
+        instrument_id: str,
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._jsonify(self._instrument_store(source_id).get_instrument(instrument_id))
+
+    def update_instrument(
+        self,
+        instrument_id: str,
+        payload: dict[str, Any],
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._jsonify(
+            self._instrument_store(source_id).update_instrument(instrument_id, payload)
+        )
+
+    def delete_instrument(
+        self,
+        instrument_id: str,
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, str]:
+        self._instrument_store(source_id).delete_instrument(instrument_id)
+        return {"deleted": instrument_id.strip().upper()}
+
+    def instrument_tags(self, *, source_id: str | None = None) -> dict[str, Any]:
+        return {"tags": self._jsonify(self._instrument_store(source_id).list_tags())}
+
+    def create_instrument_tag(self, payload: dict[str, Any]) -> dict[str, Any]:
+        source_id = self._payload_source_id(payload)
+        return self._jsonify(self._instrument_store(source_id).create_tag(payload))
+
+    def update_instrument_tag(
+        self,
+        tag_id: str,
+        payload: dict[str, Any],
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._jsonify(self._instrument_store(source_id).update_tag(tag_id, payload))
+
+    def delete_instrument_tag(
+        self,
+        tag_id: str,
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, str]:
+        self._instrument_store(source_id).delete_tag(tag_id)
+        return {"deleted": tag_id.strip()}
+
+    def replace_instrument_tag_members(
+        self,
+        tag_id: str,
+        payload: dict[str, Any],
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, Any]:
+        effective_source_id = source_id or self._payload_source_id(payload)
+        return self._jsonify(
+            self._instrument_store(effective_source_id).replace_tag_members(
+                tag_id,
+                self._payload_instrument_ids(payload),
+            )
+        )
+
+    def add_instrument_tag_members(
+        self,
+        tag_id: str,
+        payload: dict[str, Any],
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, Any]:
+        effective_source_id = source_id or self._payload_source_id(payload)
+        return self._jsonify(
+            self._instrument_store(effective_source_id).add_tag_members(
+                tag_id,
+                self._payload_instrument_ids(payload),
+            )
+        )
+
+    def remove_instrument_tag_member(
+        self,
+        tag_id: str,
+        instrument_id: str,
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._jsonify(
+            self._instrument_store(source_id).remove_tag_member(tag_id, instrument_id)
+        )
+
     def retry_failed(self, source_id: str) -> dict[str, object]:
         spec = self.config.source(source_id)
         tasks = self._tasks(spec)
@@ -182,6 +300,13 @@ class DataSourceApi:
     def _tasks(self, spec: DataSourceSpec) -> CrawlTaskManager:
         return CrawlTaskManager(self._metadata(spec))
 
+    def _instrument_store(self, source_id: str | None = None) -> InstrumentStore:
+        if source_id:
+            return InstrumentStore(self._metadata(self.config.source(source_id)))
+        if not self.config.sources:
+            raise ValueError("No data sources configured")
+        return InstrumentStore(self._metadata(self.config.sources[0]))
+
     def _schedules(self) -> DataSourceScheduleService:
         if self.schedule_service is None:
             raise ValueError("Scheduler is not configured")
@@ -194,6 +319,21 @@ class DataSourceApi:
             if isinstance(result.get(key), str):
                 result[key] = Path(result[key])
         return result
+
+    @staticmethod
+    def _payload_source_id(payload: dict[str, Any]) -> str | None:
+        value = payload.get("source_id")
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @staticmethod
+    def _payload_instrument_ids(payload: dict[str, Any]) -> list[str]:
+        values = payload.get("instrument_ids")
+        if not isinstance(values, list):
+            raise ValueError("instrument_ids must be a list")
+        return [str(value) for value in values]
 
     @classmethod
     def _jsonify(cls, value: Any) -> Any:
