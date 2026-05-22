@@ -551,6 +551,33 @@ def render_instrument_manager_html(
       gap: 8px;
       padding: 12px;
     }
+    .color-picker-field {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 48px;
+      align-items: center;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--muted);
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .color-picker {
+      width: 42px;
+      min-height: 28px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      cursor: pointer;
+    }
+    .color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+    .color-picker::-webkit-color-swatch {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+    }
     .modal-actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -647,7 +674,10 @@ def render_instrument_manager_html(
       </div>
       <div class="modal-body">
         <input id="tagNameInput" type="text" autocomplete="off" placeholder="Name">
-        <input id="tagColorInput" type="text" autocomplete="off" placeholder="#1d5fd1">
+        <label class="color-picker-field" for="tagColorInput">
+          <span>Color</span>
+          <input id="tagColorInput" class="color-picker" type="color" value="#1d5fd1" aria-label="List color" title="List color">
+        </label>
       </div>
       <div class="modal-actions">
         <button id="cancelTagDialogButton" type="button">Cancel</button>

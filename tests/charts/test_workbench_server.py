@@ -41,6 +41,11 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert 'id="instrumentTagList"' in html
     assert 'id="openTagDialogButton"' in html
     assert '<dialog id="tagCreateDialog"' in html
+    assert '<label class="color-picker-field" for="tagColorInput">' in html
+    assert '<span>Color</span>' in html
+    assert 'id="tagColorInput" class="color-picker" type="color" value="#1d5fd1"' in html
+    assert 'placeholder="#1d5fd1"' not in html
+    assert ".color-picker-field" in html
     assert 'data-special-tag="all"' in html
     assert 'data-delete-tag-id="${escapeHtml(tag.tag_id)}"' in html
     assert 'class="tag-delete-button"' in html
