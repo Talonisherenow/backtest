@@ -45,6 +45,14 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert 'id="clearTagButton"' not in html
     assert "function openTagDialog()" in html
     assert "instrumentApiUrl({ includeTag: false, limit: 1 })" in html
+    assert 'id="instrumentSearchButton"' in html
+    assert ">Search</button>" in html
+    assert 'id="openInstrumentDialogButton"' in html
+    assert ">New</button>" in html
+    assert '<dialog id="instrumentCreateDialog"' in html
+    assert 'id="instrumentRefreshButton"' not in html
+    assert "<h3>Add Instrument</h3>" not in html
+    assert "function openInstrumentDialog()" in html
     assert 'fetch(instrumentApiUrl(), instrumentRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/instrument-tags"), instrumentRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/instruments"), instrumentMutationOptions("POST", payload))' in html

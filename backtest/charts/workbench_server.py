@@ -392,7 +392,7 @@ def render_instrument_manager_html(
     }
     .filters {
       display: grid;
-      grid-template-columns: 1fr 130px 120px auto;
+      grid-template-columns: 1fr 130px 120px auto auto;
       gap: 8px;
       padding: 12px;
       border-bottom: 1px solid var(--line-soft);
@@ -540,7 +540,8 @@ def render_instrument_manager_html(
           <input id="instrumentSearchInput" type="search" autocomplete="off" placeholder="Search symbol or name">
           <select id="instrumentSourceFilter"></select>
           <select id="instrumentTagFilter"></select>
-          <button id="instrumentRefreshButton" type="button">Refresh</button>
+          <button id="instrumentSearchButton" type="button">Search</button>
+          <button id="openInstrumentDialogButton" type="button">New</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -567,21 +568,6 @@ def render_instrument_manager_html(
         </div>
         <div class="panel-body">
           <div class="detail-grid" id="instrumentDetail"></div>
-          <form class="form-grid" id="instrumentCreateForm">
-            <h3>Add Instrument</h3>
-            <input id="instrumentIdInput" type="text" autocomplete="off" placeholder="Instrument ID">
-            <input id="instrumentNameInput" type="text" autocomplete="off" placeholder="Name">
-            <div class="form-row">
-              <input id="instrumentMarketInput" type="text" autocomplete="off" placeholder="Market">
-              <input id="instrumentExchangeInput" type="text" autocomplete="off" placeholder="Exchange">
-            </div>
-            <div class="form-row">
-              <input id="instrumentAssetClassInput" type="text" autocomplete="off" placeholder="Asset class">
-              <input id="instrumentQuoteCurrencyInput" type="text" autocomplete="off" placeholder="Quote currency">
-            </div>
-            <textarea id="instrumentMetadataInput" placeholder='{"industry":"bank"}'></textarea>
-            <button class="primary" type="submit">Create Instrument</button>
-          </form>
           <form class="form-grid" id="instrumentTagMemberForm">
             <h3>Add Selected To List</h3>
             <select id="instrumentTagMemberSelect"></select>
@@ -605,6 +591,31 @@ def render_instrument_manager_html(
       <div class="modal-actions">
         <button id="cancelTagDialogButton" type="button">Cancel</button>
         <button class="primary" type="submit">Create List</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="instrumentCreateDialog" class="modal-dialog" aria-labelledby="instrumentCreateDialogTitle">
+    <form class="modal-card" id="instrumentCreateForm">
+      <div class="modal-header">
+        <h2 id="instrumentCreateDialogTitle">New Instrument</h2>
+        <button id="closeInstrumentDialogButton" type="button">Close</button>
+      </div>
+      <div class="modal-body">
+        <input id="instrumentIdInput" type="text" autocomplete="off" placeholder="Instrument ID">
+        <input id="instrumentNameInput" type="text" autocomplete="off" placeholder="Name">
+        <div class="form-row">
+          <input id="instrumentMarketInput" type="text" autocomplete="off" placeholder="Market">
+          <input id="instrumentExchangeInput" type="text" autocomplete="off" placeholder="Exchange">
+        </div>
+        <div class="form-row">
+          <input id="instrumentAssetClassInput" type="text" autocomplete="off" placeholder="Asset class">
+          <input id="instrumentQuoteCurrencyInput" type="text" autocomplete="off" placeholder="Quote currency">
+        </div>
+        <textarea id="instrumentMetadataInput" placeholder='{"industry":"bank"}'></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="cancelInstrumentDialogButton" type="button">Cancel</button>
+        <button class="primary" type="submit">Create Instrument</button>
       </div>
     </form>
   </dialog>
@@ -839,11 +850,31 @@ def render_instrument_manager_html(
         const payload = createInstrumentPayload();
         const response = await fetch(dataApiUrl("/api/instruments"), instrumentMutationOptions("POST", payload));
         if (!response.ok) throw new Error(await response.text());
-        document.getElementById("instrumentCreateForm").reset();
+        closeInstrumentDialog();
         await loadInstrumentManager();
       } catch (error) {
         instrumentState.error = error.message;
         renderInstrumentManager();
+      }
+    }
+
+    function openInstrumentDialog() {
+      const dialog = document.getElementById("instrumentCreateDialog");
+      if (dialog.showModal) {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute("open", "");
+      }
+      document.getElementById("instrumentIdInput").focus();
+    }
+
+    function closeInstrumentDialog() {
+      document.getElementById("instrumentCreateForm").reset();
+      const dialog = document.getElementById("instrumentCreateDialog");
+      if (dialog.close) {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
       }
     }
 
@@ -904,7 +935,16 @@ def render_instrument_manager_html(
       await loadInstrumentManager();
     }
 
-    document.getElementById("instrumentRefreshButton").addEventListener("click", loadInstrumentManager);
+    document.getElementById("instrumentSearchButton").addEventListener("click", loadInstrumentManager);
+    document.getElementById("openInstrumentDialogButton").addEventListener("click", openInstrumentDialog);
+    document.getElementById("closeInstrumentDialogButton").addEventListener("click", closeInstrumentDialog);
+    document.getElementById("cancelInstrumentDialogButton").addEventListener("click", closeInstrumentDialog);
+    document.getElementById("instrumentCreateDialog").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) closeInstrumentDialog();
+    });
+    document.getElementById("instrumentCreateDialog").addEventListener("cancel", () => {
+      document.getElementById("instrumentCreateForm").reset();
+    });
     document.getElementById("openTagDialogButton").addEventListener("click", openTagDialog);
     document.getElementById("closeTagDialogButton").addEventListener("click", closeTagDialog);
     document.getElementById("cancelTagDialogButton").addEventListener("click", closeTagDialog);
