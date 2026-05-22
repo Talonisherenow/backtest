@@ -12,6 +12,7 @@ class MetadataStore:
     def connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
     def now(self) -> datetime:
@@ -40,6 +41,7 @@ class MetadataStore:
                 )
                 """
             )
+            self._init_instrument_schema(conn)
 
     def _init_catalog_schema(self, conn: sqlite3.Connection) -> None:
         desired_pk = [
@@ -95,6 +97,59 @@ class MetadataStore:
                 updated_at TEXT NOT NULL,
                 quality_status TEXT NOT NULL,
                 PRIMARY KEY (symbol, frequency, adjust, source, start_date, end_date, cache_path)
+            )
+            """
+        )
+
+    def _init_instrument_schema(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS instruments (
+                instrument_id TEXT PRIMARY KEY,
+                symbol TEXT,
+                name TEXT,
+                market TEXT,
+                exchange TEXT,
+                asset_class TEXT,
+                quote_currency TEXT,
+                source_id TEXT,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_instruments_source_id
+            ON instruments(source_id)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS instrument_tags (
+                tag_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                color TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS instrument_tag_members (
+                tag_id TEXT NOT NULL,
+                instrument_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (tag_id, instrument_id),
+                FOREIGN KEY (tag_id)
+                    REFERENCES instrument_tags(tag_id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (instrument_id)
+                    REFERENCES instruments(instrument_id)
+                    ON DELETE CASCADE
             )
             """
         )
