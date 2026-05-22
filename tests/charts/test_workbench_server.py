@@ -42,8 +42,14 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert 'id="openTagDialogButton"' in html
     assert '<dialog id="tagCreateDialog"' in html
     assert 'data-special-tag="all"' in html
+    assert 'data-delete-tag-id="${escapeHtml(tag.tag_id)}"' in html
+    assert 'class="tag-delete-button danger"' in html
     assert 'id="clearTagButton"' not in html
     assert "function openTagDialog()" in html
+    assert "function deleteInstrumentTag(tagId)" in html
+    assert 'window.confirm(`Delete list "${tagLabel}"? This will remove the list from all instruments.`)' in html
+    assert 'dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}`)' in html
+    assert "if (instrumentState.selectedTagId === tagId)" in html
     assert "instrumentApiUrl({ includeTag: false, limit: 1 })" in html
     assert 'id="instrumentSearchButton"' in html
     assert ">Search</button>" in html

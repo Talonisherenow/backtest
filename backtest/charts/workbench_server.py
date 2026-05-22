@@ -391,10 +391,11 @@ def render_instrument_manager_html(
       overflow: auto;
     }
     .tag-item {
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 8px;
       align-items: center;
+      width: 100%;
       min-height: 34px;
       padding: 7px 8px;
       border: 1px solid var(--line-soft);
@@ -405,7 +406,32 @@ def render_instrument_manager_html(
       white-space: normal;
     }
     .tag-item.active { border-color: #b7d4ff; background: #f4f8ff; }
+    .tag-select-button {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-width: 0;
+      width: 100%;
+      min-height: 0;
+      gap: 8px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+    }
+    .tag-select-button:hover { border-color: transparent; background: transparent; }
+    .tag-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .tag-count { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .tag-delete-button {
+      min-height: 24px;
+      padding: 0 6px;
+      font-size: 11px;
+    }
     .table-panel {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
@@ -748,16 +774,25 @@ def render_instrument_manager_html(
       </button>`;
       const tagItems = instrumentState.tags.map((tag) => {
         const active = tag.tag_id === instrumentState.selectedTagId ? " active" : "";
-        return `<button class="tag-item${active}" data-tag-id="${escapeHtml(tag.tag_id)}" type="button">
-          <span>${escapeHtml(tag.name)}</span>
-          <span class="tag-count">${escapeHtml(tag.member_count || 0)}</span>
-        </button>`;
+        return `<div class="tag-item${active}">
+          <button class="tag-select-button" data-tag-id="${escapeHtml(tag.tag_id)}" type="button">
+            <span class="tag-name">${escapeHtml(tag.name)}</span>
+            <span class="tag-count">${escapeHtml(tag.member_count || 0)}</span>
+          </button>
+          <button class="tag-delete-button danger" data-delete-tag-id="${escapeHtml(tag.tag_id)}" type="button">Delete</button>
+        </div>`;
       }).join("");
       list.innerHTML = `${allItem}${tagItems}`;
       for (const button of list.querySelectorAll("[data-tag-id]")) {
         button.addEventListener("click", () => {
           instrumentState.selectedTagId = button.dataset.tagId || "";
           loadInstrumentManager();
+        });
+      }
+      for (const button of list.querySelectorAll("[data-delete-tag-id]")) {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          deleteInstrumentTag(button.dataset.deleteTagId || "");
         });
       }
     }
@@ -941,6 +976,27 @@ def render_instrument_manager_html(
         const response = await fetch(dataApiUrl("/api/instrument-tags"), instrumentMutationOptions("POST", payload));
         if (!response.ok) throw new Error(await response.text());
         closeTagDialog();
+        await loadInstrumentManager();
+      } catch (error) {
+        instrumentState.error = error.message;
+        renderInstrumentManager();
+      }
+    }
+
+    async function deleteInstrumentTag(tagId) {
+      if (!tagId) return;
+      const tag = instrumentState.tags.find((item) => item.tag_id === tagId);
+      const tagLabel = tag?.name || tagId;
+      if (!window.confirm(`Delete list "${tagLabel}"? This will remove the list from all instruments.`)) return;
+      try {
+        const response = await fetch(
+          dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}`),
+          instrumentMutationOptions("DELETE", {}),
+        );
+        if (!response.ok) throw new Error(await response.text());
+        if (instrumentState.selectedTagId === tagId) {
+          instrumentState.selectedTagId = "";
+        }
         await loadInstrumentManager();
       } catch (error) {
         instrumentState.error = error.message;
