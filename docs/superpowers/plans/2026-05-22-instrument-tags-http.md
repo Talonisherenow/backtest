@@ -16,7 +16,7 @@
 - Modify `backtest/data/metadata.py`: enable SQLite foreign keys and initialize instrument tables.
 - Modify `backtest/data_source/api.py`: add instrument/tag API methods and shared store selection.
 - Modify `backtest/data_source/server.py`: add HTTP routes for instruments and tags.
-- Create `tests/data/test_instruments.py`: store-level tests.
+- Create `tests/data/test_instrument_store.py`: store-level tests.
 - Modify `tests/data_source/test_api.py`: API-level JSON serialization tests.
 - Modify `tests/data_source/test_server.py`: HTTP route tests.
 
@@ -25,7 +25,7 @@
 **Files:**
 - Create: `backtest/data/instruments.py`
 - Modify: `backtest/data/metadata.py`
-- Test: `tests/data/test_instruments.py`
+- Test: `tests/data/test_instrument_store.py`
 
 - [ ] **Step 1: Write failing store CRUD tests**
 
@@ -73,7 +73,7 @@ def test_instrument_store_creates_lists_updates_and_deletes_instruments(tmp_path
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest tests/data/test_instruments.py::test_instrument_store_creates_lists_updates_and_deletes_instruments -q`
+Run: `uv run pytest tests/data/test_instrument_store.py::test_instrument_store_creates_lists_updates_and_deletes_instruments -q`
 
 Expected: FAIL because `backtest.data.instruments` does not exist.
 
@@ -92,7 +92,7 @@ Update `MetadataStore._init_schema()` to create the three instrument tables.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run pytest tests/data/test_instruments.py::test_instrument_store_creates_lists_updates_and_deletes_instruments -q`
+Run: `uv run pytest tests/data/test_instrument_store.py::test_instrument_store_creates_lists_updates_and_deletes_instruments -q`
 
 Expected: PASS.
 
@@ -100,7 +100,7 @@ Expected: PASS.
 
 **Files:**
 - Modify: `backtest/data/instruments.py`
-- Test: `tests/data/test_instruments.py`
+- Test: `tests/data/test_instrument_store.py`
 
 - [ ] **Step 1: Write failing tag membership test**
 
@@ -124,7 +124,7 @@ def test_instrument_store_manages_tags_and_memberships(tmp_path: Path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest tests/data/test_instruments.py::test_instrument_store_manages_tags_and_memberships -q`
+Run: `uv run pytest tests/data/test_instrument_store.py::test_instrument_store_manages_tags_and_memberships -q`
 
 Expected: FAIL because tag methods are missing.
 
@@ -143,7 +143,7 @@ and these concrete public methods:
 
 - [ ] **Step 4: Run store tests**
 
-Run: `uv run pytest tests/data/test_instruments.py -q`
+Run: `uv run pytest tests/data/test_instrument_store.py -q`
 
 Expected: PASS.
 
@@ -282,7 +282,7 @@ Expected: PASS.
 Run:
 
 ```bash
-uv run pytest tests/data/test_instruments.py tests/data_source/test_api.py tests/data_source/test_server.py -q
+uv run pytest tests/data/test_instrument_store.py tests/data_source/test_api.py tests/data_source/test_server.py -q
 ```
 
 Expected: PASS.
