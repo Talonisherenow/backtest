@@ -269,7 +269,35 @@ def render_instrument_manager_html(
     h1 { font-size: 22px; }
     h2 { font-size: 15px; }
     h3 { font-size: 14px; }
-    a { color: var(--blue); text-decoration: none; font-weight: 800; }
+    .title-block {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .header-actions {
+      display: grid;
+      justify-items: end;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+    .home-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .home-link:hover {
+      border-color: #b8c7d6;
+      background: #f8fafc;
+    }
     button,
     input,
     select,
@@ -445,6 +473,7 @@ def render_instrument_manager_html(
     }
     @media (max-width: 680px) {
       header { align-items: flex-start; flex-direction: column; }
+      .header-actions { justify-items: start; }
       .shell { padding-left: 12px; padding-right: 12px; }
       .filters, .form-row { grid-template-columns: 1fr; }
     }
@@ -453,11 +482,13 @@ def render_instrument_manager_html(
 <body>
   <script id="instrument-manager-payload" type="application/json">__INSTRUMENT_MANAGER_PAYLOAD__</script>
   <header>
-    <div>
+    <div class="title-block">
       <h1>Instrument Lists</h1>
       <div class="subtitle">Backtest Workbench</div>
     </div>
-    <a href="/">Workbench Home</a>
+    <div class="header-actions">
+      <a class="home-link" href="/">Workbench Home</a>
+    </div>
   </header>
   <section class="shell">
     <section class="workspace">

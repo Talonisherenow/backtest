@@ -34,6 +34,9 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert '"data_api_token":"viewer-token"' in html
     assert 'id="instrumentSummaryBand"' not in html
     assert "function renderSummary()" not in html
+    assert '<div class="header-actions">' in html
+    assert '<a class="home-link" href="/">Workbench Home</a>' in html
+    assert '<a href="/">Workbench Home</a>' not in html
     assert 'id="instrumentRows"' in html
     assert 'id="instrumentTagList"' in html
     assert 'fetch(instrumentApiUrl(), instrumentRequestOptions())' in html
