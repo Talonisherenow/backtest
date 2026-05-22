@@ -466,6 +466,37 @@ def render_instrument_manager_html(
       font-size: 12px;
       font-weight: 700;
     }
+    .modal-dialog {
+      width: min(420px, calc(100vw - 32px));
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 18px 52px rgba(29, 39, 51, 0.18);
+    }
+    .modal-dialog::backdrop { background: rgba(29, 39, 51, 0.28); }
+    .modal-card { margin: 0; }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .modal-body {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+    }
+    .modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--line-soft);
+    }
     @media (max-width: 1050px) {
       .workspace { grid-template-columns: 1fr; }
       .filters { grid-template-columns: 1fr 1fr; }
@@ -498,16 +529,10 @@ def render_instrument_manager_html(
             <h2>Lists</h2>
             <div class="subtitle" id="tagMeta"></div>
           </div>
-          <button id="clearTagButton" type="button">All</button>
+          <button id="openTagDialogButton" type="button">New List</button>
         </div>
         <div class="panel-body">
           <div class="tag-list" id="instrumentTagList"></div>
-          <form class="form-grid" id="tagCreateForm">
-            <h3>New List</h3>
-            <input id="tagNameInput" type="text" autocomplete="off" placeholder="Name">
-            <input id="tagColorInput" type="text" autocomplete="off" placeholder="#1d5fd1">
-            <button class="primary" type="submit">Create List</button>
-          </form>
         </div>
       </aside>
       <section class="panel table-panel">
@@ -567,6 +592,22 @@ def render_instrument_manager_html(
       </aside>
     </section>
   </section>
+  <dialog id="tagCreateDialog" class="modal-dialog" aria-labelledby="tagCreateDialogTitle">
+    <form class="modal-card" id="tagCreateForm">
+      <div class="modal-header">
+        <h2 id="tagCreateDialogTitle">New List</h2>
+        <button id="closeTagDialogButton" type="button">Close</button>
+      </div>
+      <div class="modal-body">
+        <input id="tagNameInput" type="text" autocomplete="off" placeholder="Name">
+        <input id="tagColorInput" type="text" autocomplete="off" placeholder="#1d5fd1">
+      </div>
+      <div class="modal-actions">
+        <button id="cancelTagDialogButton" type="button">Cancel</button>
+        <button class="primary" type="submit">Create List</button>
+      </div>
+    </form>
+  </dialog>
   <script>
     const payload = JSON.parse(document.getElementById("instrument-manager-payload").textContent);
     let instrumentSearchTimer = null;
@@ -574,6 +615,7 @@ def render_instrument_manager_html(
       sources: [],
       instruments: [],
       total: 0,
+      allTotal: null,
       tags: [],
       selectedSourceId: "",
       selectedTagId: "",
@@ -614,11 +656,11 @@ def render_instrument_manager_html(
       return options;
     }
 
-    function instrumentApiUrl() {
+    function instrumentApiUrl({ includeTag = true, limit = 200 } = {}) {
       const params = new URLSearchParams();
-      params.set("limit", "200");
+      params.set("limit", String(limit));
       if (instrumentState.selectedSourceId) params.set("source_id", instrumentState.selectedSourceId);
-      if (instrumentState.selectedTagId) params.set("tag", instrumentState.selectedTagId);
+      if (includeTag && instrumentState.selectedTagId) params.set("tag", instrumentState.selectedTagId);
       if (instrumentState.query) params.set("q", instrumentState.query);
       return dataApiUrl(`/api/instruments?${params.toString()}`);
     }
@@ -655,13 +697,19 @@ def render_instrument_manager_html(
     function renderTags() {
       const list = document.getElementById("instrumentTagList");
       document.getElementById("tagMeta").textContent = `${instrumentState.tags.length} lists`;
-      list.innerHTML = instrumentState.tags.length ? instrumentState.tags.map((tag) => {
+      const allActive = instrumentState.selectedTagId ? "" : " active";
+      const allItem = `<button class="tag-item${allActive}" data-special-tag="all" data-tag-id="" type="button">
+        <span>All</span>
+        <span class="tag-count">${escapeHtml(instrumentState.allTotal ?? instrumentState.total ?? 0)}</span>
+      </button>`;
+      const tagItems = instrumentState.tags.map((tag) => {
         const active = tag.tag_id === instrumentState.selectedTagId ? " active" : "";
         return `<button class="tag-item${active}" data-tag-id="${escapeHtml(tag.tag_id)}" type="button">
           <span>${escapeHtml(tag.name)}</span>
           <span class="tag-count">${escapeHtml(tag.member_count || 0)}</span>
         </button>`;
-      }).join("") : `<div class="empty">No lists</div>`;
+      }).join("");
+      list.innerHTML = `${allItem}${tagItems}`;
       for (const button of list.querySelectorAll("[data-tag-id]")) {
         button.addEventListener("click", () => {
           instrumentState.selectedTagId = button.dataset.tagId || "";
@@ -741,12 +789,21 @@ def render_instrument_manager_html(
         const sourcesPayload = await sourcesResponse.json();
         const tagsPayload = await tagsResponse.json();
         const instrumentsPayload = await instrumentsResponse.json();
+        let allTotal = Number(instrumentsPayload.total || 0);
+        if (instrumentState.selectedTagId) {
+          const allInstrumentsResponse = await fetch(instrumentApiUrl({ includeTag: false, limit: 1 }), instrumentRequestOptions());
+          if (allInstrumentsResponse.ok) {
+            const allInstrumentsPayload = await allInstrumentsResponse.json();
+            allTotal = Number(allInstrumentsPayload.total || 0);
+          }
+        }
         instrumentState = {
           ...instrumentState,
           sources: Array.isArray(sourcesPayload.sources) ? sourcesPayload.sources : [],
           tags: Array.isArray(tagsPayload.tags) ? tagsPayload.tags : [],
           instruments: Array.isArray(instrumentsPayload.instruments) ? instrumentsPayload.instruments : [],
           total: Number(instrumentsPayload.total || 0),
+          allTotal,
           error: "",
         };
       } catch (error) {
@@ -790,6 +847,26 @@ def render_instrument_manager_html(
       }
     }
 
+    function openTagDialog() {
+      const dialog = document.getElementById("tagCreateDialog");
+      if (dialog.showModal) {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute("open", "");
+      }
+      document.getElementById("tagNameInput").focus();
+    }
+
+    function closeTagDialog() {
+      document.getElementById("tagCreateForm").reset();
+      const dialog = document.getElementById("tagCreateDialog");
+      if (dialog.close) {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
+      }
+    }
+
     async function createTag(event) {
       event.preventDefault();
       try {
@@ -799,7 +876,7 @@ def render_instrument_manager_html(
         };
         const response = await fetch(dataApiUrl("/api/instrument-tags"), instrumentMutationOptions("POST", payload));
         if (!response.ok) throw new Error(await response.text());
-        document.getElementById("tagCreateForm").reset();
+        closeTagDialog();
         await loadInstrumentManager();
       } catch (error) {
         instrumentState.error = error.message;
@@ -828,9 +905,14 @@ def render_instrument_manager_html(
     }
 
     document.getElementById("instrumentRefreshButton").addEventListener("click", loadInstrumentManager);
-    document.getElementById("clearTagButton").addEventListener("click", () => {
-      instrumentState.selectedTagId = "";
-      loadInstrumentManager();
+    document.getElementById("openTagDialogButton").addEventListener("click", openTagDialog);
+    document.getElementById("closeTagDialogButton").addEventListener("click", closeTagDialog);
+    document.getElementById("cancelTagDialogButton").addEventListener("click", closeTagDialog);
+    document.getElementById("tagCreateDialog").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) closeTagDialog();
+    });
+    document.getElementById("tagCreateDialog").addEventListener("cancel", () => {
+      document.getElementById("tagCreateForm").reset();
     });
     document.getElementById("instrumentSourceFilter").addEventListener("change", (event) => {
       instrumentState.selectedSourceId = event.target.value;

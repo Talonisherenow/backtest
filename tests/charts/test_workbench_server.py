@@ -39,6 +39,12 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert '<a href="/">Workbench Home</a>' not in html
     assert 'id="instrumentRows"' in html
     assert 'id="instrumentTagList"' in html
+    assert 'id="openTagDialogButton"' in html
+    assert '<dialog id="tagCreateDialog"' in html
+    assert 'data-special-tag="all"' in html
+    assert 'id="clearTagButton"' not in html
+    assert "function openTagDialog()" in html
+    assert "instrumentApiUrl({ includeTag: false, limit: 1 })" in html
     assert 'fetch(instrumentApiUrl(), instrumentRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/instrument-tags"), instrumentRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/instruments"), instrumentMutationOptions("POST", payload))' in html
