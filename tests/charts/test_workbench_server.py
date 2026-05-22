@@ -12,6 +12,35 @@ def test_render_workbench_index_html_links_both_chart_apps():
     assert "K-line Viewer" in html
 
 
+def test_render_workbench_index_html_links_instrument_manager():
+    html = render_workbench_index_html(data_api_base_url="http://127.0.0.1:8768/")
+
+    assert 'href="/instruments"' in html
+    assert "Instrument Lists" in html
+    assert 'id="instrumentOverviewSummary"' in html
+    assert 'fetch(dataApiUrl("/api/instruments?limit=1"), dataApiRequestOptions())' in html
+    assert 'fetch(dataApiUrl("/api/instrument-tags"), dataApiRequestOptions())' in html
+
+
+def test_render_instrument_manager_html_uses_instrument_api():
+    html = workbench_server.render_instrument_manager_html(
+        data_api_base_url="http://127.0.0.1:8768/",
+        data_api_token="viewer-token",
+    )
+
+    assert "Instrument Lists" in html
+    assert "instrument-manager-payload" in html
+    assert '"data_api_base_url":"http://127.0.0.1:8768"' in html
+    assert '"data_api_token":"viewer-token"' in html
+    assert 'id="instrumentRows"' in html
+    assert 'id="instrumentTagList"' in html
+    assert 'fetch(instrumentApiUrl(), instrumentRequestOptions())' in html
+    assert 'fetch(dataApiUrl("/api/instrument-tags"), instrumentRequestOptions())' in html
+    assert 'fetch(dataApiUrl("/api/instruments"), instrumentMutationOptions("POST", payload))' in html
+    assert 'source_id: sourceId || undefined' in html
+    assert 'fetch(dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}/members`), instrumentMutationOptions("POST", payload))' in html
+
+
 def test_render_workbench_index_html_hosts_data_source_monitor():
     html = render_workbench_index_html(
         data_api_base_url="http://127.0.0.1:8768/",
@@ -322,3 +351,50 @@ def test_workbench_server_supports_legacy_and_kline_api_manifest_routes(monkeypa
         handler.do_GET()
 
         assert sent["payload"] == {"source_id": "bitget", "symbol": "BTC/USDT"}
+
+
+def test_workbench_server_serves_instrument_manager_route(monkeypatch):
+    captured = {}
+
+    class FakeKlineService:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeStrategyService:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeServer:
+        def __init__(self, address, handler_class):
+            captured["handler_class"] = handler_class
+
+        def serve_forever(self):
+            return None
+
+        def server_close(self):
+            return None
+
+    monkeypatch.setattr(workbench_server, "KlineCacheService", FakeKlineService)
+    monkeypatch.setattr(workbench_server, "StrategyResultsService", FakeStrategyService)
+    monkeypatch.setattr(workbench_server, "ThreadingHTTPServer", FakeServer)
+
+    workbench_server.serve_chart_workbench(
+        kline_sources=[],
+        results_roots=[],
+        bars_root=".",
+        data_api_base_url="http://data-host:8768/",
+        data_api_token="viewer-token",
+    )
+    handler = object.__new__(captured["handler_class"])
+    handler.path = "/instruments"
+    sent = {}
+    handler._send_bytes = lambda body, content_type, status=None: sent.update(
+        body=body,
+        content_type=content_type,
+    )
+
+    handler.do_GET()
+
+    assert sent["content_type"] == "text/html; charset=utf-8"
+    assert b"Instrument Lists" in sent["body"]
+    assert b"http://data-host:8768" in sent["body"]

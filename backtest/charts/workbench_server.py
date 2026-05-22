@@ -33,6 +33,10 @@ def serve_chart_workbench(
         data_api_base_url=normalized_data_api_base_url,
         data_api_token=normalized_data_api_token,
     ).encode("utf-8")
+    instrument_html = render_instrument_manager_html(
+        data_api_base_url=normalized_data_api_base_url,
+        data_api_token=normalized_data_api_token,
+    ).encode("utf-8")
     kline_html = render_kline_viewer_html(
         build_kline_shell_payload(
             default_window_size=default_window_size,
@@ -52,6 +56,9 @@ def serve_chart_workbench(
                 return
             if parsed.path in {"/kline", "/kline_viewer.html", "/crypto_kline_viewer.html"}:
                 self._send_bytes(kline_html, "text/html; charset=utf-8")
+                return
+            if parsed.path == "/instruments":
+                self._send_bytes(instrument_html, "text/html; charset=utf-8")
                 return
             if parsed.path in {"/api/manifest", "/api/kline/manifest"}:
                 self._send_json(kline_service.manifest(default_window_size=default_window_size))
@@ -211,6 +218,667 @@ def build_kline_shell_payload(
     return payload
 
 
+def render_instrument_manager_html(
+    data_api_base_url: str | None = None,
+    data_api_token: str | None = None,
+) -> str:
+    payload = {}
+    if data_api_base_url:
+        payload["data_api_base_url"] = data_api_base_url.rstrip("/")
+    if data_api_token:
+        payload["data_api_token"] = data_api_token.strip()
+    payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    safe_payload = payload_json.replace("</", "<\\/")
+    return """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Instrument Lists - Backtest Workbench</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --line: #d8e0e8;
+      --line-soft: #edf1f5;
+      --text: #1d2733;
+      --muted: #667789;
+      --blue: #1d5fd1;
+      --green: #168a5a;
+      --red: #c2412d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 22px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1, h2, h3 { margin: 0; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 15px; }
+    h3 { font-size: 14px; }
+    a { color: var(--blue); text-decoration: none; font-weight: 800; }
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+    button {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover { background: #f8fafc; border-color: #b8c7d6; }
+    button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+    button.danger { color: var(--red); border-color: #f1b8ad; background: #fff7f5; }
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+    textarea { min-height: 68px; resize: vertical; }
+    .subtitle { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .shell {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: calc(100vh - 65px);
+      padding: 16px 22px 20px;
+      gap: 14px;
+    }
+    .summary-band {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .stat {
+      min-height: 70px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .stat strong { display: block; font-size: 22px; line-height: 1; }
+    .stat span { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .workspace {
+      display: grid;
+      grid-template-columns: 220px minmax(420px, 1fr) 300px;
+      min-height: 0;
+      gap: 14px;
+    }
+    .panel {
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .panel-body {
+      padding: 12px;
+      min-height: 0;
+    }
+    .tag-list {
+      display: grid;
+      gap: 7px;
+      max-height: calc(100vh - 250px);
+      overflow: auto;
+    }
+    .tag-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      min-height: 34px;
+      padding: 7px 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: #fbfdff;
+      color: var(--text);
+      text-align: left;
+      white-space: normal;
+    }
+    .tag-item.active { border-color: #b7d4ff; background: #f4f8ff; }
+    .tag-count { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .table-panel {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: 1fr 130px 120px auto;
+      gap: 8px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .table-wrap {
+      min-height: 0;
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      white-space: nowrap;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8fafc;
+      color: var(--muted);
+    }
+    tr.selected td { background: #f4f8ff; }
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      margin: 0 4px 4px 0;
+      padding: 0 7px;
+      border-radius: 999px;
+      background: #eef5ff;
+      color: #195bb8;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .empty {
+      padding: 24px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .detail-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .detail-row {
+      display: grid;
+      grid-template-columns: 88px 1fr;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .detail-row span:first-child { color: var(--muted); }
+    .form-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line-soft);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .error {
+      min-height: 18px;
+      color: var(--red);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    @media (max-width: 1050px) {
+      .workspace { grid-template-columns: 1fr; }
+      .filters { grid-template-columns: 1fr 1fr; }
+      .tag-list { max-height: none; }
+    }
+    @media (max-width: 680px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .shell { padding-left: 12px; padding-right: 12px; }
+      .filters, .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <script id="instrument-manager-payload" type="application/json">__INSTRUMENT_MANAGER_PAYLOAD__</script>
+  <header>
+    <div>
+      <h1>Instrument Lists</h1>
+      <div class="subtitle">Backtest Workbench</div>
+    </div>
+    <a href="/">Workbench Home</a>
+  </header>
+  <section class="shell">
+    <section class="summary-band" id="instrumentSummaryBand"></section>
+    <section class="workspace">
+      <aside class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Lists</h2>
+            <div class="subtitle" id="tagMeta"></div>
+          </div>
+          <button id="clearTagButton" type="button">All</button>
+        </div>
+        <div class="panel-body">
+          <div class="tag-list" id="instrumentTagList"></div>
+          <form class="form-grid" id="tagCreateForm">
+            <h3>New List</h3>
+            <input id="tagNameInput" type="text" autocomplete="off" placeholder="Name">
+            <input id="tagColorInput" type="text" autocomplete="off" placeholder="#1d5fd1">
+            <button class="primary" type="submit">Create List</button>
+          </form>
+        </div>
+      </aside>
+      <section class="panel table-panel">
+        <div class="filters">
+          <input id="instrumentSearchInput" type="search" autocomplete="off" placeholder="Search symbol or name">
+          <select id="instrumentSourceFilter"></select>
+          <select id="instrumentTagFilter"></select>
+          <button id="instrumentRefreshButton" type="button">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Instrument</th>
+                <th>Name</th>
+                <th>Source</th>
+                <th>Market</th>
+                <th>Lists</th>
+              </tr>
+            </thead>
+            <tbody id="instrumentRows"></tbody>
+          </table>
+        </div>
+      </section>
+      <aside class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Details</h2>
+            <div class="subtitle" id="instrumentDetailMeta"></div>
+          </div>
+          <button class="danger" id="deleteInstrumentButton" type="button">Delete</button>
+        </div>
+        <div class="panel-body">
+          <div class="detail-grid" id="instrumentDetail"></div>
+          <form class="form-grid" id="instrumentCreateForm">
+            <h3>Add Instrument</h3>
+            <input id="instrumentIdInput" type="text" autocomplete="off" placeholder="Instrument ID">
+            <input id="instrumentNameInput" type="text" autocomplete="off" placeholder="Name">
+            <div class="form-row">
+              <input id="instrumentMarketInput" type="text" autocomplete="off" placeholder="Market">
+              <input id="instrumentExchangeInput" type="text" autocomplete="off" placeholder="Exchange">
+            </div>
+            <div class="form-row">
+              <input id="instrumentAssetClassInput" type="text" autocomplete="off" placeholder="Asset class">
+              <input id="instrumentQuoteCurrencyInput" type="text" autocomplete="off" placeholder="Quote currency">
+            </div>
+            <textarea id="instrumentMetadataInput" placeholder='{"industry":"bank"}'></textarea>
+            <button class="primary" type="submit">Create Instrument</button>
+          </form>
+          <form class="form-grid" id="instrumentTagMemberForm">
+            <h3>Add Selected To List</h3>
+            <select id="instrumentTagMemberSelect"></select>
+            <button type="submit">Add To List</button>
+          </form>
+          <div class="error" id="instrumentError"></div>
+        </div>
+      </aside>
+    </section>
+  </section>
+  <script>
+    const payload = JSON.parse(document.getElementById("instrument-manager-payload").textContent);
+    let instrumentSearchTimer = null;
+    let instrumentState = {
+      sources: [],
+      instruments: [],
+      total: 0,
+      tags: [],
+      selectedSourceId: "",
+      selectedTagId: "",
+      selectedInstrumentId: "",
+      query: "",
+      error: "",
+    };
+
+    const escapeHtml = (value) => String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+
+    function dataApiUrl(path) {
+      const baseUrl = String(payload.data_api_base_url || "").replace(/\\/+$/, "");
+      return baseUrl ? `${baseUrl}${path}` : path;
+    }
+
+    function instrumentRequestOptions() {
+      const options = { cache: "no-store" };
+      if (payload.data_api_token) {
+        const headers = new Headers();
+        headers.set("Authorization", `Bearer ${payload.data_api_token}`);
+        options.headers = headers;
+      }
+      return options;
+    }
+
+    function instrumentMutationOptions(method, body) {
+      const options = instrumentRequestOptions();
+      options.method = method;
+      const headers = new Headers(options.headers || undefined);
+      headers.set("Content-Type", "application/json");
+      options.headers = headers;
+      options.body = JSON.stringify(body);
+      return options;
+    }
+
+    function instrumentApiUrl() {
+      const params = new URLSearchParams();
+      params.set("limit", "200");
+      if (instrumentState.selectedSourceId) params.set("source_id", instrumentState.selectedSourceId);
+      if (instrumentState.selectedTagId) params.set("tag", instrumentState.selectedTagId);
+      if (instrumentState.query) params.set("q", instrumentState.query);
+      return dataApiUrl(`/api/instruments?${params.toString()}`);
+    }
+
+    function sourceLabel(source) {
+      return source.source_label || source.source_id || "Source";
+    }
+
+    function selectedInstrument() {
+      return instrumentState.instruments.find((instrument) => instrument.instrument_id === instrumentState.selectedInstrumentId)
+        || instrumentState.instruments[0]
+        || null;
+    }
+
+    function renderSummary() {
+      const band = document.getElementById("instrumentSummaryBand");
+      const selectedTag = instrumentState.tags.find((tag) => tag.tag_id === instrumentState.selectedTagId);
+      band.innerHTML = `
+        <div class="stat"><strong>${escapeHtml(instrumentState.total)}</strong><span>Instruments</span></div>
+        <div class="stat"><strong>${escapeHtml(instrumentState.tags.length)}</strong><span>Lists</span></div>
+        <div class="stat"><strong>${escapeHtml(selectedTag ? selectedTag.name : "All")}</strong><span>Active list</span></div>
+        <div class="stat"><strong>${escapeHtml(instrumentState.selectedSourceId || "All")}</strong><span>Source</span></div>
+      `;
+    }
+
+    function renderFilters() {
+      const sourceFilter = document.getElementById("instrumentSourceFilter");
+      sourceFilter.innerHTML = `<option value="">All sources</option>${instrumentState.sources.map((source) => {
+        const selected = source.source_id === instrumentState.selectedSourceId ? " selected" : "";
+        return `<option value="${escapeHtml(source.source_id)}"${selected}>${escapeHtml(sourceLabel(source))}</option>`;
+      }).join("")}`;
+
+      const tagFilter = document.getElementById("instrumentTagFilter");
+      tagFilter.innerHTML = `<option value="">All lists</option>${instrumentState.tags.map((tag) => {
+        const selected = tag.tag_id === instrumentState.selectedTagId ? " selected" : "";
+        return `<option value="${escapeHtml(tag.tag_id)}"${selected}>${escapeHtml(tag.name)}</option>`;
+      }).join("")}`;
+
+      const memberSelect = document.getElementById("instrumentTagMemberSelect");
+      memberSelect.innerHTML = instrumentState.tags.map((tag) => (
+        `<option value="${escapeHtml(tag.tag_id)}">${escapeHtml(tag.name)}</option>`
+      )).join("");
+    }
+
+    function renderTags() {
+      const list = document.getElementById("instrumentTagList");
+      document.getElementById("tagMeta").textContent = `${instrumentState.tags.length} lists`;
+      list.innerHTML = instrumentState.tags.length ? instrumentState.tags.map((tag) => {
+        const active = tag.tag_id === instrumentState.selectedTagId ? " active" : "";
+        return `<button class="tag-item${active}" data-tag-id="${escapeHtml(tag.tag_id)}" type="button">
+          <span>${escapeHtml(tag.name)}</span>
+          <span class="tag-count">${escapeHtml(tag.member_count || 0)}</span>
+        </button>`;
+      }).join("") : `<div class="empty">No lists</div>`;
+      for (const button of list.querySelectorAll("[data-tag-id]")) {
+        button.addEventListener("click", () => {
+          instrumentState.selectedTagId = button.dataset.tagId || "";
+          loadInstrumentManager();
+        });
+      }
+    }
+
+    function renderRows() {
+      const rows = document.getElementById("instrumentRows");
+      rows.innerHTML = instrumentState.instruments.length ? instrumentState.instruments.map((instrument) => {
+        const selected = selectedInstrument()?.instrument_id === instrument.instrument_id ? " selected" : "";
+        const tags = Array.isArray(instrument.tags) ? instrument.tags : [];
+        return `<tr class="${selected}" data-instrument-id="${escapeHtml(instrument.instrument_id)}">
+          <td><strong>${escapeHtml(instrument.instrument_id)}</strong></td>
+          <td>${escapeHtml(instrument.name || "")}</td>
+          <td>${escapeHtml(instrument.source_id || "")}</td>
+          <td>${escapeHtml(instrument.market || instrument.asset_class || "")}</td>
+          <td>${tags.map((tag) => `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join("")}</td>
+        </tr>`;
+      }).join("") : `<tr><td class="empty" colspan="5">No instruments</td></tr>`;
+      for (const row of rows.querySelectorAll("[data-instrument-id]")) {
+        row.addEventListener("click", () => {
+          instrumentState.selectedInstrumentId = row.dataset.instrumentId || "";
+          renderInstrumentManager();
+        });
+      }
+    }
+
+    function renderDetail() {
+      const instrument = selectedInstrument();
+      const detail = document.getElementById("instrumentDetail");
+      const meta = document.getElementById("instrumentDetailMeta");
+      if (!instrument) {
+        meta.textContent = "No selection";
+        detail.innerHTML = `<div class="empty">Select an instrument</div>`;
+        return;
+      }
+      instrumentState.selectedInstrumentId = instrument.instrument_id;
+      meta.textContent = instrument.instrument_id;
+      const tags = Array.isArray(instrument.tags) ? instrument.tags : [];
+      detail.innerHTML = `
+        <div class="detail-row"><span>Name</span><strong>${escapeHtml(instrument.name || "")}</strong></div>
+        <div class="detail-row"><span>Symbol</span><strong>${escapeHtml(instrument.symbol || "")}</strong></div>
+        <div class="detail-row"><span>Source</span><strong>${escapeHtml(instrument.source_id || "")}</strong></div>
+        <div class="detail-row"><span>Exchange</span><strong>${escapeHtml(instrument.exchange || "")}</strong></div>
+        <div class="detail-row"><span>Market</span><strong>${escapeHtml(instrument.market || "")}</strong></div>
+        <div class="detail-row"><span>Asset</span><strong>${escapeHtml(instrument.asset_class || "")}</strong></div>
+        <div class="detail-row"><span>Lists</span><div>${tags.length ? tags.map((tag) => `<span class="tag-chip">${escapeHtml(tag.name)} <button data-remove-tag-id="${escapeHtml(tag.tag_id)}" type="button">x</button></span>`).join("") : "None"}</div></div>
+      `;
+      for (const button of detail.querySelectorAll("[data-remove-tag-id]")) {
+        button.addEventListener("click", () => removeInstrumentFromTag(button.dataset.removeTagId || "", instrument.instrument_id));
+      }
+    }
+
+    function renderInstrumentManager() {
+      document.getElementById("instrumentError").textContent = instrumentState.error || "";
+      renderSummary();
+      renderFilters();
+      renderTags();
+      renderRows();
+      renderDetail();
+    }
+
+    async function loadInstrumentManager() {
+      if (!payload.data_api_base_url) {
+        instrumentState.error = "Data API is not configured";
+        renderInstrumentManager();
+        return;
+      }
+      try {
+        const sourcesResponse = await fetch(dataApiUrl("/api/data-sources"), instrumentRequestOptions());
+        const tagsResponse = await fetch(dataApiUrl("/api/instrument-tags"), instrumentRequestOptions());
+        const instrumentsResponse = await fetch(instrumentApiUrl(), instrumentRequestOptions());
+        if (!sourcesResponse.ok || !tagsResponse.ok || !instrumentsResponse.ok) {
+          throw new Error("Unable to load instruments");
+        }
+        const sourcesPayload = await sourcesResponse.json();
+        const tagsPayload = await tagsResponse.json();
+        const instrumentsPayload = await instrumentsResponse.json();
+        instrumentState = {
+          ...instrumentState,
+          sources: Array.isArray(sourcesPayload.sources) ? sourcesPayload.sources : [],
+          tags: Array.isArray(tagsPayload.tags) ? tagsPayload.tags : [],
+          instruments: Array.isArray(instrumentsPayload.instruments) ? instrumentsPayload.instruments : [],
+          total: Number(instrumentsPayload.total || 0),
+          error: "",
+        };
+      } catch (error) {
+        instrumentState = { ...instrumentState, error: error.message };
+      }
+      renderInstrumentManager();
+    }
+
+    function createInstrumentPayload() {
+      let metadata = {};
+      const metadataText = document.getElementById("instrumentMetadataInput").value.trim();
+      if (metadataText) {
+        metadata = JSON.parse(metadataText);
+      }
+      const sourceId = instrumentState.selectedSourceId
+        || (instrumentState.sources[0] ? instrumentState.sources[0].source_id : "");
+      return {
+        instrument_id: document.getElementById("instrumentIdInput").value,
+        symbol: document.getElementById("instrumentIdInput").value,
+        name: document.getElementById("instrumentNameInput").value,
+        market: document.getElementById("instrumentMarketInput").value,
+        exchange: document.getElementById("instrumentExchangeInput").value,
+        asset_class: document.getElementById("instrumentAssetClassInput").value,
+        quote_currency: document.getElementById("instrumentQuoteCurrencyInput").value,
+        source_id: sourceId || undefined,
+        metadata,
+      };
+    }
+
+    async function createInstrument(event) {
+      event.preventDefault();
+      try {
+        const payload = createInstrumentPayload();
+        const response = await fetch(dataApiUrl("/api/instruments"), instrumentMutationOptions("POST", payload));
+        if (!response.ok) throw new Error(await response.text());
+        document.getElementById("instrumentCreateForm").reset();
+        await loadInstrumentManager();
+      } catch (error) {
+        instrumentState.error = error.message;
+        renderInstrumentManager();
+      }
+    }
+
+    async function createTag(event) {
+      event.preventDefault();
+      try {
+        const payload = {
+          name: document.getElementById("tagNameInput").value,
+          color: document.getElementById("tagColorInput").value || undefined,
+        };
+        const response = await fetch(dataApiUrl("/api/instrument-tags"), instrumentMutationOptions("POST", payload));
+        if (!response.ok) throw new Error(await response.text());
+        document.getElementById("tagCreateForm").reset();
+        await loadInstrumentManager();
+      } catch (error) {
+        instrumentState.error = error.message;
+        renderInstrumentManager();
+      }
+    }
+
+    async function addInstrumentToTag(tagId, instrumentId) {
+      if (!tagId || !instrumentId) return;
+      const payload = { instrument_ids: [instrumentId] };
+      const response = await fetch(dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}/members`), instrumentMutationOptions("POST", payload));
+      if (!response.ok) throw new Error(await response.text());
+      await loadInstrumentManager();
+    }
+
+    async function removeInstrumentFromTag(tagId, instrumentId) {
+      if (!tagId || !instrumentId) return;
+      const response = await fetch(
+        dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}/members/${encodeURIComponent(instrumentId)}`),
+        instrumentMutationOptions("DELETE", {}),
+      );
+      if (!response.ok) {
+        instrumentState.error = await response.text();
+      }
+      await loadInstrumentManager();
+    }
+
+    document.getElementById("instrumentRefreshButton").addEventListener("click", loadInstrumentManager);
+    document.getElementById("clearTagButton").addEventListener("click", () => {
+      instrumentState.selectedTagId = "";
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentSourceFilter").addEventListener("change", (event) => {
+      instrumentState.selectedSourceId = event.target.value;
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentTagFilter").addEventListener("change", (event) => {
+      instrumentState.selectedTagId = event.target.value;
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentSearchInput").addEventListener("input", (event) => {
+      clearTimeout(instrumentSearchTimer);
+      instrumentSearchTimer = setTimeout(() => {
+        instrumentState.query = event.target.value.trim();
+        loadInstrumentManager();
+      }, 250);
+    });
+    document.getElementById("instrumentCreateForm").addEventListener("submit", createInstrument);
+    document.getElementById("tagCreateForm").addEventListener("submit", createTag);
+    document.getElementById("instrumentTagMemberForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        await addInstrumentToTag(
+          document.getElementById("instrumentTagMemberSelect").value,
+          selectedInstrument()?.instrument_id || "",
+        );
+      } catch (error) {
+        instrumentState.error = error.message;
+        renderInstrumentManager();
+      }
+    });
+    document.getElementById("deleteInstrumentButton").addEventListener("click", async () => {
+      const instrument = selectedInstrument();
+      if (!instrument || !window.confirm(`Delete ${instrument.instrument_id}?`)) return;
+      const response = await fetch(
+        dataApiUrl(`/api/instruments/${encodeURIComponent(instrument.instrument_id)}`),
+        instrumentMutationOptions("DELETE", {}),
+      );
+      if (!response.ok) {
+        instrumentState.error = await response.text();
+      }
+      instrumentState.selectedInstrumentId = "";
+      await loadInstrumentManager();
+    });
+
+    loadInstrumentManager();
+  </script>
+</body>
+</html>
+""".replace("__INSTRUMENT_MANAGER_PAYLOAD__", safe_payload)
+
+
 def render_workbench_index_html(
     data_api_base_url: str | None = None,
     data_api_token: str | None = None,
@@ -304,6 +972,66 @@ def render_workbench_index_html(
       color: var(--muted);
       font-size: 12px;
       white-space: nowrap;
+    }
+    .instrument-overview {
+      display: grid;
+      gap: 10px;
+      margin: 14px 22px 0;
+      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .instrument-overview[hidden] { display: none; }
+    .instrument-overview-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .instrument-overview-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .instrument-stat {
+      min-height: 64px;
+      padding: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: #fbfdff;
+    }
+    .instrument-stat strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+    .instrument-list-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      min-height: 22px;
+    }
+    .instrument-list-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 0 7px;
+      border-radius: 999px;
+      background: #eef5ff;
+      color: #195bb8;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .instrument-stat span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
     }
     .monitor-actions {
       display: flex;
@@ -938,6 +1666,13 @@ def render_workbench_index_html(
       <button class="text-button" id="dataSourceDetailsButton" type="button">Details</button>
     </div>
   </section>
+  <section class="instrument-overview" id="instrumentOverview" hidden>
+    <div class="instrument-overview-header">
+      <span>Instrument Lists</span>
+      <a class="text-button" href="/instruments">Open</a>
+    </div>
+    <div class="instrument-overview-summary" id="instrumentOverviewSummary"></div>
+  </section>
   <div class="drawer-backdrop" id="dataSourceDrawerBackdrop" hidden></div>
   <aside class="data-drawer" id="dataSourceDrawer" hidden aria-label="Data source task details">
     <div class="drawer-header">
@@ -1281,6 +2016,10 @@ def render_workbench_index_html(
       <strong>K-line Viewer</strong>
       <span>Inspect cached market bars across configured data sources.</span>
     </a>
+    <a href="/instruments">
+      <strong>Instrument Lists</strong>
+      <span>Browse instruments, tags, and watchlist-style lists from the data API.</span>
+    </a>
   </main>
   <script>
     const payload = JSON.parse(document.getElementById("workbench-index-payload").textContent);
@@ -1304,6 +2043,8 @@ def render_workbench_index_html(
       scheduleRunPage: 1,
       scheduleRunPageSize: 25,
       editingScheduleId: "",
+      instrumentSummary: { total: 0 },
+      instrumentTags: [],
       lastUpdated: "",
       error: "",
     };
@@ -1854,6 +2595,29 @@ def render_workbench_index_html(
       renderScheduleSummary();
       metaEl.textContent = dataMonitorState.lastUpdated ? `updated ${formatClock(dataMonitorState.lastUpdated)}` : "";
       renderTaskDrawer();
+    }
+
+    function renderInstrumentOverviewSummary() {
+      const overview = document.getElementById("instrumentOverview");
+      const summaryEl = document.getElementById("instrumentOverviewSummary");
+      if (!dataMonitorEnabled()) {
+        overview.hidden = true;
+        return;
+      }
+      overview.hidden = false;
+      if (dataMonitorState.error) {
+        summaryEl.innerHTML = `<div class="instrument-stat"><strong>Offline</strong><span>${escapeHtml(dataMonitorState.error)}</span></div>`;
+        return;
+      }
+      const total = dataMonitorState.instrumentSummary?.total || 0;
+      const tags = Array.isArray(dataMonitorState.instrumentTags) ? dataMonitorState.instrumentTags : [];
+      const topTags = tags.slice(0, 3).map((tag) => `<span class="instrument-list-chip">${escapeHtml(tag.name || tag.tag_id)} ${escapeHtml(tag.member_count || 0)}</span>`).join("")
+        || `<span class="instrument-list-chip">No lists</span>`;
+      summaryEl.innerHTML = `
+        <div class="instrument-stat"><strong>${escapeHtml(total)}</strong><span>Instruments</span></div>
+        <div class="instrument-stat"><strong>${escapeHtml(tags.length)}</strong><span>Lists</span></div>
+        <div class="instrument-stat"><div class="instrument-list-line">${topTags}</div><span>Recent lists</span></div>
+      `;
     }
 
     function renderSourceTabs() {
@@ -2567,6 +3331,20 @@ def render_workbench_index_html(
           const schedulesPayload = await schedulesResponse.json();
           schedules = Array.isArray(schedulesPayload.schedules) ? schedulesPayload.schedules : [];
         }
+        let instrumentSummary = { total: 0 };
+        const instrumentsResponse = await fetch(dataApiUrl("/api/instruments?limit=1"), dataApiRequestOptions());
+        if (instrumentsResponse.ok) {
+          const instrumentsPayload = await instrumentsResponse.json();
+          instrumentSummary = {
+            total: Number(instrumentsPayload.total || 0),
+          };
+        }
+        let instrumentTags = [];
+        const instrumentTagsResponse = await fetch(dataApiUrl("/api/instrument-tags"), dataApiRequestOptions());
+        if (instrumentTagsResponse.ok) {
+          const instrumentTagsPayload = await instrumentTagsResponse.json();
+          instrumentTags = Array.isArray(instrumentTagsPayload.tags) ? instrumentTagsPayload.tags : [];
+        }
         let scheduleRunsById = {};
         const runEntries = await Promise.all(schedules.map(async (schedule) => {
           const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs`), dataApiRequestOptions());
@@ -2587,6 +3365,8 @@ def render_workbench_index_html(
           jobs,
           schedules,
           scheduleRunsById,
+          instrumentSummary,
+          instrumentTags,
           selectedSourceId,
           lastUpdated: new Date(),
           error: "",
@@ -2599,6 +3379,7 @@ def render_workbench_index_html(
         };
       }
       renderDataMonitor();
+      renderInstrumentOverviewSummary();
       if (!document.getElementById("dataSourceDrawer").hidden && activeDrawerTab() === "tasks") {
         await loadSelectedTaskPage();
       }
