@@ -973,66 +973,6 @@ def render_workbench_index_html(
       font-size: 12px;
       white-space: nowrap;
     }
-    .instrument-overview {
-      display: grid;
-      gap: 10px;
-      margin: 14px 22px 0;
-      padding: 12px;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-    }
-    .instrument-overview[hidden] { display: none; }
-    .instrument-overview-header {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 800;
-    }
-    .instrument-overview-summary {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 10px;
-    }
-    .instrument-stat {
-      min-height: 64px;
-      padding: 10px;
-      border: 1px solid var(--line-soft);
-      border-radius: 8px;
-      background: #fbfdff;
-    }
-    .instrument-stat strong {
-      display: block;
-      font-size: 20px;
-      line-height: 1.1;
-    }
-    .instrument-list-line {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      min-height: 22px;
-    }
-    .instrument-list-chip {
-      display: inline-flex;
-      align-items: center;
-      min-height: 22px;
-      padding: 0 7px;
-      border-radius: 999px;
-      background: #eef5ff;
-      color: #195bb8;
-      font-size: 12px;
-      font-weight: 800;
-      white-space: nowrap;
-    }
-    .instrument-stat span {
-      display: block;
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 12px;
-    }
     .monitor-actions {
       display: flex;
       gap: 10px;
@@ -1666,13 +1606,6 @@ def render_workbench_index_html(
       <button class="text-button" id="dataSourceDetailsButton" type="button">Details</button>
     </div>
   </section>
-  <section class="instrument-overview" id="instrumentOverview" hidden>
-    <div class="instrument-overview-header">
-      <span>Instrument Lists</span>
-      <a class="text-button" href="/instruments">Open</a>
-    </div>
-    <div class="instrument-overview-summary" id="instrumentOverviewSummary"></div>
-  </section>
   <div class="drawer-backdrop" id="dataSourceDrawerBackdrop" hidden></div>
   <aside class="data-drawer" id="dataSourceDrawer" hidden aria-label="Data source task details">
     <div class="drawer-header">
@@ -2043,8 +1976,6 @@ def render_workbench_index_html(
       scheduleRunPage: 1,
       scheduleRunPageSize: 25,
       editingScheduleId: "",
-      instrumentSummary: { total: 0 },
-      instrumentTags: [],
       lastUpdated: "",
       error: "",
     };
@@ -2595,29 +2526,6 @@ def render_workbench_index_html(
       renderScheduleSummary();
       metaEl.textContent = dataMonitorState.lastUpdated ? `updated ${formatClock(dataMonitorState.lastUpdated)}` : "";
       renderTaskDrawer();
-    }
-
-    function renderInstrumentOverviewSummary() {
-      const overview = document.getElementById("instrumentOverview");
-      const summaryEl = document.getElementById("instrumentOverviewSummary");
-      if (!dataMonitorEnabled()) {
-        overview.hidden = true;
-        return;
-      }
-      overview.hidden = false;
-      if (dataMonitorState.error) {
-        summaryEl.innerHTML = `<div class="instrument-stat"><strong>Offline</strong><span>${escapeHtml(dataMonitorState.error)}</span></div>`;
-        return;
-      }
-      const total = dataMonitorState.instrumentSummary?.total || 0;
-      const tags = Array.isArray(dataMonitorState.instrumentTags) ? dataMonitorState.instrumentTags : [];
-      const topTags = tags.slice(0, 3).map((tag) => `<span class="instrument-list-chip">${escapeHtml(tag.name || tag.tag_id)} ${escapeHtml(tag.member_count || 0)}</span>`).join("")
-        || `<span class="instrument-list-chip">No lists</span>`;
-      summaryEl.innerHTML = `
-        <div class="instrument-stat"><strong>${escapeHtml(total)}</strong><span>Instruments</span></div>
-        <div class="instrument-stat"><strong>${escapeHtml(tags.length)}</strong><span>Lists</span></div>
-        <div class="instrument-stat"><div class="instrument-list-line">${topTags}</div><span>Recent lists</span></div>
-      `;
     }
 
     function renderSourceTabs() {
@@ -3331,20 +3239,6 @@ def render_workbench_index_html(
           const schedulesPayload = await schedulesResponse.json();
           schedules = Array.isArray(schedulesPayload.schedules) ? schedulesPayload.schedules : [];
         }
-        let instrumentSummary = { total: 0 };
-        const instrumentsResponse = await fetch(dataApiUrl("/api/instruments?limit=1"), dataApiRequestOptions());
-        if (instrumentsResponse.ok) {
-          const instrumentsPayload = await instrumentsResponse.json();
-          instrumentSummary = {
-            total: Number(instrumentsPayload.total || 0),
-          };
-        }
-        let instrumentTags = [];
-        const instrumentTagsResponse = await fetch(dataApiUrl("/api/instrument-tags"), dataApiRequestOptions());
-        if (instrumentTagsResponse.ok) {
-          const instrumentTagsPayload = await instrumentTagsResponse.json();
-          instrumentTags = Array.isArray(instrumentTagsPayload.tags) ? instrumentTagsPayload.tags : [];
-        }
         let scheduleRunsById = {};
         const runEntries = await Promise.all(schedules.map(async (schedule) => {
           const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs`), dataApiRequestOptions());
@@ -3365,8 +3259,6 @@ def render_workbench_index_html(
           jobs,
           schedules,
           scheduleRunsById,
-          instrumentSummary,
-          instrumentTags,
           selectedSourceId,
           lastUpdated: new Date(),
           error: "",
@@ -3379,7 +3271,6 @@ def render_workbench_index_html(
         };
       }
       renderDataMonitor();
-      renderInstrumentOverviewSummary();
       if (!document.getElementById("dataSourceDrawer").hidden && activeDrawerTab() === "tasks") {
         await loadSelectedTaskPage();
       }

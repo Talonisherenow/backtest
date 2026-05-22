@@ -12,14 +12,14 @@ def test_render_workbench_index_html_links_both_chart_apps():
     assert "K-line Viewer" in html
 
 
-def test_render_workbench_index_html_links_instrument_manager():
+def test_render_workbench_index_html_links_instrument_manager_once():
     html = render_workbench_index_html(data_api_base_url="http://127.0.0.1:8768/")
 
     assert 'href="/instruments"' in html
     assert "Instrument Lists" in html
-    assert 'id="instrumentOverviewSummary"' in html
-    assert 'fetch(dataApiUrl("/api/instruments?limit=1"), dataApiRequestOptions())' in html
-    assert 'fetch(dataApiUrl("/api/instrument-tags"), dataApiRequestOptions())' in html
+    assert 'id="instrumentOverviewSummary"' not in html
+    assert 'fetch(dataApiUrl("/api/instruments?limit=1"), dataApiRequestOptions())' not in html
+    assert 'fetch(dataApiUrl("/api/instrument-tags"), dataApiRequestOptions())' not in html
 
 
 def test_render_instrument_manager_html_uses_instrument_api():
