@@ -237,15 +237,24 @@ class DataSourceApi:
         effective_source_id = self._validate_source_id(
             source_id or self._payload_source_id(payload)
         )
+        store = self._instrument_store(effective_source_id)
+        instrument_ids = self._payload_instrument_ids(payload)
         self._ensure_instruments_source(
-            self._instrument_store(effective_source_id),
-            self._payload_instrument_ids(payload),
+            store,
+            instrument_ids,
             effective_source_id,
         )
+        if effective_source_id is not None:
+            preserved_ids = [
+                member.instrument_id
+                for member in store.tag_members(tag_id).members
+                if store.get_instrument(member.instrument_id).source_id != effective_source_id
+            ]
+            instrument_ids = [*preserved_ids, *instrument_ids]
         return self._jsonify(
-            self._instrument_store(effective_source_id).replace_tag_members(
+            store.replace_tag_members(
                 tag_id,
-                self._payload_instrument_ids(payload),
+                instrument_ids,
             )
         )
 

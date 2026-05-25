@@ -279,6 +279,63 @@ def test_update_delete_reject_source_mismatch_without_modifying_record(tmp_path:
     assert api.instrument("BTC/USDT")["instrument_id"] == "BTC/USDT"
 
 
+def test_replace_tag_members_with_source_id_preserves_other_source_members(tmp_path: Path):
+    api = _api(tmp_path)
+    api.config.sources.append(
+        DataSourceSpec(
+            source_id="bitget",
+            source_label="Bitget",
+            asset_class="crypto",
+            bars_root=api.config.sources[0].bars_root,
+            metadata_path=api.config.sources[0].metadata_path,
+            adjust="none",
+            catalog_source="ccxt:bitget",
+        )
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "A_SHARE:000001.SZ",
+            "symbol": "000001.SZ",
+            "source_id": "a_share",
+        }
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "BITGET:BTC/USDT",
+            "symbol": "BTC/USDT",
+            "source_id": "bitget",
+        }
+    )
+    api.create_instrument_tag(
+        {"tag_id": "watchlist", "name": "Watchlist", "source_id": "a_share"}
+    )
+    api.add_instrument_tag_members(
+        "watchlist",
+        {
+            "instrument_ids": ["A_SHARE:000001.SZ", "BITGET:BTC/USDT"],
+        },
+    )
+
+    after_remove = api.replace_instrument_tag_members(
+        "watchlist",
+        {"instrument_ids": []},
+        source_id="bitget",
+    )
+    assert [member["instrument_id"] for member in after_remove["members"]] == [
+        "A_SHARE:000001.SZ"
+    ]
+
+    after_restore = api.replace_instrument_tag_members(
+        "watchlist",
+        {"instrument_ids": ["BITGET:BTC/USDT"]},
+        source_id="bitget",
+    )
+    assert [member["instrument_id"] for member in after_restore["members"]] == [
+        "A_SHARE:000001.SZ",
+        "BITGET:BTC/USDT",
+    ]
+
+
 def test_submit_job_normalizes_path_fields_and_exposes_job_snapshots(tmp_path: Path):
     captured = {}
 
