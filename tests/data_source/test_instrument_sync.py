@@ -365,3 +365,40 @@ def test_instrument_sync_schedule_service_creates_and_runs_schedule(tmp_path: Pa
     assert calls == ["bitget"]
     assert runs["runs"][0]["status"] == "success"
     assert disabled.enabled is False
+
+
+def test_instrument_sync_schedule_failure_disables_exhausted_one_shot(tmp_path: Path):
+    spec = _spec(tmp_path)
+    store = InstrumentSyncScheduleStore(tmp_path / "schedules.sqlite")
+    service = InstrumentSyncScheduleService(
+        store=store,
+        config=DataSourceServerConfig(sources=[spec]),
+        sync_source=lambda source_id: (_ for _ in ()).throw(RuntimeError("sync failed")),
+        now=lambda: datetime(2026, 5, 25, 9, 0, 0),
+    )
+    created = service.create(
+        {
+            "name": "bitget once",
+            "enabled": True,
+            "source_id": "bitget",
+            "trigger": {
+                "type": "once",
+                "run_at": "2026-05-25T09:00:00+08:00",
+            },
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="sync failed"):
+        service.run_now(created.schedule_id)
+
+    updated = service.get(created.schedule_id)
+    runs = service.runs(created.schedule_id)["runs"]
+    run_snapshot = store.runs(created.schedule_id)[0]
+    assert updated.status == "error"
+    assert updated.enabled is False
+    assert updated.next_run_at is None
+    assert updated.last_error == "sync failed"
+    assert runs[0]["status"] == "failed"
+    assert runs[0]["error"] == "sync failed"
+    assert hasattr(run_snapshot, "result_json")
+    assert runs[0]["result"] is None

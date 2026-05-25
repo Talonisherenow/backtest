@@ -348,7 +348,7 @@ class InstrumentSyncScheduleRunSnapshot:
     due_at: datetime
     triggered_at: datetime
     status: str
-    result: dict[str, Any] | None
+    result_json: dict[str, Any] | None
     error: str | None
     created_at: datetime
 
@@ -359,7 +359,7 @@ class InstrumentSyncScheduleRunSnapshot:
             "due_at": self.due_at.isoformat(),
             "triggered_at": self.triggered_at.isoformat(),
             "status": self.status,
-            "result": dict(self.result) if self.result is not None else None,
+            "result": dict(self.result_json) if self.result_json is not None else None,
             "error": self.error,
             "created_at": self.created_at.isoformat(),
         }
@@ -643,14 +643,14 @@ class InstrumentSyncScheduleStore:
         )
 
     def _run_snapshot(self, row: sqlite3.Row) -> InstrumentSyncScheduleRunSnapshot:
-        result = json.loads(row["result_json"]) if row["result_json"] else None
+        result_json = json.loads(row["result_json"]) if row["result_json"] else None
         return InstrumentSyncScheduleRunSnapshot(
             run_id=row["run_id"],
             schedule_id=row["schedule_id"],
             due_at=datetime.fromisoformat(row["due_at"]),
             triggered_at=datetime.fromisoformat(row["triggered_at"]),
             status=row["status"],
-            result=result,
+            result_json=result_json,
             error=row["error"],
             created_at=datetime.fromisoformat(row["created_at"]),
         )
@@ -791,9 +791,10 @@ class InstrumentSyncScheduleService:
                 if snapshot.enabled
                 else None
             )
+            enabled = snapshot.enabled and next_run_at is not None
             self.store.update_state(
                 snapshot.schedule_id,
-                enabled=snapshot.enabled,
+                enabled=enabled,
                 status="error",
                 run_count=snapshot.run_count,
                 next_run_at=next_run_at,
