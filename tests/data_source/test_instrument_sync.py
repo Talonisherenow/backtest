@@ -9,6 +9,7 @@ from backtest.data.metadata import MetadataStore
 from backtest.data_source.config import DataSourceServerConfig, DataSourceSpec
 from backtest.data_source.instrument_sync import (
     CCXTInstrumentCatalogProvider,
+    InstrumentCatalogItem,
     InstrumentSyncService,
     UniverseCsvInstrumentCatalogProvider,
     source_definition_from_spec,
@@ -56,6 +57,58 @@ class FailingUpsertStore:
 
     def add_tag_members(self, tag_id, instrument_ids):
         pytest.fail("members should not be added after upsert failure")
+
+
+class FakeUpsertResult:
+    def __init__(self, action: str, instrument_id: str) -> None:
+        self.action = action
+        self.record = type("Record", (), {"instrument_id": instrument_id})()
+
+
+class MidBatchFailingStore:
+    def __init__(self) -> None:
+        self.upsert_calls = 0
+        self.tag_member_calls: list[tuple[str, list[str]]] = []
+
+    def ensure_tag(self, payload):
+        return None
+
+    def upsert_instrument(self, payload):
+        self.upsert_calls += 1
+        if self.upsert_calls == 2:
+            raise RuntimeError("db locked")
+        return FakeUpsertResult("created", str(payload["instrument_id"]))
+
+    def add_tag_members(self, tag_id, instrument_ids):
+        self.tag_member_calls.append((tag_id, list(instrument_ids)))
+
+
+class TwoItemProvider:
+    def list_instruments(self):
+        return [
+            InstrumentCatalogItem(
+                instrument_id="BITGET:BTC/USDT",
+                symbol="BTC/USDT",
+                name=None,
+                market="crypto_spot",
+                exchange="bitget",
+                asset_class="crypto",
+                quote_currency="USDT",
+                source_id="bitget",
+                metadata={},
+            ),
+            InstrumentCatalogItem(
+                instrument_id="BITGET:ETH/USDT:USDT",
+                symbol="ETH/USDT:USDT",
+                name=None,
+                market="crypto_swap",
+                exchange="bitget",
+                asset_class="crypto",
+                quote_currency="USDT",
+                source_id="bitget",
+                metadata={},
+            ),
+        ]
 
 
 def _spec(
@@ -235,6 +288,21 @@ def test_sync_service_reraises_upsert_errors(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="db locked"):
         service.sync_source("bitget")
+
+
+def test_sync_service_tags_successful_items_before_mid_batch_failure(tmp_path: Path):
+    spec = _spec(tmp_path)
+    store = MidBatchFailingStore()
+    service = InstrumentSyncService(
+        config=DataSourceServerConfig(sources=[spec]),
+        store_factory=lambda: store,
+        provider_factory=lambda definition: TwoItemProvider(),
+    )
+
+    with pytest.raises(RuntimeError, match="db locked"):
+        service.sync_source("bitget")
+
+    assert store.tag_member_calls == [("bitget", ["BITGET:BTC/USDT"])]
 
 
 def test_sync_service_rejects_unknown_source(tmp_path: Path):

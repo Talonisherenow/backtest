@@ -264,14 +264,10 @@ class InstrumentSyncService:
         )
 
         counts = {"created": 0, "updated": 0, "unchanged": 0, "failed": 0}
-        successful_ids: list[str] = []
         for item in items:
             result = store.upsert_instrument(item.to_instrument_payload())
             counts[result.action] += 1
-            successful_ids.append(result.record.instrument_id)
-
-        if successful_ids:
-            store.add_tag_members(definition.default_tag_id, successful_ids)
+            store.add_tag_members(definition.default_tag_id, [result.record.instrument_id])
 
         return {
             "source_id": definition.source_id,
