@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,27 @@ def test_instrument_store_creates_lists_updates_and_deletes_instruments(tmp_path
     assert updated.metadata == {"rank": 1}
     with pytest.raises(ValueError, match="Unknown instrument"):
         store.get_instrument("BTC/USDT")
+
+
+def test_instrument_store_lists_instruments_by_latest_update(tmp_path: Path):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    store = InstrumentStore(metadata)
+    store.create_instrument({"instrument_id": "AAA_OLDER", "symbol": "AAA_OLDER", "source_id": "bitget"})
+    store.create_instrument({"instrument_id": "ZZZ_NEWER", "symbol": "ZZZ_NEWER", "source_id": "bitget"})
+
+    with metadata.connect() as conn:
+        conn.execute(
+            "UPDATE instruments SET updated_at = ? WHERE instrument_id = ?",
+            ("2026-05-25T08:00:00+00:00", "AAA_OLDER"),
+        )
+        conn.execute(
+            "UPDATE instruments SET updated_at = ? WHERE instrument_id = ?",
+            ("2026-05-25T09:00:00+00:00", "ZZZ_NEWER"),
+        )
+
+    page = store.list_instruments(source_id="bitget")
+
+    assert [instrument.instrument_id for instrument in page.instruments] == ["ZZZ_NEWER", "AAA_OLDER"]
 
 
 def test_instrument_store_manages_tags_and_memberships(tmp_path: Path):
@@ -104,6 +126,35 @@ def test_instrument_store_upsert_reports_create_update_and_unchanged(tmp_path: P
     assert updated.action == "updated"
     assert updated.record.name == "Bitcoin USD Tether"
     assert updated.record.metadata == {"base": "BTC", "quote": "USDT"}
+
+
+def test_instrument_store_upsert_can_touch_unchanged_instrument(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    store = InstrumentStore(metadata)
+    monkeypatch.setattr(metadata, "now", lambda: datetime(2026, 5, 25, 8, 0, tzinfo=timezone.utc))
+    store.create_instrument(
+        {
+            "instrument_id": "BITGET:BTC/USDT",
+            "symbol": "BTC/USDT",
+            "source_id": "bitget",
+        }
+    )
+
+    monkeypatch.setattr(metadata, "now", lambda: datetime(2026, 5, 25, 9, 0, tzinfo=timezone.utc))
+    result = store.upsert_instrument(
+        {
+            "instrument_id": "BITGET:BTC/USDT",
+            "symbol": "BTC/USDT",
+            "source_id": "bitget",
+        },
+        touch=True,
+    )
+
+    assert result.action == "unchanged"
+    assert result.record.updated_at.isoformat() == "2026-05-25T09:00:00+00:00"
 
 
 def test_instrument_store_ensure_tag_returns_existing_tag_without_overwriting(tmp_path: Path):

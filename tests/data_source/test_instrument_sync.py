@@ -56,7 +56,7 @@ class FailingUpsertStore:
     def ensure_tag(self, payload):
         return None
 
-    def upsert_instrument(self, payload):
+    def upsert_instrument(self, payload, *, touch=False):
         raise RuntimeError("db locked")
 
     def add_tag_members(self, tag_id, instrument_ids):
@@ -77,7 +77,7 @@ class MidBatchFailingStore:
     def ensure_tag(self, payload):
         return None
 
-    def upsert_instrument(self, payload):
+    def upsert_instrument(self, payload, *, touch=False):
         self.upsert_calls += 1
         if self.upsert_calls == 2:
             raise RuntimeError("db locked")
@@ -242,9 +242,13 @@ def test_source_definition_rejects_unsupported_catalog_source(tmp_path: Path):
         source_definition_from_spec(_spec(tmp_path, catalog_source="custom"))
 
 
-def test_sync_service_upserts_instruments_and_source_tag(tmp_path: Path):
+def test_sync_service_upserts_instruments_and_source_tag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     spec = _spec(tmp_path)
-    store = InstrumentStore(MetadataStore(spec.metadata_path))
+    metadata = MetadataStore(spec.metadata_path)
+    store = InstrumentStore(metadata)
     service = InstrumentSyncService(
         config=DataSourceServerConfig(sources=[spec]),
         store_factory=lambda: store,
@@ -257,7 +261,9 @@ def test_sync_service_upserts_instruments_and_source_tag(tmp_path: Path):
         now=lambda: datetime(2026, 5, 25, 9, 0, 0),
     )
 
+    monkeypatch.setattr(metadata, "now", lambda: datetime(2026, 5, 25, 8, 0, 0))
     first = service.sync_source("bitget")
+    monkeypatch.setattr(metadata, "now", lambda: datetime(2026, 5, 25, 9, 0, 0))
     second = service.sync_source("bitget")
 
     page = store.list_instruments(source_id="bitget")
@@ -269,6 +275,9 @@ def test_sync_service_upserts_instruments_and_source_tag(tmp_path: Path):
     assert second["created"] == 0
     assert second["unchanged"] == 2
     assert page.total == 2
+    assert {instrument.updated_at.isoformat() for instrument in page.instruments} == {
+        "2026-05-25T09:00:00"
+    }
     assert tags[0].tag_id == "bitget"
     assert tags[0].member_count == 2
     assert [member.instrument_id for member in members.members] == [

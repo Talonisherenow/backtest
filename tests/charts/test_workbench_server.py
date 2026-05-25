@@ -57,6 +57,9 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert "function selectTagColor(color)" in html
     assert "function resetTagColorSelection()" in html
     assert 'data-special-tag="all"' in html
+    assert "function isDefaultSourceTag(tag)" in html
+    assert 'const deleteButton = isDefaultSourceTag(tag) ? "" :' in html
+    assert "${deleteButton}" in html
     assert 'data-delete-tag-id="${escapeHtml(tag.tag_id)}"' in html
     assert 'class="tag-delete-button"' in html
     assert 'aria-label="Delete ${escapeHtml(tag.name)}"' in html
@@ -67,6 +70,7 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert 'id="clearTagButton"' not in html
     assert "function openTagDialog()" in html
     assert "function deleteInstrumentTag(tagId)" in html
+    assert "if (isDefaultSourceTag(tag || { tag_id: tagId })) return;" in html
     assert 'window.confirm(`Delete list "${tagLabel}"? This will remove the list from all instruments.`)' in html
     assert 'dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}`)' in html
     assert "if (instrumentState.selectedTagId === tagId)" in html
@@ -90,6 +94,24 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert "Delete ${instrument.instrument_id}" not in html
     assert "function klineUrlForInstrument(instrument)" in html
     assert 'params.set("symbol", instrument.symbol || instrument.instrument_id);' in html
+    assert "function instrumentDisplaySymbol(instrument)" in html
+    assert "function marketLabel(value)" in html
+    assert "function settleCurrency(instrument)" in html
+    assert "<th>Settle</th>" in html
+    assert "<th>Synced</th>" in html
+    assert "function formatInstrumentSyncTime(value)" in html
+    assert '<td><div class="instrument-symbol-cell">' in html
+    assert '<strong>${escapeHtml(instrumentDisplaySymbol(instrument))}</strong>' in html
+    assert "<td>${escapeHtml(settleCurrency(instrument))}</td>" in html
+    assert "<td>${escapeHtml(formatInstrumentSyncTime(instrument.updated_at))}</td>" in html
+    assert '<div class="detail-row"><span>ID</span><strong>${escapeHtml(instrument.instrument_id || "")}</strong></div>' in html
+    assert '<div class="detail-row"><span>Synced</span><strong>${escapeHtml(formatInstrumentSyncTime(instrument.updated_at))}</strong></div>' in html
+    assert '<td><strong>${escapeHtml(instrument.instrument_id)}</strong></td>' not in html
+    assert "function isDefaultInstrumentTag(tag, instrument)" in html
+    assert "function renderDetailTagChip(tag, instrument)" in html
+    assert "if (isDefaultInstrumentTag(tag, instrument))" in html
+    assert 'tags.map((tag) => renderDetailTagChip(tag, instrument)).join("")' in html
+    assert "if (isDefaultInstrumentTag({ tag_id: tagId }, instrument)) return;" in html
     assert "<h3>Add Instrument</h3>" not in html
     assert "function openInstrumentDialog()" in html
     assert 'fetch(instrumentApiUrl(), instrumentRequestOptions())' in html

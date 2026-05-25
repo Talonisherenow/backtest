@@ -222,7 +222,7 @@ class InstrumentStore:
             raise ValueError(f"Instrument already exists: {data.instrument_id}") from exc
         return self.get_instrument(data.instrument_id)
 
-    def upsert_instrument(self, payload: dict[str, Any]) -> InstrumentUpsertResult:
+    def upsert_instrument(self, payload: dict[str, Any], *, touch: bool = False) -> InstrumentUpsertResult:
         data = InstrumentCreate.model_validate(payload)
         try:
             existing = self.get_instrument(data.instrument_id)
@@ -251,12 +251,27 @@ class InstrumentStore:
             if getattr(existing, field_name) != getattr(data, field_name)
         }
         if not updates:
+            if touch:
+                return InstrumentUpsertResult(
+                    action="unchanged",
+                    record=self.touch_instrument(data.instrument_id),
+                )
             return InstrumentUpsertResult(action="unchanged", record=existing)
 
         return InstrumentUpsertResult(
             action="updated",
             record=self.update_instrument(data.instrument_id, updates),
         )
+
+    def touch_instrument(self, instrument_id: str) -> InstrumentRecord:
+        normalized = _normalize_instrument_id(instrument_id)
+        self.get_instrument(normalized)
+        with self.metadata.connect() as conn:
+            conn.execute(
+                "UPDATE instruments SET updated_at = ? WHERE instrument_id = ?",
+                (self.metadata.now().isoformat(), normalized),
+            )
+        return self.get_instrument(normalized)
 
     def get_instrument(self, instrument_id: str) -> InstrumentRecord:
         normalized = _normalize_instrument_id(instrument_id)
@@ -371,7 +386,7 @@ class InstrumentStore:
                 FROM instruments i
                 {joins}
                 {where_clause}
-                ORDER BY i.instrument_id
+                ORDER BY i.updated_at DESC, i.instrument_id DESC
                 LIMIT ? OFFSET ?
                 """,
                 [*params, limit, offset],

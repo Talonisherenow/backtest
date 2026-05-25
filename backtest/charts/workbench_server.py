@@ -503,6 +503,16 @@ def render_instrument_manager_html(
       color: var(--muted);
     }
     tr.selected td { background: #f4f8ff; }
+    .instrument-symbol-cell {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+      line-height: 1.25;
+    }
+    .instrument-symbol-cell strong {
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
     .tag-chip {
       display: inline-flex;
       align-items: center;
@@ -719,6 +729,8 @@ def render_instrument_manager_html(
                 <th>Name</th>
                 <th>Source</th>
                 <th>Market</th>
+                <th>Settle</th>
+                <th>Synced</th>
                 <th>Lists</th>
               </tr>
             </thead>
@@ -931,6 +943,71 @@ def render_instrument_manager_html(
       return source.source_label || source.source_id || "Source";
     }
 
+    function formatInstrumentSyncTime(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(date).reduce((acc, part) => {
+        if (part.type !== "literal") acc[part.type] = part.value;
+        return acc;
+      }, {});
+      return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+    }
+
+    function isDefaultSourceTag(tag) {
+      return Boolean(tag?.tag_id && instrumentState.sources.some((source) => source.source_id === tag.tag_id));
+    }
+
+    function instrumentSourceLabel(instrument) {
+      const source = instrumentState.sources.find((item) => item.source_id === instrument.source_id);
+      return source ? sourceLabel(source) : (instrument.source_id || "");
+    }
+
+    function settleCurrency(instrument) {
+      const metadata = instrument.metadata || {};
+      return instrument.quote_currency || metadata.settle || metadata.settle_currency || metadata.quote || "";
+    }
+
+    function instrumentDisplaySymbol(instrument) {
+      const raw = instrument.symbol || instrument.instrument_id || "";
+      const settle = settleCurrency(instrument);
+      if (settle && raw.toUpperCase().endsWith(`:${settle.toUpperCase()}`)) {
+        return raw.slice(0, -(settle.length + 1));
+      }
+      return raw;
+    }
+
+    function marketLabel(value) {
+      const labels = {
+        a_share: "A-share",
+        crypto: "Crypto",
+        crypto_spot: "Spot",
+        crypto_swap: "Swap",
+        crypto_future: "Future",
+      };
+      if (!value) return "";
+      return labels[value] || value.split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
+    }
+
+    function isDefaultInstrumentTag(tag, instrument) {
+      return Boolean(tag?.tag_id && instrument?.source_id && tag.tag_id === instrument.source_id);
+    }
+
+    function renderDetailTagChip(tag, instrument) {
+      if (isDefaultInstrumentTag(tag, instrument)) {
+        return `<span class="tag-chip">${escapeHtml(tag.name)}</span>`;
+      }
+      return `<span class="tag-chip">${escapeHtml(tag.name)} <button data-remove-tag-id="${escapeHtml(tag.tag_id)}" type="button">x</button></span>`;
+    }
+
     function selectedInstrument() {
       return instrumentState.instruments.find((instrument) => instrument.instrument_id === instrumentState.selectedInstrumentId)
         || instrumentState.instruments[0]
@@ -979,12 +1056,14 @@ def render_instrument_manager_html(
       </button>`;
       const tagItems = instrumentState.tags.map((tag) => {
         const active = tag.tag_id === instrumentState.selectedTagId ? " active" : "";
+        const deleteButton = isDefaultSourceTag(tag) ? "" : `
+          <button class="tag-delete-button" data-delete-tag-id="${escapeHtml(tag.tag_id)}" aria-label="Delete ${escapeHtml(tag.name)}" title="Delete list" type="button">×</button>`;
         return `<div class="tag-item${active}">
           <button class="tag-select-button" data-tag-id="${escapeHtml(tag.tag_id)}" type="button">
             <span class="tag-name">${escapeHtml(tag.name)}</span>
             <span class="tag-count">${escapeHtml(tag.member_count || 0)}</span>
           </button>
-          <button class="tag-delete-button" data-delete-tag-id="${escapeHtml(tag.tag_id)}" aria-label="Delete ${escapeHtml(tag.name)}" title="Delete list" type="button">×</button>
+          ${deleteButton}
         </div>`;
       }).join("");
       list.innerHTML = `${allItem}${tagItems}`;
@@ -1009,13 +1088,17 @@ def render_instrument_manager_html(
         const selected = selectedInstrument()?.instrument_id === instrument.instrument_id ? " selected" : "";
         const tags = Array.isArray(instrument.tags) ? instrument.tags : [];
         return `<tr class="${selected}" data-instrument-id="${escapeHtml(instrument.instrument_id)}">
-          <td><strong>${escapeHtml(instrument.instrument_id)}</strong></td>
+          <td><div class="instrument-symbol-cell">
+            <strong>${escapeHtml(instrumentDisplaySymbol(instrument))}</strong>
+          </div></td>
           <td>${escapeHtml(instrument.name || "")}</td>
-          <td>${escapeHtml(instrument.source_id || "")}</td>
-          <td>${escapeHtml(instrument.market || instrument.asset_class || "")}</td>
+          <td>${escapeHtml(instrumentSourceLabel(instrument))}</td>
+          <td>${escapeHtml(marketLabel(instrument.market || instrument.asset_class || ""))}</td>
+          <td>${escapeHtml(settleCurrency(instrument))}</td>
+          <td>${escapeHtml(formatInstrumentSyncTime(instrument.updated_at))}</td>
           <td>${tags.map((tag) => `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join("")}</td>
         </tr>`;
-      }).join("") : `<tr><td class="empty" colspan="5">No instruments</td></tr>`;
+      }).join("") : `<tr><td class="empty" colspan="7">No instruments</td></tr>`;
       for (const row of rows.querySelectorAll("[data-instrument-id]")) {
         row.addEventListener("click", () => {
           instrumentState.selectedInstrumentId = row.dataset.instrumentId || "";
@@ -1054,16 +1137,19 @@ def render_instrument_manager_html(
         return;
       }
       instrumentState.selectedInstrumentId = instrument.instrument_id;
-      meta.textContent = instrument.instrument_id;
+      meta.textContent = instrumentDisplaySymbol(instrument);
       const tags = Array.isArray(instrument.tags) ? instrument.tags : [];
       detail.innerHTML = `
         <div class="detail-row"><span>Name</span><strong>${escapeHtml(instrument.name || "")}</strong></div>
-        <div class="detail-row"><span>Symbol</span><strong>${escapeHtml(instrument.symbol || "")}</strong></div>
-        <div class="detail-row"><span>Source</span><strong>${escapeHtml(instrument.source_id || "")}</strong></div>
+        <div class="detail-row"><span>Symbol</span><strong>${escapeHtml(instrumentDisplaySymbol(instrument))}</strong></div>
+        <div class="detail-row"><span>ID</span><strong>${escapeHtml(instrument.instrument_id || "")}</strong></div>
+        <div class="detail-row"><span>Source</span><strong>${escapeHtml(instrumentSourceLabel(instrument))}</strong></div>
         <div class="detail-row"><span>Exchange</span><strong>${escapeHtml(instrument.exchange || "")}</strong></div>
-        <div class="detail-row"><span>Market</span><strong>${escapeHtml(instrument.market || "")}</strong></div>
+        <div class="detail-row"><span>Market</span><strong>${escapeHtml(marketLabel(instrument.market || ""))}</strong></div>
+        <div class="detail-row"><span>Settle</span><strong>${escapeHtml(settleCurrency(instrument))}</strong></div>
+        <div class="detail-row"><span>Synced</span><strong>${escapeHtml(formatInstrumentSyncTime(instrument.updated_at))}</strong></div>
         <div class="detail-row"><span>Asset</span><strong>${escapeHtml(instrument.asset_class || "")}</strong></div>
-        <div class="detail-row"><span>Lists</span><div>${tags.length ? tags.map((tag) => `<span class="tag-chip">${escapeHtml(tag.name)} <button data-remove-tag-id="${escapeHtml(tag.tag_id)}" type="button">x</button></span>`).join("") : "None"}</div></div>
+        <div class="detail-row"><span>Lists</span><div>${tags.length ? tags.map((tag) => renderDetailTagChip(tag, instrument)).join("") : "None"}</div></div>
       `;
       for (const button of detail.querySelectorAll("[data-remove-tag-id]")) {
         button.addEventListener("click", () => removeInstrumentFromTag(button.dataset.removeTagId || "", instrument.instrument_id));
@@ -1358,6 +1444,7 @@ def render_instrument_manager_html(
     async function deleteInstrumentTag(tagId) {
       if (!tagId) return;
       const tag = instrumentState.tags.find((item) => item.tag_id === tagId);
+      if (isDefaultSourceTag(tag || { tag_id: tagId })) return;
       const tagLabel = tag?.name || tagId;
       if (!window.confirm(`Delete list "${tagLabel}"? This will remove the list from all instruments.`)) return;
       try {
@@ -1386,6 +1473,8 @@ def render_instrument_manager_html(
 
     async function removeInstrumentFromTag(tagId, instrumentId) {
       if (!tagId || !instrumentId) return;
+      const instrument = selectedInstrument();
+      if (isDefaultInstrumentTag({ tag_id: tagId }, instrument)) return;
       const response = await fetch(
         dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}/members/${encodeURIComponent(instrumentId)}`),
         instrumentMutationOptions("DELETE", {}),
