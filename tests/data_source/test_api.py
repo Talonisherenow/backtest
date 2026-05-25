@@ -2,6 +2,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from backtest.core.contracts import CatalogRecord
 from backtest.core.enums import AdjustMode, Frequency
@@ -207,6 +208,75 @@ def test_api_exposes_instrument_source_sync_methods(tmp_path: Path):
     assert instruments["instruments"][0]["symbol"] == "000001.SZ"
     assert tags["tags"][0]["tag_id"] == "a_share"
     assert tags["tags"][0]["member_count"] == 1
+
+
+def test_instrument_api_rejects_unknown_source_id(tmp_path: Path):
+    api = _api(tmp_path)
+
+    with pytest.raises(ValueError, match="Unknown source: missing"):
+        api.create_instrument(
+            {
+                "instrument_id": "btc/usdt",
+                "symbol": "btc/usdt",
+                "source_id": "missing",
+            }
+        )
+
+
+def test_instrument_detail_rejects_source_mismatch(tmp_path: Path):
+    api = _api(tmp_path)
+    api.config.sources.append(
+        DataSourceSpec(
+            source_id="bitget",
+            source_label="Bitget",
+            asset_class="crypto",
+            bars_root=api.config.sources[0].bars_root,
+            metadata_path=api.config.sources[0].metadata_path,
+            adjust="none",
+            catalog_source="ccxt:bitget",
+        )
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "btc/usdt",
+            "symbol": "btc/usdt",
+            "source_id": "a_share",
+        }
+    )
+
+    with pytest.raises(ValueError, match="Unknown instrument: BTC/USDT"):
+        api.instrument("BTC/USDT", source_id="bitget")
+
+
+def test_update_delete_reject_source_mismatch_without_modifying_record(tmp_path: Path):
+    api = _api(tmp_path)
+    api.config.sources.append(
+        DataSourceSpec(
+            source_id="bitget",
+            source_label="Bitget",
+            asset_class="crypto",
+            bars_root=api.config.sources[0].bars_root,
+            metadata_path=api.config.sources[0].metadata_path,
+            adjust="none",
+            catalog_source="ccxt:bitget",
+        )
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "btc/usdt",
+            "symbol": "btc/usdt",
+            "name": "Bitcoin",
+            "source_id": "a_share",
+        }
+    )
+
+    with pytest.raises(ValueError, match="Unknown instrument: BTC/USDT"):
+        api.update_instrument("BTC/USDT", {"name": "Wrong"}, source_id="bitget")
+    assert api.instrument("BTC/USDT")["name"] == "Bitcoin"
+
+    with pytest.raises(ValueError, match="Unknown instrument: BTC/USDT"):
+        api.delete_instrument("BTC/USDT", source_id="bitget")
+    assert api.instrument("BTC/USDT")["instrument_id"] == "BTC/USDT"
 
 
 def test_submit_job_normalizes_path_fields_and_exposes_job_snapshots(tmp_path: Path):

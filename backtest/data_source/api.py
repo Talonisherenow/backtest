@@ -146,9 +146,10 @@ class DataSourceApi:
         limit: int = 100,
         offset: int = 0,
     ) -> dict[str, Any]:
+        effective_source_id = self._validate_source_id(source_id)
         return self._jsonify(
-            self._instrument_store(source_id).list_instruments(
-                source_id=source_id,
+            self._instrument_store(effective_source_id).list_instruments(
+                source_id=effective_source_id,
                 q=q,
                 tag=tag,
                 limit=limit,
@@ -158,6 +159,7 @@ class DataSourceApi:
 
     def create_instrument(self, payload: dict[str, Any]) -> dict[str, Any]:
         source_id = self._payload_source_id(payload)
+        self._validate_source_id(source_id)
         return self._jsonify(self._instrument_store(source_id).create_instrument(payload))
 
     def instrument(
@@ -166,7 +168,10 @@ class DataSourceApi:
         *,
         source_id: str | None = None,
     ) -> dict[str, Any]:
-        return self._jsonify(self._instrument_store(source_id).get_instrument(instrument_id))
+        effective_source_id = self._validate_source_id(source_id)
+        record = self._instrument_store(effective_source_id).get_instrument(instrument_id)
+        self._ensure_instrument_source(record, effective_source_id)
+        return self._jsonify(record)
 
     def update_instrument(
         self,
@@ -175,9 +180,11 @@ class DataSourceApi:
         *,
         source_id: str | None = None,
     ) -> dict[str, Any]:
-        return self._jsonify(
-            self._instrument_store(source_id).update_instrument(instrument_id, payload)
-        )
+        effective_source_id = self._validate_source_id(source_id)
+        self._validate_source_id(self._payload_source_id(payload))
+        store = self._instrument_store(effective_source_id)
+        self._ensure_instrument_source(store.get_instrument(instrument_id), effective_source_id)
+        return self._jsonify(store.update_instrument(instrument_id, payload))
 
     def delete_instrument(
         self,
@@ -185,14 +192,19 @@ class DataSourceApi:
         *,
         source_id: str | None = None,
     ) -> dict[str, str]:
-        self._instrument_store(source_id).delete_instrument(instrument_id)
+        effective_source_id = self._validate_source_id(source_id)
+        store = self._instrument_store(effective_source_id)
+        self._ensure_instrument_source(store.get_instrument(instrument_id), effective_source_id)
+        store.delete_instrument(instrument_id)
         return {"deleted": instrument_id.strip().upper()}
 
     def instrument_tags(self, *, source_id: str | None = None) -> dict[str, Any]:
+        self._validate_source_id(source_id)
         return {"tags": self._jsonify(self._instrument_store(source_id).list_tags())}
 
     def create_instrument_tag(self, payload: dict[str, Any]) -> dict[str, Any]:
         source_id = self._payload_source_id(payload)
+        self._validate_source_id(source_id)
         return self._jsonify(self._instrument_store(source_id).create_tag(payload))
 
     def update_instrument_tag(
@@ -202,6 +214,7 @@ class DataSourceApi:
         *,
         source_id: str | None = None,
     ) -> dict[str, Any]:
+        self._validate_source_id(source_id)
         return self._jsonify(self._instrument_store(source_id).update_tag(tag_id, payload))
 
     def delete_instrument_tag(
@@ -210,6 +223,7 @@ class DataSourceApi:
         *,
         source_id: str | None = None,
     ) -> dict[str, str]:
+        self._validate_source_id(source_id)
         self._instrument_store(source_id).delete_tag(tag_id)
         return {"deleted": tag_id.strip()}
 
@@ -220,7 +234,14 @@ class DataSourceApi:
         *,
         source_id: str | None = None,
     ) -> dict[str, Any]:
-        effective_source_id = source_id or self._payload_source_id(payload)
+        effective_source_id = self._validate_source_id(
+            source_id or self._payload_source_id(payload)
+        )
+        self._ensure_instruments_source(
+            self._instrument_store(effective_source_id),
+            self._payload_instrument_ids(payload),
+            effective_source_id,
+        )
         return self._jsonify(
             self._instrument_store(effective_source_id).replace_tag_members(
                 tag_id,
@@ -235,7 +256,14 @@ class DataSourceApi:
         *,
         source_id: str | None = None,
     ) -> dict[str, Any]:
-        effective_source_id = source_id or self._payload_source_id(payload)
+        effective_source_id = self._validate_source_id(
+            source_id or self._payload_source_id(payload)
+        )
+        self._ensure_instruments_source(
+            self._instrument_store(effective_source_id),
+            self._payload_instrument_ids(payload),
+            effective_source_id,
+        )
         return self._jsonify(
             self._instrument_store(effective_source_id).add_tag_members(
                 tag_id,
@@ -250,8 +278,11 @@ class DataSourceApi:
         *,
         source_id: str | None = None,
     ) -> dict[str, Any]:
+        effective_source_id = self._validate_source_id(source_id)
+        store = self._instrument_store(effective_source_id)
+        self._ensure_instrument_source(store.get_instrument(instrument_id), effective_source_id)
         return self._jsonify(
-            self._instrument_store(source_id).remove_tag_member(tag_id, instrument_id)
+            store.remove_tag_member(tag_id, instrument_id)
         )
 
     def retry_failed(self, source_id: str) -> dict[str, object]:
@@ -323,6 +354,34 @@ class DataSourceApi:
                 store_factory=lambda: self._instrument_store(None),
             )
         return self.instrument_sync_service
+
+    def _validate_source_id(self, source_id: str | None) -> str | None:
+        if source_id is None:
+            return None
+        normalized = source_id.strip()
+        if not normalized:
+            return None
+        self.config.source(normalized)
+        return normalized
+
+    def _ensure_instrument_source(
+        self,
+        record: Any,
+        source_id: str | None,
+    ) -> None:
+        if source_id is not None and record.source_id != source_id:
+            raise ValueError(f"Unknown instrument: {record.instrument_id}")
+
+    def _ensure_instruments_source(
+        self,
+        store: InstrumentStore,
+        instrument_ids: list[str],
+        source_id: str | None,
+    ) -> None:
+        if source_id is None:
+            return
+        for instrument_id in instrument_ids:
+            self._ensure_instrument_source(store.get_instrument(instrument_id), source_id)
 
     def _schedules(self) -> DataSourceScheduleService:
         if self.schedule_service is None:
