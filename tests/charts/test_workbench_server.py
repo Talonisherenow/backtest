@@ -38,6 +38,10 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert '<a class="home-link" href="/">Workbench Home</a>' in html
     assert '<a href="/">Workbench Home</a>' not in html
     assert 'id="instrumentRows"' in html
+    assert 'id="instrumentPaginationMeta"' in html
+    assert 'id="instrumentPreviousPageButton"' in html
+    assert 'id="instrumentNextPageButton"' in html
+    assert 'id="instrumentPageSizeSelect"' in html
     assert 'id="instrumentTagList"' in html
     assert 'id="openTagDialogButton"' in html
     assert '<dialog id="tagCreateDialog"' in html
@@ -66,12 +70,18 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert 'window.confirm(`Delete list "${tagLabel}"? This will remove the list from all instruments.`)' in html
     assert 'dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}`)' in html
     assert "if (instrumentState.selectedTagId === tagId)" in html
-    assert "instrumentApiUrl({ includeTag: false, limit: 1 })" in html
+    assert "instrumentApiUrl({ includeTag: false, limit: 1, offset: 0 })" in html
     assert 'id="instrumentSearchButton"' in html
     assert ">Search</button>" in html
     assert 'id="openInstrumentDialogButton"' in html
     assert ">New</button>" in html
     assert '<dialog id="instrumentCreateDialog"' in html
+    assert 'id="openInstrumentSyncDialogButton"' in html
+    assert ">Sources</button>" in html
+    assert '<dialog id="instrumentSyncDialog"' in html
+    assert 'id="instrumentSourceRows"' in html
+    assert 'id="instrumentSyncScheduleRows"' in html
+    assert 'id="instrumentSyncScheduleForm"' in html
     assert 'id="instrumentRefreshButton"' not in html
     assert 'id="openKlineButton"' in html
     assert "Open K-line" in html
@@ -82,8 +92,26 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert "<h3>Add Instrument</h3>" not in html
     assert "function openInstrumentDialog()" in html
     assert 'fetch(instrumentApiUrl(), instrumentRequestOptions())' in html
+    assert "page: 1" in html
+    assert "pageSize: 25" in html
+    assert 'params.set("limit", String(instrumentState.pageSize));' in html
+    assert 'params.set("offset", String((instrumentState.page - 1) * instrumentState.pageSize));' in html
+    assert "function instrumentPageCount()" in html
+    assert "function resetInstrumentPaging()" in html
+    assert "function renderInstrumentPagination()" in html
+    assert 'document.getElementById("instrumentPreviousPageButton").addEventListener("click"' in html
+    assert 'document.getElementById("instrumentNextPageButton").addEventListener("click"' in html
+    assert 'document.getElementById("instrumentPageSizeSelect").addEventListener("change"' in html
     assert 'fetch(dataApiUrl("/api/instrument-tags"), instrumentRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/instruments"), instrumentMutationOptions("POST", payload))' in html
+    assert 'fetch(dataApiUrl("/api/instrument-sources"), instrumentRequestOptions())' in html
+    assert 'fetch(dataApiUrl("/api/instrument-sync/run"), instrumentMutationOptions("POST", payload))' in html
+    assert 'fetch(dataApiUrl("/api/instrument-sync/schedules"), instrumentRequestOptions())' in html
+    assert 'data-sync-source-id="${escapeHtml(source.source_id)}"' in html
+    assert 'data-sync-schedule-action="run"' in html
+    assert "function loadInstrumentSyncState()" in html
+    assert "function runInstrumentSourceSync(sourceId)" in html
+    assert "function createInstrumentSyncSchedule(event)" in html
     assert 'source_id: sourceId || undefined' in html
     assert 'fetch(dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}/members`), instrumentMutationOptions("POST", payload))' in html
 

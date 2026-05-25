@@ -449,7 +449,7 @@ def render_instrument_manager_html(
     }
     .table-panel {
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto;
     }
     .filters {
       display: grid;
@@ -461,6 +461,28 @@ def render_instrument_manager_html(
     .table-wrap {
       min-height: 0;
       overflow: auto;
+    }
+    .instrument-pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      min-height: 48px;
+      padding: 9px 12px;
+      border-top: 1px solid var(--line-soft);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .instrument-pagination-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .instrument-pagination select,
+    .instrument-pagination button {
+      min-height: 32px;
+      width: auto;
     }
     table {
       width: 100%;
@@ -551,6 +573,49 @@ def render_instrument_manager_html(
       gap: 8px;
       padding: 12px;
     }
+    .wide-modal { width: min(920px, calc(100vw - 32px)); }
+    .sync-modal-body { gap: 18px; }
+    .sync-source-list,
+    .sync-schedule-list {
+      display: grid;
+      gap: 8px;
+    }
+    .sync-row {
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 10px 12px;
+    }
+    .sync-row-title {
+      color: var(--text);
+      font-weight: 800;
+    }
+    .sync-row-meta {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 2px;
+    }
+    .row-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .checkbox-row input {
+      width: auto;
+      min-height: 0;
+      margin: 0;
+    }
     .color-preset-field {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -603,6 +668,11 @@ def render_instrument_manager_html(
       .header-actions { justify-items: start; }
       .shell { padding-left: 12px; padding-right: 12px; }
       .filters, .form-row { grid-template-columns: 1fr; }
+      .instrument-pagination {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .instrument-pagination-controls { flex-wrap: wrap; }
     }
   </style>
 </head>
@@ -615,6 +685,7 @@ def render_instrument_manager_html(
     </div>
     <div class="header-actions">
       <a class="home-link" href="/">Workbench Home</a>
+      <button id="openInstrumentSyncDialogButton" type="button">Sources</button>
     </div>
   </header>
   <section class="shell">
@@ -652,6 +723,18 @@ def render_instrument_manager_html(
             </thead>
             <tbody id="instrumentRows"></tbody>
           </table>
+        </div>
+        <div class="instrument-pagination">
+          <div id="instrumentPaginationMeta"></div>
+          <div class="instrument-pagination-controls">
+            <select id="instrumentPageSizeSelect" aria-label="Rows per page">
+              <option value="25">25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+            <button id="instrumentPreviousPageButton" type="button">Previous</button>
+            <button id="instrumentNextPageButton" type="button">Next</button>
+          </div>
         </div>
       </section>
       <aside class="panel">
@@ -726,6 +809,44 @@ def render_instrument_manager_html(
       </div>
     </form>
   </dialog>
+  <dialog id="instrumentSyncDialog" class="modal-dialog" aria-labelledby="instrumentSyncDialogTitle">
+    <div class="modal-card wide-modal">
+      <div class="modal-header">
+        <h2 id="instrumentSyncDialogTitle">Instrument Sources</h2>
+        <button id="closeInstrumentSyncDialogButton" type="button">Close</button>
+      </div>
+      <div class="modal-body sync-modal-body">
+        <section>
+          <h3>Sources</h3>
+          <div class="sync-source-list" id="instrumentSourceRows"></div>
+        </section>
+        <section>
+          <h3>New Schedule</h3>
+          <form class="form-grid" id="instrumentSyncScheduleForm">
+            <input id="instrumentSyncScheduleName" type="text" autocomplete="off" placeholder="Name">
+            <select id="instrumentSyncScheduleSource"></select>
+            <div class="form-row">
+              <input id="instrumentSyncEvery" type="number" min="1" value="1">
+              <select id="instrumentSyncUnit">
+                <option value="hours">hours</option>
+                <option value="days">days</option>
+              </select>
+            </div>
+            <label class="checkbox-row">
+              <input id="instrumentSyncEnabled" type="checkbox">
+              <span>Enabled</span>
+            </label>
+            <button class="primary" type="submit">Create Schedule</button>
+          </form>
+        </section>
+        <section>
+          <h3>Schedules</h3>
+          <div class="sync-schedule-list" id="instrumentSyncScheduleRows"></div>
+        </section>
+        <div class="error" id="instrumentSyncError"></div>
+      </div>
+    </div>
+  </dialog>
   <script>
     const payload = JSON.parse(document.getElementById("instrument-manager-payload").textContent);
     let instrumentSearchTimer = null;
@@ -739,6 +860,11 @@ def render_instrument_manager_html(
       selectedTagId: "",
       selectedInstrumentId: "",
       query: "",
+      page: 1,
+      pageSize: 25,
+      syncSources: [],
+      syncSchedules: [],
+      syncMessage: "",
       error: "",
     };
 
@@ -774,13 +900,30 @@ def render_instrument_manager_html(
       return options;
     }
 
-    function instrumentApiUrl({ includeTag = true, limit = 200 } = {}) {
+    function instrumentApiUrl({ includeTag = true, limit = null, offset = null } = {}) {
       const params = new URLSearchParams();
-      params.set("limit", String(limit));
+      if (limit === null || limit === undefined) {
+        params.set("limit", String(instrumentState.pageSize));
+      } else {
+        params.set("limit", String(limit));
+      }
+      if (offset === null || offset === undefined) {
+        params.set("offset", String((instrumentState.page - 1) * instrumentState.pageSize));
+      } else {
+        params.set("offset", String(offset));
+      }
       if (instrumentState.selectedSourceId) params.set("source_id", instrumentState.selectedSourceId);
       if (includeTag && instrumentState.selectedTagId) params.set("tag", instrumentState.selectedTagId);
       if (instrumentState.query) params.set("q", instrumentState.query);
       return dataApiUrl(`/api/instruments?${params.toString()}`);
+    }
+
+    function instrumentPageCount() {
+      return Math.max(1, Math.ceil((Number(instrumentState.total) || 0) / instrumentState.pageSize));
+    }
+
+    function resetInstrumentPaging() {
+      instrumentState.page = 1;
     }
 
     function sourceLabel(source) {
@@ -847,6 +990,7 @@ def render_instrument_manager_html(
       for (const button of list.querySelectorAll("[data-tag-id]")) {
         button.addEventListener("click", () => {
           instrumentState.selectedTagId = button.dataset.tagId || "";
+          resetInstrumentPaging();
           loadInstrumentManager();
         });
       }
@@ -877,6 +1021,26 @@ def render_instrument_manager_html(
           renderInstrumentManager();
         });
       }
+    }
+
+    function renderInstrumentPagination() {
+      const pageCount = instrumentPageCount();
+      const pageSizeSelect = document.getElementById("instrumentPageSizeSelect");
+      const previousButton = document.getElementById("instrumentPreviousPageButton");
+      const nextButton = document.getElementById("instrumentNextPageButton");
+      const meta = document.getElementById("instrumentPaginationMeta");
+      const total = Number(instrumentState.total) || 0;
+      const start = total ? ((instrumentState.page - 1) * instrumentState.pageSize) + 1 : 0;
+      const end = Math.min(total, instrumentState.page * instrumentState.pageSize);
+
+      if (pageSizeSelect.value !== String(instrumentState.pageSize)) {
+        pageSizeSelect.value = String(instrumentState.pageSize);
+      }
+      previousButton.disabled = instrumentState.page <= 1 || total === 0;
+      nextButton.disabled = instrumentState.page >= pageCount || total === 0;
+      meta.textContent = total
+        ? `Showing ${start}-${end} of ${total} · Page ${instrumentState.page} / ${pageCount}`
+        : "No instruments";
     }
 
     function renderDetail() {
@@ -910,6 +1074,7 @@ def render_instrument_manager_html(
       renderFilters();
       renderTags();
       renderRows();
+      renderInstrumentPagination();
       renderDetail();
     }
 
@@ -931,18 +1096,25 @@ def render_instrument_manager_html(
         const instrumentsPayload = await instrumentsResponse.json();
         let allTotal = Number(instrumentsPayload.total || 0);
         if (instrumentState.selectedTagId) {
-          const allInstrumentsResponse = await fetch(instrumentApiUrl({ includeTag: false, limit: 1 }), instrumentRequestOptions());
+          const allInstrumentsResponse = await fetch(instrumentApiUrl({ includeTag: false, limit: 1, offset: 0 }), instrumentRequestOptions());
           if (allInstrumentsResponse.ok) {
             const allInstrumentsPayload = await allInstrumentsResponse.json();
             allTotal = Number(allInstrumentsPayload.total || 0);
           }
+        }
+        const nextTotal = Number(instrumentsPayload.total || 0);
+        const nextPageCount = Math.max(1, Math.ceil(nextTotal / instrumentState.pageSize));
+        if (instrumentState.page > nextPageCount) {
+          instrumentState.page = nextPageCount;
+          await loadInstrumentManager();
+          return;
         }
         instrumentState = {
           ...instrumentState,
           sources: Array.isArray(sourcesPayload.sources) ? sourcesPayload.sources : [],
           tags: Array.isArray(tagsPayload.tags) ? tagsPayload.tags : [],
           instruments: Array.isArray(instrumentsPayload.instruments) ? instrumentsPayload.instruments : [],
-          total: Number(instrumentsPayload.total || 0),
+          total: nextTotal,
           allTotal,
           error: "",
         };
@@ -950,6 +1122,130 @@ def render_instrument_manager_html(
         instrumentState = { ...instrumentState, error: error.message };
       }
       renderInstrumentManager();
+    }
+
+    async function loadInstrumentSyncState() {
+      if (!payload.data_api_base_url) return;
+      const [sourcesResponse, schedulesResponse] = await Promise.all([
+        fetch(dataApiUrl("/api/instrument-sources"), instrumentRequestOptions()),
+        fetch(dataApiUrl("/api/instrument-sync/schedules"), instrumentRequestOptions()),
+      ]);
+      if (!sourcesResponse.ok || !schedulesResponse.ok) {
+        throw new Error("Unable to load instrument sources");
+      }
+      const sourcesPayload = await sourcesResponse.json();
+      const schedulesPayload = await schedulesResponse.json();
+      instrumentState.syncSources = Array.isArray(sourcesPayload.sources) ? sourcesPayload.sources : [];
+      instrumentState.syncSchedules = Array.isArray(schedulesPayload.schedules) ? schedulesPayload.schedules : [];
+      renderInstrumentSyncDialog();
+    }
+
+    function renderInstrumentSyncDialog() {
+      const sourceRows = document.getElementById("instrumentSourceRows");
+      sourceRows.innerHTML = instrumentState.syncSources.length ? instrumentState.syncSources.map((source) => `
+        <div class="sync-row">
+          <div>
+            <div class="sync-row-title">${escapeHtml(source.source_label || source.source_id)}</div>
+            <div class="sync-row-meta">${escapeHtml(source.provider_type || "")} · ${escapeHtml(JSON.stringify(source.provider_config || {}))}</div>
+          </div>
+          <button type="button" data-sync-source-id="${escapeHtml(source.source_id)}">Sync Now</button>
+        </div>
+      `).join("") : `<div class="empty">No sync sources</div>`;
+      for (const button of sourceRows.querySelectorAll("[data-sync-source-id]")) {
+        button.addEventListener("click", () => runInstrumentSourceSync(button.dataset.syncSourceId || ""));
+      }
+      const sourceSelect = document.getElementById("instrumentSyncScheduleSource");
+      sourceSelect.innerHTML = instrumentState.syncSources.map((source) => (
+        `<option value="${escapeHtml(source.source_id)}">${escapeHtml(source.source_label || source.source_id)}</option>`
+      )).join("");
+      renderInstrumentSyncSchedules();
+      document.getElementById("instrumentSyncError").textContent = instrumentState.syncMessage || "";
+    }
+
+    function renderInstrumentSyncSchedules() {
+      const rows = document.getElementById("instrumentSyncScheduleRows");
+      rows.innerHTML = instrumentState.syncSchedules.length ? instrumentState.syncSchedules.map((schedule) => `
+        <div class="sync-row">
+          <div>
+            <div class="sync-row-title">${escapeHtml(schedule.name || schedule.schedule_id)}</div>
+            <div class="sync-row-meta">${escapeHtml(schedule.config?.source_id || schedule.source_id || "")} · ${escapeHtml(schedule.status || "")}</div>
+          </div>
+          <div class="row-actions">
+            <button type="button" data-sync-schedule-action="run" data-sync-schedule-id="${escapeHtml(schedule.schedule_id)}">Run</button>
+            <button type="button" data-sync-schedule-action="${schedule.enabled ? "disable" : "enable"}" data-sync-schedule-id="${escapeHtml(schedule.schedule_id)}">${schedule.enabled ? "Disable" : "Enable"}</button>
+            <button type="button" data-sync-schedule-action="delete" data-sync-schedule-id="${escapeHtml(schedule.schedule_id)}">Delete</button>
+          </div>
+        </div>
+      `).join("") : `<div class="empty">No sync schedules</div>`;
+      for (const button of rows.querySelectorAll("[data-sync-schedule-action]")) {
+        button.addEventListener("click", () => handleInstrumentSyncScheduleAction(button.dataset.syncScheduleAction || "", button.dataset.syncScheduleId || ""));
+      }
+    }
+
+    async function runInstrumentSourceSync(sourceId) {
+      if (!sourceId) return;
+      try {
+        const payload = { source_id: sourceId };
+        const response = await fetch(dataApiUrl("/api/instrument-sync/run"), instrumentMutationOptions("POST", payload));
+        if (!response.ok) throw new Error(await response.text());
+        const result = await response.json();
+        instrumentState.syncMessage = `Synced ${result.source_id}: ${result.created} created, ${result.updated} updated`;
+        await loadInstrumentManager();
+        await loadInstrumentSyncState();
+      } catch (error) {
+        instrumentState.syncMessage = error.message;
+        renderInstrumentSyncDialog();
+      }
+    }
+
+    async function createInstrumentSyncSchedule(event) {
+      event.preventDefault();
+      try {
+        const sourceId = document.getElementById("instrumentSyncScheduleSource").value;
+        const every = Number(document.getElementById("instrumentSyncEvery").value) || 1;
+        const unit = document.getElementById("instrumentSyncUnit").value || "hours";
+        const name = document.getElementById("instrumentSyncScheduleName").value.trim()
+          || `${sourceId} instruments`;
+        const payload = {
+          name,
+          enabled: document.getElementById("instrumentSyncEnabled").checked,
+          source_id: sourceId,
+          trigger: {
+            type: "interval",
+            every,
+            unit,
+            start_at: new Date().toISOString(),
+            timezone: "Asia/Shanghai",
+          },
+        };
+        const response = await fetch(dataApiUrl("/api/instrument-sync/schedules"), instrumentMutationOptions("POST", payload));
+        if (!response.ok) throw new Error(await response.text());
+        instrumentState.syncMessage = `Created schedule ${name}`;
+        document.getElementById("instrumentSyncScheduleForm").reset();
+        await loadInstrumentSyncState();
+      } catch (error) {
+        instrumentState.syncMessage = error.message;
+        renderInstrumentSyncDialog();
+      }
+    }
+
+    async function handleInstrumentSyncScheduleAction(action, scheduleId) {
+      if (!action || !scheduleId) return;
+      if (action === "delete" && !window.confirm("Delete this sync schedule?")) return;
+      try {
+        const path = action === "delete"
+          ? `/api/instrument-sync/schedules/${encodeURIComponent(scheduleId)}`
+          : `/api/instrument-sync/schedules/${encodeURIComponent(scheduleId)}/${action === "run" ? "run-now" : action}`;
+        const method = action === "delete" ? "DELETE" : "POST";
+        const response = await fetch(dataApiUrl(path), instrumentMutationOptions(method, {}));
+        if (!response.ok) throw new Error(await response.text());
+        instrumentState.syncMessage = action === "run" ? "Schedule run completed" : "Schedule updated";
+        if (action === "run") await loadInstrumentManager();
+        await loadInstrumentSyncState();
+      } catch (error) {
+        instrumentState.syncMessage = error.message;
+        renderInstrumentSyncDialog();
+      }
     }
 
     function createInstrumentPayload() {
@@ -1099,10 +1395,34 @@ def render_instrument_manager_html(
       await loadInstrumentManager();
     }
 
-    document.getElementById("instrumentSearchButton").addEventListener("click", loadInstrumentManager);
+    document.getElementById("instrumentSearchButton").addEventListener("click", () => {
+      resetInstrumentPaging();
+      loadInstrumentManager();
+    });
     document.getElementById("openInstrumentDialogButton").addEventListener("click", openInstrumentDialog);
     document.getElementById("closeInstrumentDialogButton").addEventListener("click", closeInstrumentDialog);
     document.getElementById("cancelInstrumentDialogButton").addEventListener("click", closeInstrumentDialog);
+    document.getElementById("openInstrumentSyncDialogButton").addEventListener("click", async () => {
+      const dialog = document.getElementById("instrumentSyncDialog");
+      try {
+        instrumentState.syncMessage = "";
+        await loadInstrumentSyncState();
+      } catch (error) {
+        instrumentState.syncMessage = error.message;
+        renderInstrumentSyncDialog();
+      }
+      if (dialog.showModal) {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute("open", "");
+      }
+    });
+    document.getElementById("closeInstrumentSyncDialogButton").addEventListener("click", () => {
+      document.getElementById("instrumentSyncDialog").close();
+    });
+    document.getElementById("instrumentSyncDialog").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) event.currentTarget.close();
+    });
     document.getElementById("instrumentCreateDialog").addEventListener("click", (event) => {
       if (event.target === event.currentTarget) closeInstrumentDialog();
     });
@@ -1124,20 +1444,37 @@ def render_instrument_manager_html(
     }
     document.getElementById("instrumentSourceFilter").addEventListener("change", (event) => {
       instrumentState.selectedSourceId = event.target.value;
+      resetInstrumentPaging();
       loadInstrumentManager();
     });
     document.getElementById("instrumentTagFilter").addEventListener("change", (event) => {
       instrumentState.selectedTagId = event.target.value;
+      resetInstrumentPaging();
       loadInstrumentManager();
     });
     document.getElementById("instrumentSearchInput").addEventListener("input", (event) => {
       clearTimeout(instrumentSearchTimer);
       instrumentSearchTimer = setTimeout(() => {
         instrumentState.query = event.target.value.trim();
+        resetInstrumentPaging();
         loadInstrumentManager();
       }, 250);
     });
+    document.getElementById("instrumentPreviousPageButton").addEventListener("click", () => {
+      instrumentState.page = Math.max(1, instrumentState.page - 1);
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentNextPageButton").addEventListener("click", () => {
+      instrumentState.page = Math.min(instrumentPageCount(), instrumentState.page + 1);
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentPageSizeSelect").addEventListener("change", (event) => {
+      instrumentState.pageSize = Number(event.target.value) || 25;
+      resetInstrumentPaging();
+      loadInstrumentManager();
+    });
     document.getElementById("instrumentCreateForm").addEventListener("submit", createInstrument);
+    document.getElementById("instrumentSyncScheduleForm").addEventListener("submit", createInstrumentSyncSchedule);
     document.getElementById("tagCreateForm").addEventListener("submit", createTag);
     document.getElementById("instrumentTagMemberForm").addEventListener("submit", async (event) => {
       event.preventDefault();
