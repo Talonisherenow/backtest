@@ -710,6 +710,9 @@ class InstrumentSyncScheduleService:
         return self.store.update_config(schedule_id, config, next_run_at=next_run_at)
 
     def delete(self, schedule_id: str) -> dict[str, str]:
+        with self._run_lock:
+            if schedule_id in self._running_schedule_ids:
+                raise ValueError(f"Instrument sync schedule already running: {schedule_id}")
         self.store.delete(schedule_id)
         return {"deleted": schedule_id}
 

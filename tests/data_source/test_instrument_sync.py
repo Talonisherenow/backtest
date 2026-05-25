@@ -551,6 +551,75 @@ def test_instrument_sync_schedule_delete_removes_run_history(tmp_path: Path):
     assert service.store.runs(created.schedule_id) == []
 
 
+def test_instrument_sync_schedule_delete_rejects_active_run_then_deletes_history(
+    tmp_path: Path,
+):
+    spec = _spec(tmp_path)
+    started = Event()
+    release = Event()
+    first_result: list[dict[str, object]] = []
+    first_error: list[BaseException] = []
+
+    def sync_source(source_id: str) -> dict[str, object]:
+        started.set()
+        assert release.wait(timeout=5)
+        return {
+            "source_id": source_id,
+            "status": "success",
+            "created": 1,
+            "updated": 0,
+            "unchanged": 0,
+            "failed": 0,
+            "total": 1,
+            "tag_id": source_id,
+            "synced_at": "2026-05-25T09:00:00",
+        }
+
+    service = InstrumentSyncScheduleService(
+        store=InstrumentSyncScheduleStore(tmp_path / "schedules.sqlite"),
+        config=DataSourceServerConfig(sources=[spec]),
+        sync_source=sync_source,
+        now=lambda: datetime(2026, 5, 25, 9, 0, 0),
+    )
+    created = service.create(
+        {
+            "name": "bitget active delete",
+            "enabled": False,
+            "source_id": "bitget",
+            "trigger": {
+                "type": "once",
+                "run_at": "2026-05-25T09:00:00+08:00",
+            },
+        }
+    )
+
+    def run_first() -> None:
+        try:
+            first_result.append(service.run_now(created.schedule_id))
+        except BaseException as exc:
+            first_error.append(exc)
+
+    thread = Thread(target=run_first)
+    thread.start()
+    assert started.wait(timeout=5)
+    with pytest.raises(ValueError, match="already running"):
+        service.delete(created.schedule_id)
+
+    release.set()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert first_error == []
+    assert first_result[0]["status"] == "success"
+    assert service.runs(created.schedule_id)["runs"][0]["status"] == "success"
+
+    service.delete(created.schedule_id)
+
+    assert service.store.runs(created.schedule_id) == []
+    with pytest.raises(ValueError, match="Unknown instrument sync schedule"):
+        service.get(created.schedule_id)
+
+
 def test_instrument_sync_scheduler_can_restart_after_stop():
     class FakeService:
         def __init__(self) -> None:
