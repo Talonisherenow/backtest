@@ -11,6 +11,12 @@ from backtest.data.store import ParquetBarStore
 from backtest.data.tasks import CrawlTaskManager
 from backtest.data_source.api import DataSourceApi
 from backtest.data_source.config import DataSourceServerConfig, build_default_source_specs
+from backtest.data_source.instrument_sync import (
+    InstrumentSyncScheduleService,
+    InstrumentSyncScheduleStore,
+    InstrumentSyncScheduler,
+    InstrumentSyncService,
+)
 from backtest.data_source.jobs import DataSourceJobRegistry
 from backtest.data_source.schedules import (
     DataSourceScheduleService,
@@ -111,12 +117,27 @@ def serve(
             get_job=api.job,
         )
         api.schedule_service = schedule_service
+        api.instrument_sync_service = InstrumentSyncService(
+            config=config,
+            store_factory=lambda: api._instrument_store(None),
+        )
+        instrument_sync_schedule_service = InstrumentSyncScheduleService(
+            store=InstrumentSyncScheduleStore(config.schedule_db_path),
+            config=config,
+            sync_source=lambda source_id: api.run_instrument_sync({"source_id": source_id}),
+        )
+        api.instrument_sync_schedule_service = instrument_sync_schedule_service
+        instrument_sync_scheduler = InstrumentSyncScheduler(
+            service=instrument_sync_schedule_service,
+            poll_seconds=config.scheduler_poll_seconds,
+        )
         scheduler = DataSourceScheduler(
             service=schedule_service,
             poll_seconds=config.scheduler_poll_seconds,
         )
         if scheduler_enabled:
             scheduler.start()
+            instrument_sync_scheduler.start()
     except Exception as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc

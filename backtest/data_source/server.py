@@ -37,6 +37,25 @@ def make_data_source_handler(api: DataSourceApi):
                     self._send_json(200, api.data_sources())
                 elif parsed.path == "/api/instrument-sources":
                     self._send_json(200, api.instrument_sources())
+                elif parsed.path == "/api/instrument-sync/schedules":
+                    self._send_json(200, api.instrument_sync_schedules())
+                elif (
+                    parsed.path.endswith("/runs")
+                    and parsed.path.startswith("/api/instrument-sync/schedules/")
+                ):
+                    self._send_json(
+                        200,
+                        api.instrument_sync_schedule_runs(
+                            self._instrument_sync_schedule_id_for_suffix(parsed.path, "/runs")
+                        ),
+                    )
+                elif parsed.path.startswith("/api/instrument-sync/schedules/"):
+                    self._send_json(
+                        200,
+                        api.instrument_sync_schedule(
+                            self._path_id(parsed.path, "/api/instrument-sync/schedules/")
+                        ),
+                    )
                 elif parsed.path == "/api/kline/manifest":
                     self._send_json(200, api.kline_manifest())
                 elif parsed.path == "/api/kline/bars":
@@ -87,7 +106,48 @@ def make_data_source_handler(api: DataSourceApi):
                 return
             parsed = urlparse(self.path)
             try:
-                if parsed.path == "/api/data/schedules":
+                if parsed.path == "/api/instrument-sync/schedules":
+                    self._send_json(200, api.create_instrument_sync_schedule(self._read_json()))
+                elif (
+                    parsed.path.endswith("/enable")
+                    and parsed.path.startswith("/api/instrument-sync/schedules/")
+                ):
+                    self._send_json(
+                        200,
+                        api.enable_instrument_sync_schedule(
+                            self._instrument_sync_schedule_id_for_suffix(
+                                parsed.path,
+                                "/enable",
+                            )
+                        ),
+                    )
+                elif (
+                    parsed.path.endswith("/disable")
+                    and parsed.path.startswith("/api/instrument-sync/schedules/")
+                ):
+                    self._send_json(
+                        200,
+                        api.disable_instrument_sync_schedule(
+                            self._instrument_sync_schedule_id_for_suffix(
+                                parsed.path,
+                                "/disable",
+                            )
+                        ),
+                    )
+                elif (
+                    parsed.path.endswith("/run-now")
+                    and parsed.path.startswith("/api/instrument-sync/schedules/")
+                ):
+                    self._send_json(
+                        200,
+                        api.run_instrument_sync_schedule_now(
+                            self._instrument_sync_schedule_id_for_suffix(
+                                parsed.path,
+                                "/run-now",
+                            )
+                        ),
+                    )
+                elif parsed.path == "/api/data/schedules":
                     self._send_json(200, api.create_schedule(self._read_json()))
                 elif parsed.path.endswith("/enable") and parsed.path.startswith("/api/data/schedules/"):
                     self._send_json(200, api.enable_schedule(self._schedule_id_for_suffix(parsed.path, "/enable")))
@@ -136,7 +196,15 @@ def make_data_source_handler(api: DataSourceApi):
             parsed = urlparse(self.path)
             query = parse_qs(parsed.query)
             try:
-                if parsed.path.startswith("/api/data/schedules/"):
+                if parsed.path.startswith("/api/instrument-sync/schedules/"):
+                    self._send_json(
+                        200,
+                        api.update_instrument_sync_schedule(
+                            self._path_id(parsed.path, "/api/instrument-sync/schedules/"),
+                            self._read_json(),
+                        ),
+                    )
+                elif parsed.path.startswith("/api/data/schedules/"):
                     self._send_json(
                         200,
                         api.update_schedule(parsed.path.rsplit("/", 1)[-1], self._read_json()),
@@ -175,7 +243,14 @@ def make_data_source_handler(api: DataSourceApi):
             parsed = urlparse(self.path)
             query = parse_qs(parsed.query)
             try:
-                if parsed.path.startswith("/api/data/schedules/"):
+                if parsed.path.startswith("/api/instrument-sync/schedules/"):
+                    self._send_json(
+                        200,
+                        api.delete_instrument_sync_schedule(
+                            self._path_id(parsed.path, "/api/instrument-sync/schedules/")
+                        ),
+                    )
+                elif parsed.path.startswith("/api/data/schedules/"):
                     self._send_json(200, api.delete_schedule(parsed.path.rsplit("/", 1)[-1]))
                 elif (
                     parsed.path.startswith("/api/instrument-tags/")
@@ -322,6 +397,10 @@ def make_data_source_handler(api: DataSourceApi):
         @staticmethod
         def _schedule_id_for_suffix(path: str, suffix: str) -> str:
             return path.removeprefix("/api/data/schedules/").removesuffix(suffix).strip("/")
+
+        @staticmethod
+        def _instrument_sync_schedule_id_for_suffix(path: str, suffix: str) -> str:
+            return path.removeprefix("/api/instrument-sync/schedules/").removesuffix(suffix).strip("/")
 
         @staticmethod
         def _path_id(path: str, prefix: str) -> str:

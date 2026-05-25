@@ -10,6 +10,8 @@ from backtest.data_source.config import DataSourceServerConfig, DataSourceSpec
 from backtest.data_source.instrument_sync import (
     CCXTInstrumentCatalogProvider,
     InstrumentCatalogItem,
+    InstrumentSyncScheduleService,
+    InstrumentSyncScheduleStore,
     InstrumentSyncService,
     UniverseCsvInstrumentCatalogProvider,
     source_definition_from_spec,
@@ -315,3 +317,51 @@ def test_sync_service_rejects_unknown_source(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Unknown source"):
         service.sync_source("missing")
+
+
+def test_instrument_sync_schedule_service_creates_and_runs_schedule(tmp_path: Path):
+    calls: list[str] = []
+    spec = _spec(tmp_path)
+    store = InstrumentSyncScheduleStore(tmp_path / "schedules.sqlite")
+    service = InstrumentSyncScheduleService(
+        store=store,
+        config=DataSourceServerConfig(sources=[spec]),
+        sync_source=lambda source_id: calls.append(source_id)
+        or {
+            "source_id": source_id,
+            "status": "success",
+            "created": 1,
+            "updated": 0,
+            "unchanged": 0,
+            "failed": 0,
+            "total": 1,
+            "tag_id": source_id,
+            "synced_at": "2026-05-25T09:00:00",
+        },
+        now=lambda: datetime(2026, 5, 25, 9, 0, 0),
+    )
+
+    created = service.create(
+        {
+            "name": "bitget hourly",
+            "enabled": False,
+            "source_id": "bitget",
+            "trigger": {
+                "type": "interval",
+                "every": 1,
+                "unit": "hours",
+                "start_at": "2026-05-25T09:00:00+08:00",
+            },
+        }
+    )
+    enabled = service.enable(created.schedule_id)
+    result = service.run_now(created.schedule_id)
+    runs = service.runs(created.schedule_id)
+    disabled = service.disable(created.schedule_id)
+
+    assert created.status == "disabled"
+    assert enabled.status == "enabled"
+    assert result["source_id"] == "bitget"
+    assert calls == ["bitget"]
+    assert runs["runs"][0]["status"] == "success"
+    assert disabled.enabled is False

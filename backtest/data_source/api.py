@@ -12,7 +12,11 @@ from backtest.data.jobs import DataSyncJobConfig
 from backtest.data.metadata import MetadataStore
 from backtest.data.tasks import CrawlTaskManager
 from backtest.data_source.config import DataSourceServerConfig, DataSourceSpec
-from backtest.data_source.instrument_sync import InstrumentSyncService
+from backtest.data_source.instrument_sync import (
+    InstrumentSyncScheduleService,
+    InstrumentSyncScheduleStore,
+    InstrumentSyncService,
+)
 from backtest.data_source.jobs import DataSourceJobRegistry
 from backtest.data_source.schedules import DataSourceScheduleService
 
@@ -27,6 +31,7 @@ class DataSourceApi:
         self.job_registry = job_registry
         self.schedule_service: DataSourceScheduleService | None = None
         self.instrument_sync_service: InstrumentSyncService | None = None
+        self.instrument_sync_schedule_service: InstrumentSyncScheduleService | None = None
         self.kline_service = KlineCacheService(
             sources=[
                 KlineSource(
@@ -345,6 +350,40 @@ class DataSourceApi:
     def schedule_runs(self, schedule_id: str) -> dict[str, list[dict[str, Any]]]:
         return self._schedules().runs(schedule_id)
 
+    def instrument_sync_schedules(self) -> dict[str, list[dict[str, Any]]]:
+        return self._instrument_sync_schedules().list()
+
+    def instrument_sync_schedule(self, schedule_id: str) -> dict[str, Any]:
+        return self._instrument_sync_schedules().get(schedule_id).to_dict()
+
+    def create_instrument_sync_schedule(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._instrument_sync_schedules().create(payload).to_dict()
+
+    def update_instrument_sync_schedule(
+        self,
+        schedule_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._instrument_sync_schedules().update(schedule_id, payload).to_dict()
+
+    def delete_instrument_sync_schedule(self, schedule_id: str) -> dict[str, str]:
+        return self._instrument_sync_schedules().delete(schedule_id)
+
+    def enable_instrument_sync_schedule(self, schedule_id: str) -> dict[str, Any]:
+        return self._instrument_sync_schedules().enable(schedule_id).to_dict()
+
+    def disable_instrument_sync_schedule(self, schedule_id: str) -> dict[str, Any]:
+        return self._instrument_sync_schedules().disable(schedule_id).to_dict()
+
+    def run_instrument_sync_schedule_now(self, schedule_id: str) -> dict[str, object]:
+        return self._instrument_sync_schedules().run_now(schedule_id)
+
+    def instrument_sync_schedule_runs(
+        self,
+        schedule_id: str,
+    ) -> dict[str, list[dict[str, Any]]]:
+        return self._instrument_sync_schedules().runs(schedule_id)
+
     def _metadata(self, spec: DataSourceSpec) -> MetadataStore:
         return MetadataStore(spec.metadata_path)
 
@@ -363,6 +402,17 @@ class DataSourceApi:
                 store_factory=lambda: self._instrument_store(None),
             )
         return self.instrument_sync_service
+
+    def _instrument_sync_schedules(self) -> InstrumentSyncScheduleService:
+        if self.instrument_sync_schedule_service is None:
+            self.instrument_sync_schedule_service = InstrumentSyncScheduleService(
+                store=InstrumentSyncScheduleStore(self.config.schedule_db_path),
+                config=self.config,
+                sync_source=lambda source_id: self.run_instrument_sync(
+                    {"source_id": source_id}
+                ),
+            )
+        return self.instrument_sync_schedule_service
 
     def _validate_source_id(self, source_id: str | None) -> str | None:
         if source_id is None:

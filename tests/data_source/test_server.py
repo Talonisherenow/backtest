@@ -175,6 +175,54 @@ def test_get_routes_and_cors_headers(tmp_path: Path):
         server.server_close()
 
 
+def test_instrument_sync_schedule_http_routes(tmp_path: Path):
+    api = _api(tmp_path)
+    server = _server_for_api(api)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        _, _, created = _json_request(
+            base_url,
+            "/api/instrument-sync/schedules",
+            method="POST",
+            payload={
+                "name": "a-share once",
+                "enabled": False,
+                "source_id": "a_share",
+                "trigger": {
+                    "type": "once",
+                    "run_at": "2026-05-25T09:00:00+08:00",
+                },
+            },
+        )
+        schedule_id = created["schedule_id"]
+        _, _, listed = _json_request(base_url, "/api/instrument-sync/schedules")
+        _, _, enabled = _json_request(
+            base_url,
+            f"/api/instrument-sync/schedules/{schedule_id}/enable",
+            method="POST",
+            payload={},
+        )
+        _, _, disabled = _json_request(
+            base_url,
+            f"/api/instrument-sync/schedules/{schedule_id}/disable",
+            method="POST",
+            payload={},
+        )
+        _, _, deleted = _json_request(
+            base_url,
+            f"/api/instrument-sync/schedules/{schedule_id}",
+            method="DELETE",
+        )
+
+        assert listed["schedules"][0]["schedule_id"] == schedule_id
+        assert enabled["enabled"] is True
+        assert disabled["enabled"] is False
+        assert deleted == {"deleted": schedule_id}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_kline_bars_uses_config_default_window_size_when_limit_is_omitted(tmp_path: Path):
     server = _server(tmp_path, row_count=5, default_window_size=4)
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
