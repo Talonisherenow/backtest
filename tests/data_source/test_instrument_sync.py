@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from threading import Event, Thread
 
 import pandas as pd
 import pytest
@@ -12,6 +13,7 @@ from backtest.data_source.instrument_sync import (
     InstrumentCatalogItem,
     InstrumentSyncScheduleService,
     InstrumentSyncScheduleStore,
+    InstrumentSyncScheduler,
     InstrumentSyncService,
     UniverseCsvInstrumentCatalogProvider,
     source_definition_from_spec,
@@ -402,3 +404,174 @@ def test_instrument_sync_schedule_failure_disables_exhausted_one_shot(tmp_path: 
     assert runs[0]["error"] == "sync failed"
     assert hasattr(run_snapshot, "result_json")
     assert runs[0]["result"] is None
+
+
+def test_instrument_sync_schedule_past_one_shot_is_not_persisted_enabled(
+    tmp_path: Path,
+):
+    spec = _spec(tmp_path)
+    service = InstrumentSyncScheduleService(
+        store=InstrumentSyncScheduleStore(tmp_path / "schedules.sqlite"),
+        config=DataSourceServerConfig(sources=[spec]),
+        sync_source=lambda source_id: pytest.fail("sync should not run"),
+        now=lambda: datetime(2026, 5, 25, 9, 0, 0),
+    )
+
+    created = service.create(
+        {
+            "name": "past bitget once",
+            "enabled": True,
+            "source_id": "bitget",
+            "trigger": {
+                "type": "once",
+                "run_at": "2026-05-24T09:00:00+08:00",
+            },
+        }
+    )
+    enable_target = service.create(
+        {
+            "name": "disabled past bitget once",
+            "enabled": False,
+            "source_id": "bitget",
+            "trigger": {
+                "type": "once",
+                "run_at": "2026-05-24T09:00:00+08:00",
+            },
+        }
+    )
+    enabled = service.enable(enable_target.schedule_id)
+
+    assert created.enabled is False
+    assert created.config.enabled is False
+    assert created.status == "disabled"
+    assert created.next_run_at is None
+    assert enabled.enabled is False
+    assert enabled.config.enabled is False
+    assert enabled.status == "disabled"
+    assert enabled.next_run_at is None
+
+
+def test_instrument_sync_schedule_rejects_concurrent_run_now_for_same_schedule(
+    tmp_path: Path,
+):
+    spec = _spec(tmp_path)
+    started = Event()
+    release = Event()
+    first_result: list[dict[str, object]] = []
+    first_error: list[BaseException] = []
+
+    def sync_source(source_id: str) -> dict[str, object]:
+        if started.is_set():
+            raise RuntimeError("overlapped sync")
+        started.set()
+        assert release.wait(timeout=5)
+        return {
+            "source_id": source_id,
+            "status": "success",
+            "created": 1,
+            "updated": 0,
+            "unchanged": 0,
+            "failed": 0,
+            "total": 1,
+            "tag_id": source_id,
+            "synced_at": "2026-05-25T09:00:00",
+        }
+
+    service = InstrumentSyncScheduleService(
+        store=InstrumentSyncScheduleStore(tmp_path / "schedules.sqlite"),
+        config=DataSourceServerConfig(sources=[spec]),
+        sync_source=sync_source,
+        now=lambda: datetime(2026, 5, 25, 9, 0, 0),
+    )
+    created = service.create(
+        {
+            "name": "bitget manual",
+            "enabled": False,
+            "source_id": "bitget",
+            "trigger": {
+                "type": "once",
+                "run_at": "2026-05-25T09:00:00+08:00",
+            },
+        }
+    )
+
+    def run_first() -> None:
+        try:
+            first_result.append(service.run_now(created.schedule_id))
+        except BaseException as exc:
+            first_error.append(exc)
+
+    thread = Thread(target=run_first)
+    thread.start()
+    assert started.wait(timeout=5)
+    with pytest.raises(ValueError, match="already running"):
+        service.run_now(created.schedule_id)
+    release.set()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert first_error == []
+    assert first_result[0]["status"] == "success"
+    assert service.runs(created.schedule_id)["runs"][0]["status"] == "success"
+
+
+def test_instrument_sync_schedule_delete_removes_run_history(tmp_path: Path):
+    spec = _spec(tmp_path)
+    service = InstrumentSyncScheduleService(
+        store=InstrumentSyncScheduleStore(tmp_path / "schedules.sqlite"),
+        config=DataSourceServerConfig(sources=[spec]),
+        sync_source=lambda source_id: {
+            "source_id": source_id,
+            "status": "success",
+            "created": 1,
+            "updated": 0,
+            "unchanged": 0,
+            "failed": 0,
+            "total": 1,
+            "tag_id": source_id,
+            "synced_at": "2026-05-25T09:00:00",
+        },
+        now=lambda: datetime(2026, 5, 25, 9, 0, 0),
+    )
+    created = service.create(
+        {
+            "name": "bitget delete",
+            "enabled": False,
+            "source_id": "bitget",
+            "trigger": {
+                "type": "once",
+                "run_at": "2026-05-25T09:00:00+08:00",
+            },
+        }
+    )
+    service.run_now(created.schedule_id)
+
+    service.delete(created.schedule_id)
+
+    assert service.store.runs(created.schedule_id) == []
+
+
+def test_instrument_sync_scheduler_can_restart_after_stop():
+    class FakeService:
+        def __init__(self) -> None:
+            self.ticks = 0
+            self.ticked = Event()
+
+        def tick(self) -> None:
+            self.ticks += 1
+            self.ticked.set()
+
+    service = FakeService()
+    scheduler = InstrumentSyncScheduler(service=service, poll_seconds=0.01)
+
+    scheduler.start()
+    assert service.ticked.wait(timeout=1)
+    scheduler.stop()
+    first_ticks = service.ticks
+    service.ticked.clear()
+
+    scheduler.start()
+    assert service.ticked.wait(timeout=1)
+    scheduler.stop()
+
+    assert service.ticks > first_ticks

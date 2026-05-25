@@ -66,6 +66,7 @@ def _api(
             sources=[spec],
             default_window_size=default_window_size,
             api_token=api_token,
+            schedule_db_path=tmp_path / "data_source_schedules.sqlite",
         ),
         DataSourceJobRegistry(
             lambda config: type(
@@ -190,7 +191,7 @@ def test_instrument_sync_schedule_http_routes(tmp_path: Path):
                 "source_id": "a_share",
                 "trigger": {
                     "type": "once",
-                    "run_at": "2026-05-25T09:00:00+08:00",
+                    "run_at": "2099-05-25T09:00:00+08:00",
                 },
             },
         )

@@ -531,6 +531,10 @@ class InstrumentSyncScheduleStore:
             )
             if cursor.rowcount == 0:
                 raise ValueError(f"Unknown instrument sync schedule: {schedule_id}")
+            conn.execute(
+                "DELETE FROM instrument_sync_schedule_runs WHERE schedule_id = ?",
+                (schedule_id,),
+            )
 
     def record_run(
         self,
@@ -669,6 +673,8 @@ class InstrumentSyncScheduleService:
         self.config = config
         self.sync_source = sync_source
         self.now = now
+        self._run_lock = threading.Lock()
+        self._running_schedule_ids: set[str] = set()
 
     def list(self) -> dict[str, list[dict[str, Any]]]:
         return {"schedules": [snapshot.to_dict() for snapshot in self.store.list()]}
@@ -682,6 +688,7 @@ class InstrumentSyncScheduleService:
         next_run_at = (
             compute_next_run_at(config, now=self.now(), run_count=0) if config.enabled else None
         )
+        config, next_run_at = _disable_enabled_without_next_run(config, next_run_at)
         return self.store.create(config, next_run_at=next_run_at)
 
     def update(
@@ -699,6 +706,7 @@ class InstrumentSyncScheduleService:
             if config.enabled
             else None
         )
+        config, next_run_at = _disable_enabled_without_next_run(config, next_run_at)
         return self.store.update_config(schedule_id, config, next_run_at=next_run_at)
 
     def delete(self, schedule_id: str) -> dict[str, str]:
@@ -709,6 +717,7 @@ class InstrumentSyncScheduleService:
         current = self.store.get(schedule_id)
         config = current.config.model_copy(update={"enabled": True})
         next_run_at = compute_next_run_at(config, now=self.now(), run_count=current.run_count)
+        config, next_run_at = _disable_enabled_without_next_run(config, next_run_at)
         return self.store.update_config(schedule_id, config, next_run_at=next_run_at)
 
     def disable(self, schedule_id: str) -> InstrumentSyncScheduleSnapshot:
@@ -738,8 +747,18 @@ class InstrumentSyncScheduleService:
         *,
         due_at: datetime,
     ) -> dict[str, Any]:
-        triggered_at = self.now()
+        self._enter_run(snapshot.schedule_id)
         try:
+            triggered_at = self.now()
+            self.store.update_state(
+                snapshot.schedule_id,
+                enabled=snapshot.enabled,
+                status="running",
+                run_count=snapshot.run_count,
+                next_run_at=snapshot.next_run_at,
+                last_run_at=snapshot.last_run_at,
+                last_error=snapshot.last_error,
+            )
             result = self.sync_source(snapshot.config.source_id)
             next_count = snapshot.run_count + 1
             next_run_at = (
@@ -773,6 +792,7 @@ class InstrumentSyncScheduleService:
             )
             return result
         except Exception as exc:
+            triggered_at = self.now()
             self.store.record_run(
                 schedule_id=snapshot.schedule_id,
                 due_at=due_at,
@@ -802,7 +822,18 @@ class InstrumentSyncScheduleService:
                 last_error=str(exc),
             )
             raise
+        finally:
+            self._exit_run(snapshot.schedule_id)
 
+    def _enter_run(self, schedule_id: str) -> None:
+        with self._run_lock:
+            if schedule_id in self._running_schedule_ids:
+                raise ValueError(f"Instrument sync schedule already running: {schedule_id}")
+            self._running_schedule_ids.add(schedule_id)
+
+    def _exit_run(self, schedule_id: str) -> None:
+        with self._run_lock:
+            self._running_schedule_ids.discard(schedule_id)
 
 class InstrumentSyncScheduler:
     def __init__(self, *, service: InstrumentSyncScheduleService, poll_seconds: float) -> None:
@@ -814,6 +845,7 @@ class InstrumentSyncScheduler:
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
+        self._stop.clear()
         self._thread = Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -884,6 +916,15 @@ def _deep_update(target: dict[str, Any], patch: dict[str, Any]) -> None:
             _deep_update(target[key], value)
         else:
             target[key] = value
+
+
+def _disable_enabled_without_next_run(
+    config: InstrumentSyncScheduleConfig,
+    next_run_at: datetime | None,
+) -> tuple[InstrumentSyncScheduleConfig, datetime | None]:
+    if config.enabled and next_run_at is None:
+        return config.model_copy(update={"enabled": False}), None
+    return config, next_run_at
 
 
 def _datetime_lte(left: datetime, right: datetime) -> bool:
