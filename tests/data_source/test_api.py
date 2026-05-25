@@ -185,6 +185,30 @@ def test_api_exposes_instrument_and_tag_methods(tmp_path: Path):
     assert filtered["instruments"][0]["tags"][0]["name"] == "Watchlist"
 
 
+def test_api_exposes_instrument_source_sync_methods(tmp_path: Path):
+    api = _api(tmp_path)
+    spec = api.config.source("a_share")
+    universe = tmp_path / "a_share.csv"
+    pd.DataFrame(
+        [{"symbol": "000001.SZ", "name": "平安银行", "exchange": "SZ", "industry": "bank"}]
+    ).to_csv(universe, index=False)
+    object.__setattr__(spec, "universe_path", universe)
+    api.instrument_sync_service = None
+
+    sources = api.instrument_sources()
+    result = api.run_instrument_sync({"source_id": "a_share"})
+    instruments = api.instruments(source_id="a_share")
+    tags = api.instrument_tags()
+
+    assert sources["sources"][0]["provider_type"] == "universe_csv"
+    assert result["source_id"] == "a_share"
+    assert result["created"] == 1
+    assert instruments["instruments"][0]["instrument_id"] == "A_SHARE:000001.SZ"
+    assert instruments["instruments"][0]["symbol"] == "000001.SZ"
+    assert tags["tags"][0]["tag_id"] == "a_share"
+    assert tags["tags"][0]["member_count"] == 1
+
+
 def test_submit_job_normalizes_path_fields_and_exposes_job_snapshots(tmp_path: Path):
     captured = {}
 

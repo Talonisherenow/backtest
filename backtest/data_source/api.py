@@ -12,6 +12,7 @@ from backtest.data.jobs import DataSyncJobConfig
 from backtest.data.metadata import MetadataStore
 from backtest.data.tasks import CrawlTaskManager
 from backtest.data_source.config import DataSourceServerConfig, DataSourceSpec
+from backtest.data_source.instrument_sync import InstrumentSyncService
 from backtest.data_source.jobs import DataSourceJobRegistry
 from backtest.data_source.schedules import DataSourceScheduleService
 
@@ -25,6 +26,7 @@ class DataSourceApi:
         self.config = config
         self.job_registry = job_registry
         self.schedule_service: DataSourceScheduleService | None = None
+        self.instrument_sync_service: InstrumentSyncService | None = None
         self.kline_service = KlineCacheService(
             sources=[
                 KlineSource(
@@ -43,6 +45,15 @@ class DataSourceApi:
 
     def data_sources(self) -> dict[str, list[dict[str, object]]]:
         return {"sources": [spec.public_dict() for spec in self.config.sources]}
+
+    def instrument_sources(self) -> dict[str, list[dict[str, object]]]:
+        return self._instrument_sync().sources()
+
+    def run_instrument_sync(self, payload: dict[str, Any]) -> dict[str, object]:
+        source_id = payload.get("source_id")
+        if not source_id:
+            raise ValueError("source_id is required")
+        return self._instrument_sync().sync_source(str(source_id))
 
     def kline_manifest(self) -> dict[str, Any]:
         return self.kline_service.manifest(default_window_size=self.config.default_window_size)
@@ -301,11 +312,17 @@ class DataSourceApi:
         return CrawlTaskManager(self._metadata(spec))
 
     def _instrument_store(self, source_id: str | None = None) -> InstrumentStore:
-        if source_id:
-            return InstrumentStore(self._metadata(self.config.source(source_id)))
         if not self.config.sources:
             raise ValueError("No data sources configured")
         return InstrumentStore(self._metadata(self.config.sources[0]))
+
+    def _instrument_sync(self) -> InstrumentSyncService:
+        if self.instrument_sync_service is None:
+            self.instrument_sync_service = InstrumentSyncService(
+                config=self.config,
+                store_factory=lambda: self._instrument_store(None),
+            )
+        return self.instrument_sync_service
 
     def _schedules(self) -> DataSourceScheduleService:
         if self.schedule_service is None:

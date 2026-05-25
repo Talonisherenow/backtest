@@ -419,6 +419,38 @@ def test_instrument_http_routes(tmp_path: Path):
         server.server_close()
 
 
+def test_instrument_source_sync_http_routes(tmp_path: Path):
+    api = _api(tmp_path)
+    spec = api.config.source("a_share")
+    universe = tmp_path / "a_share.csv"
+    pd.DataFrame(
+        [{"symbol": "000001.SZ", "name": "平安银行", "exchange": "SZ", "industry": "bank"}]
+    ).to_csv(universe, index=False)
+    object.__setattr__(spec, "universe_path", universe)
+
+    server = _server_for_api(api)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        _, _, sources = _json_request(base_url, "/api/instrument-sources")
+        _, _, sync_result = _json_request(
+            base_url,
+            "/api/instrument-sync/run",
+            method="POST",
+            payload={"source_id": "a_share"},
+        )
+        _, _, instruments = _json_request(base_url, "/api/instruments?source_id=a_share")
+        _, _, tags = _json_request(base_url, "/api/instrument-tags")
+
+        assert sources["sources"][0]["source_id"] == "a_share"
+        assert sources["sources"][0]["provider_type"] == "universe_csv"
+        assert sync_result["created"] == 1
+        assert instruments["total"] == 1
+        assert tags["tags"][0]["tag_id"] == "a_share"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_server_requires_bearer_token_when_configured(tmp_path: Path):
     server = _server(tmp_path, api_token="secret-token")
     base_url = f"http://127.0.0.1:{server.server_address[1]}"

@@ -35,6 +35,8 @@ def make_data_source_handler(api: DataSourceApi):
                     self._send_json(200, api.health())
                 elif parsed.path == "/api/data-sources":
                     self._send_json(200, api.data_sources())
+                elif parsed.path == "/api/instrument-sources":
+                    self._send_json(200, api.instrument_sources())
                 elif parsed.path == "/api/kline/manifest":
                     self._send_json(200, api.kline_manifest())
                 elif parsed.path == "/api/kline/bars":
@@ -95,6 +97,8 @@ def make_data_source_handler(api: DataSourceApi):
                     self._send_json(200, api.run_schedule_now(self._schedule_id_for_suffix(parsed.path, "/run-now")))
                 elif parsed.path == "/api/data/jobs":
                     self._send_json(200, api.submit_job(self._read_json()))
+                elif parsed.path == "/api/instrument-sync/run":
+                    self._send_json(200, api.run_instrument_sync(self._read_json()))
                 elif parsed.path == "/api/data/retry-failed":
                     payload = self._read_json()
                     source_id = payload.get("source_id")
