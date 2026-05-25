@@ -47,6 +47,17 @@ class FakeExchange:
         }
 
 
+class FailingUpsertStore:
+    def ensure_tag(self, payload):
+        return None
+
+    def upsert_instrument(self, payload):
+        raise RuntimeError("db locked")
+
+    def add_tag_members(self, tag_id, instrument_ids):
+        pytest.fail("members should not be added after upsert failure")
+
+
 def _spec(
     tmp_path: Path,
     *,
@@ -118,6 +129,18 @@ def test_universe_csv_provider_normalizes_a_share_rows(tmp_path: Path):
     assert items[0].market == "a_share"
     assert items[0].exchange == "SZ"
     assert items[0].metadata["industry"] == "bank"
+
+
+def test_universe_csv_provider_rejects_missing_file(tmp_path: Path):
+    missing = tmp_path / "missing.csv"
+    provider = UniverseCsvInstrumentCatalogProvider(
+        source_id="a_share",
+        asset_class="equity",
+        universe_path=missing,
+    )
+
+    with pytest.raises(ValueError, match="Universe CSV does not exist:"):
+        provider.list_instruments()
 
 
 def test_source_definition_maps_catalog_source_to_provider_config(tmp_path: Path):
@@ -195,6 +218,23 @@ def test_sync_service_upserts_instruments_and_source_tag(tmp_path: Path):
         "BITGET:BTC/USDT",
         "BITGET:ETH/USDT:USDT",
     ]
+
+
+def test_sync_service_reraises_upsert_errors(tmp_path: Path):
+    spec = _spec(tmp_path)
+    service = InstrumentSyncService(
+        config=DataSourceServerConfig(sources=[spec]),
+        store_factory=FailingUpsertStore,
+        provider_factory=lambda definition: CCXTInstrumentCatalogProvider(
+            source_id=definition.source_id,
+            asset_class=definition.asset_class,
+            exchange_id=str(definition.provider_config["exchange"]),
+            exchange=FakeExchange(),
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="db locked"):
+        service.sync_source("bitget")
 
 
 def test_sync_service_rejects_unknown_source(tmp_path: Path):

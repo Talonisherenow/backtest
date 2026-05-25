@@ -175,6 +175,8 @@ class UniverseCsvInstrumentCatalogProvider:
         self.universe_path = Path(universe_path)
 
     def list_instruments(self) -> list[InstrumentCatalogItem]:
+        if not self.universe_path.exists():
+            raise ValueError(f"Universe CSV does not exist: {self.universe_path}")
         frame = pd.read_csv(self.universe_path)
         if "symbol" not in frame.columns:
             raise ValueError(f"Universe CSV must include symbol column: {self.universe_path}")
@@ -264,11 +266,7 @@ class InstrumentSyncService:
         counts = {"created": 0, "updated": 0, "unchanged": 0, "failed": 0}
         successful_ids: list[str] = []
         for item in items:
-            try:
-                result = store.upsert_instrument(item.to_instrument_payload())
-            except Exception:
-                counts["failed"] += 1
-                continue
+            result = store.upsert_instrument(item.to_instrument_payload())
             counts[result.action] += 1
             successful_ids.append(result.record.instrument_id)
 
