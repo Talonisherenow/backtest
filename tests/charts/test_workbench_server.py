@@ -79,6 +79,7 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert 'id="openInstrumentSyncDialogButton"' in html
     assert ">Sources</button>" in html
     assert '<dialog id="instrumentSyncDialog"' in html
+    assert 'class="modal-dialog wide-modal"' in html
     assert 'id="instrumentSourceRows"' in html
     assert 'id="instrumentSyncScheduleRows"' in html
     assert 'id="instrumentSyncScheduleForm"' in html
@@ -102,6 +103,7 @@ def test_render_instrument_manager_html_uses_instrument_api():
     assert 'document.getElementById("instrumentPreviousPageButton").addEventListener("click"' in html
     assert 'document.getElementById("instrumentNextPageButton").addEventListener("click"' in html
     assert 'document.getElementById("instrumentPageSizeSelect").addEventListener("change"' in html
+    assert "overflow-wrap: anywhere;" in html
     assert 'fetch(dataApiUrl("/api/instrument-tags"), instrumentRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/instruments"), instrumentMutationOptions("POST", payload))' in html
     assert 'fetch(dataApiUrl("/api/instrument-sources"), instrumentRequestOptions())' in html

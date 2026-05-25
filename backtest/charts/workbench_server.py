@@ -597,6 +597,7 @@ def render_instrument_manager_html(
       color: var(--muted);
       font-size: 13px;
       margin-top: 2px;
+      overflow-wrap: anywhere;
     }
     .row-actions {
       display: flex;
@@ -809,8 +810,8 @@ def render_instrument_manager_html(
       </div>
     </form>
   </dialog>
-  <dialog id="instrumentSyncDialog" class="modal-dialog" aria-labelledby="instrumentSyncDialogTitle">
-    <div class="modal-card wide-modal">
+  <dialog id="instrumentSyncDialog" class="modal-dialog wide-modal" aria-labelledby="instrumentSyncDialogTitle">
+    <div class="modal-card">
       <div class="modal-header">
         <h2 id="instrumentSyncDialogTitle">Instrument Sources</h2>
         <button id="closeInstrumentSyncDialogButton" type="button">Close</button>
