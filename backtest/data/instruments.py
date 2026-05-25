@@ -38,6 +38,11 @@ class InstrumentPage(BaseModel):
     offset: int
 
 
+class InstrumentUpsertResult(BaseModel):
+    action: str
+    record: InstrumentRecord
+
+
 class InstrumentTagRecord(BaseModel):
     tag_id: str
     name: str
@@ -217,6 +222,39 @@ class InstrumentStore:
             raise ValueError(f"Instrument already exists: {data.instrument_id}") from exc
         return self.get_instrument(data.instrument_id)
 
+    def upsert_instrument(self, payload: dict[str, Any]) -> InstrumentUpsertResult:
+        data = InstrumentCreate.model_validate(payload)
+        try:
+            existing = self.get_instrument(data.instrument_id)
+        except ValueError:
+            return InstrumentUpsertResult(
+                action="created",
+                record=self.create_instrument(data.model_dump()),
+            )
+
+        compare_fields = (
+            "symbol",
+            "name",
+            "market",
+            "exchange",
+            "asset_class",
+            "quote_currency",
+            "source_id",
+            "metadata",
+        )
+        updates = {
+            field_name: getattr(data, field_name)
+            for field_name in compare_fields
+            if getattr(existing, field_name) != getattr(data, field_name)
+        }
+        if not updates:
+            return InstrumentUpsertResult(action="unchanged", record=existing)
+
+        return InstrumentUpsertResult(
+            action="updated",
+            record=self.update_instrument(data.instrument_id, updates),
+        )
+
     def get_instrument(self, instrument_id: str) -> InstrumentRecord:
         normalized = _normalize_instrument_id(instrument_id)
         with self.metadata.connect() as conn:
@@ -373,6 +411,13 @@ class InstrumentStore:
         except sqlite3.IntegrityError as exc:
             raise ValueError(f"Tag already exists: {data.tag_id}") from exc
         return self.get_tag(data.tag_id)
+
+    def ensure_tag(self, payload: dict[str, Any]) -> InstrumentTagRecord:
+        data = InstrumentTagCreate.model_validate(payload)
+        try:
+            return self.get_tag(data.tag_id)
+        except ValueError:
+            return self.create_tag(data.model_dump())
 
     def get_tag(self, tag_id: str) -> InstrumentTagRecord:
         normalized = _normalize_tag_id(tag_id)

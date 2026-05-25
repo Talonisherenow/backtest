@@ -54,3 +54,80 @@ def test_instrument_store_manages_tags_and_memberships(tmp_path: Path):
     assert [member.instrument_id for member in replaced.members] == ["000001.SZ", "600519.SH"]
     assert [instrument.instrument_id for instrument in filtered.instruments] == ["000001.SZ"]
     assert tags[0].member_count == 1
+
+
+def test_instrument_store_upsert_reports_create_update_and_unchanged(tmp_path: Path):
+    store = InstrumentStore(MetadataStore(tmp_path / "metadata.sqlite"))
+
+    created = store.upsert_instrument(
+        {
+            "instrument_id": "bitget:btc/usdt",
+            "symbol": "btc/usdt",
+            "name": "Bitcoin",
+            "market": "crypto_spot",
+            "exchange": "bitget",
+            "asset_class": "crypto",
+            "quote_currency": "usdt",
+            "source_id": "bitget",
+            "metadata": {"base": "BTC"},
+        }
+    )
+    unchanged = store.upsert_instrument(
+        {
+            "instrument_id": "BITGET:BTC/USDT",
+            "symbol": "BTC/USDT",
+            "name": "Bitcoin",
+            "market": "crypto_spot",
+            "exchange": "bitget",
+            "asset_class": "crypto",
+            "quote_currency": "USDT",
+            "source_id": "bitget",
+            "metadata": {"base": "BTC"},
+        }
+    )
+    updated = store.upsert_instrument(
+        {
+            "instrument_id": "BITGET:BTC/USDT",
+            "symbol": "BTC/USDT",
+            "name": "Bitcoin USD Tether",
+            "market": "crypto_spot",
+            "exchange": "bitget",
+            "asset_class": "crypto",
+            "quote_currency": "USDT",
+            "source_id": "bitget",
+            "metadata": {"base": "BTC", "quote": "USDT"},
+        }
+    )
+
+    assert created.action == "created"
+    assert unchanged.action == "unchanged"
+    assert updated.action == "updated"
+    assert updated.record.name == "Bitcoin USD Tether"
+    assert updated.record.metadata == {"base": "BTC", "quote": "USDT"}
+
+
+def test_instrument_store_ensure_tag_returns_existing_tag_without_overwriting(tmp_path: Path):
+    store = InstrumentStore(MetadataStore(tmp_path / "metadata.sqlite"))
+
+    created = store.ensure_tag(
+        {
+            "tag_id": "bitget",
+            "name": "Bitget",
+            "description": "Synced from Bitget",
+            "color": "#1d5fd1",
+        }
+    )
+    existing = store.ensure_tag(
+        {
+            "tag_id": "bitget",
+            "name": "Bitget Markets",
+            "description": "New description",
+            "color": "#168a5a",
+        }
+    )
+
+    assert created.tag_id == "bitget"
+    assert existing.tag_id == "bitget"
+    assert existing.name == "Bitget"
+    assert existing.description == "Synced from Bitget"
+    assert existing.color == "#1d5fd1"
