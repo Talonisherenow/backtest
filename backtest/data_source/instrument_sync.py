@@ -120,7 +120,7 @@ class CCXTInstrumentCatalogProvider:
             quote = _clean_optional_text(market.get("quote"), upper=True)
             items.append(
                 InstrumentCatalogItem(
-                    instrument_id=f"{self.source_id}:{symbol}",
+                    instrument_id=_scoped_instrument_id(self.source_id, symbol),
                     symbol=symbol,
                     name=None,
                     market=self._market_type(market),
@@ -190,7 +190,7 @@ class UniverseCsvInstrumentCatalogProvider:
             exchange = _clean_optional_text(row.get("exchange"), upper=True)
             items.append(
                 InstrumentCatalogItem(
-                    instrument_id=f"{self.source_id}:{symbol}",
+                    instrument_id=_scoped_instrument_id(self.source_id, symbol),
                     symbol=symbol,
                     name=_clean_optional_text(row.get("name")),
                     market=self.source_id,
@@ -277,7 +277,7 @@ class InstrumentSyncService:
 
         return {
             "source_id": definition.source_id,
-            "status": "partial" if counts["failed"] else "ok",
+            "status": "partial" if counts["failed"] else "success",
             "created": counts["created"],
             "updated": counts["updated"],
             "unchanged": counts["unchanged"],

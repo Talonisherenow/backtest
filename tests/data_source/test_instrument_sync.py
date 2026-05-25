@@ -52,6 +52,7 @@ def _spec(
     *,
     source_id: str = "bitget",
     catalog_source: str = "ccxt:bitget",
+    universe_path: Path | None = None,
 ) -> DataSourceSpec:
     bars_root = tmp_path / source_id / "bars"
     bars_root.mkdir(parents=True)
@@ -63,6 +64,7 @@ def _spec(
         metadata_path=tmp_path / "metadata.sqlite",
         adjust="none" if source_id == "bitget" else "qfq",
         catalog_source=catalog_source,
+        universe_path=universe_path,
     )
 
 
@@ -77,8 +79,8 @@ def test_ccxt_provider_normalizes_active_markets():
     items = provider.list_instruments()
 
     assert [item.instrument_id for item in items] == [
-        "bitget:BTC/USDT",
-        "bitget:ETH/USDT:USDT",
+        "BITGET:BTC/USDT",
+        "BITGET:ETH/USDT:USDT",
     ]
     assert items[0].symbol == "BTC/USDT"
     assert items[0].market == "crypto_spot"
@@ -110,7 +112,7 @@ def test_universe_csv_provider_normalizes_a_share_rows(tmp_path: Path):
 
     items = provider.list_instruments()
 
-    assert items[0].instrument_id == "a_share:000001.SZ"
+    assert items[0].instrument_id == "A_SHARE:000001.SZ"
     assert items[0].symbol == "000001.SZ"
     assert items[0].name == "平安银行"
     assert items[0].market == "a_share"
@@ -126,6 +128,38 @@ def test_source_definition_maps_catalog_source_to_provider_config(tmp_path: Path
     assert definition.provider_config == {"exchange": "bitget"}
     assert definition.default_tag_id == "bitget"
     assert definition.default_tag_name == "Bitget"
+
+
+def test_source_definition_maps_akshare_universe_to_csv_provider(tmp_path: Path):
+    universe = tmp_path / "a_share.csv"
+    universe.write_text("symbol,name\n000001.SZ,bank\n")
+
+    definition = source_definition_from_spec(
+        _spec(
+            tmp_path,
+            source_id="a_share",
+            catalog_source="akshare",
+            universe_path=universe,
+        )
+    )
+
+    assert definition.source_id == "a_share"
+    assert definition.provider_type == "universe_csv"
+    assert definition.provider_config == {"path": str(universe)}
+    assert definition.default_tag_id == "a_share"
+    assert definition.default_tag_name == "A-share"
+
+
+def test_source_definition_rejects_akshare_without_universe(tmp_path: Path):
+    with pytest.raises(ValueError, match="Universe path is required"):
+        source_definition_from_spec(
+            _spec(tmp_path, source_id="a_share", catalog_source="akshare")
+        )
+
+
+def test_source_definition_rejects_unsupported_catalog_source(tmp_path: Path):
+    with pytest.raises(ValueError, match="Unsupported catalog source"):
+        source_definition_from_spec(_spec(tmp_path, catalog_source="custom"))
 
 
 def test_sync_service_upserts_instruments_and_source_tag(tmp_path: Path):
@@ -150,6 +184,7 @@ def test_sync_service_upserts_instruments_and_source_tag(tmp_path: Path):
     tags = store.list_tags()
     members = store.tag_members("bitget")
     assert first["created"] == 2
+    assert first["status"] == "success"
     assert first["updated"] == 0
     assert second["created"] == 0
     assert second["unchanged"] == 2
