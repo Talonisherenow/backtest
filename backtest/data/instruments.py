@@ -226,7 +226,9 @@ class InstrumentStore:
         data = InstrumentCreate.model_validate(payload)
         try:
             existing = self.get_instrument(data.instrument_id)
-        except ValueError:
+        except ValueError as exc:
+            if not _is_unknown_instrument_error(exc, data.instrument_id):
+                raise
             return InstrumentUpsertResult(
                 action="created",
                 record=self.create_instrument(data.model_dump()),
@@ -242,9 +244,10 @@ class InstrumentStore:
             "source_id",
             "metadata",
         )
+        explicit_fields = set(payload) & set(compare_fields)
         updates = {
             field_name: getattr(data, field_name)
-            for field_name in compare_fields
+            for field_name in explicit_fields
             if getattr(existing, field_name) != getattr(data, field_name)
         }
         if not updates:
@@ -416,7 +419,9 @@ class InstrumentStore:
         data = InstrumentTagCreate.model_validate(payload)
         try:
             return self.get_tag(data.tag_id)
-        except ValueError:
+        except ValueError as exc:
+            if not _is_unknown_tag_error(exc, data.tag_id):
+                raise
             return self.create_tag(data.model_dump())
 
     def get_tag(self, tag_id: str) -> InstrumentTagRecord:
@@ -703,3 +708,11 @@ def _normalize_pagination(limit: int, offset: int) -> tuple[int, int]:
     if offset < 0:
         raise ValueError("offset must be greater than or equal to 0")
     return min(limit, 500), offset
+
+
+def _is_unknown_instrument_error(exc: ValueError, instrument_id: str) -> bool:
+    return str(exc) == f"Unknown instrument: {instrument_id}"
+
+
+def _is_unknown_tag_error(exc: ValueError, tag_id: str) -> bool:
+    return str(exc) == f"Unknown tag: {tag_id}"

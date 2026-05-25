@@ -131,3 +131,63 @@ def test_instrument_store_ensure_tag_returns_existing_tag_without_overwriting(tm
     assert existing.name == "Bitget"
     assert existing.description == "Synced from Bitget"
     assert existing.color == "#1d5fd1"
+
+
+def test_instrument_store_upsert_partial_payload_preserves_existing_fields(tmp_path: Path):
+    store = InstrumentStore(MetadataStore(tmp_path / "metadata.sqlite"))
+    store.create_instrument(
+        {
+            "instrument_id": "BITGET:BTC/USDT",
+            "symbol": "BTC/USDT",
+            "name": "Bitcoin",
+            "market": "crypto_spot",
+            "exchange": "bitget",
+            "asset_class": "crypto",
+            "quote_currency": "USDT",
+            "source_id": "bitget",
+            "metadata": {"base": "BTC"},
+        }
+    )
+
+    updated = store.upsert_instrument(
+        {
+            "instrument_id": "BITGET:BTC/USDT",
+            "metadata": {"base": "BTC", "rank": 1},
+        }
+    )
+
+    assert updated.action == "updated"
+    assert updated.record.symbol == "BTC/USDT"
+    assert updated.record.name == "Bitcoin"
+    assert updated.record.market == "crypto_spot"
+    assert updated.record.exchange == "bitget"
+    assert updated.record.asset_class == "crypto"
+    assert updated.record.quote_currency == "USDT"
+    assert updated.record.source_id == "bitget"
+    assert updated.record.metadata == {"base": "BTC", "rank": 1}
+
+
+def test_instrument_store_upsert_and_ensure_tag_reraise_non_unknown_value_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    store = InstrumentStore(MetadataStore(tmp_path / "metadata.sqlite"))
+
+    def fail_create_instrument(payload: dict[str, object]):
+        pytest.fail("upsert_instrument should not create after non-unknown lookup errors")
+
+    def fail_create_tag(payload: dict[str, object]):
+        pytest.fail("ensure_tag should not create after non-unknown lookup errors")
+
+    def raise_decode_failed(value: str):
+        raise ValueError("decode failed")
+
+    monkeypatch.setattr(store, "get_instrument", raise_decode_failed)
+    monkeypatch.setattr(store, "create_instrument", fail_create_instrument)
+    with pytest.raises(ValueError, match="decode failed"):
+        store.upsert_instrument({"instrument_id": "BITGET:BTC/USDT"})
+
+    monkeypatch.setattr(store, "get_tag", raise_decode_failed)
+    monkeypatch.setattr(store, "create_tag", fail_create_tag)
+    with pytest.raises(ValueError, match="decode failed"):
+        store.ensure_tag({"tag_id": "bitget", "name": "Bitget"})
