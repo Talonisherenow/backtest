@@ -52,6 +52,15 @@ class FakeExchange:
         }
 
 
+class FakeExchangeWithCurrencyPrefetch(FakeExchange):
+    def __init__(self) -> None:
+        self.has = {"fetchCurrencies": True}
+
+    def load_markets(self):
+        assert self.has["fetchCurrencies"] is False
+        return super().load_markets()
+
+
 class FailingUpsertStore:
     def ensure_tag(self, payload):
         return None
@@ -156,6 +165,21 @@ def test_ccxt_provider_normalizes_active_markets():
     assert items[0].quote_currency == "USDT"
     assert items[0].metadata["ccxt_id"] == "BTCUSDT"
     assert items[1].market == "crypto_swap"
+
+
+def test_ccxt_provider_skips_currency_prefetch_for_catalog_sync():
+    exchange = FakeExchangeWithCurrencyPrefetch()
+    provider = CCXTInstrumentCatalogProvider(
+        source_id="bitget",
+        asset_class="crypto",
+        exchange_id="bitget",
+        exchange=exchange,
+    )
+
+    items = provider.list_instruments()
+
+    assert exchange.has["fetchCurrencies"] is False
+    assert items[0].symbol == "BTC/USDT"
 
 
 def test_universe_csv_provider_normalizes_a_share_rows(tmp_path: Path):

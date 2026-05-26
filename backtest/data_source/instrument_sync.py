@@ -121,6 +121,7 @@ class CCXTInstrumentCatalogProvider:
         self.asset_class = asset_class
         self.exchange_id = exchange_id
         self.exchange = exchange if exchange is not None else self._build_exchange(exchange_id)
+        self._disable_currency_prefetch(self.exchange)
 
     def list_instruments(self) -> list[InstrumentCatalogItem]:
         markets = self.exchange.load_markets()
@@ -163,6 +164,12 @@ class CCXTInstrumentCatalogProvider:
         if exchange_cls is None:
             raise ValueError(f"Unknown ccxt exchange: {exchange_id}")
         return exchange_cls()
+
+    @staticmethod
+    def _disable_currency_prefetch(exchange: Any) -> None:
+        capabilities = getattr(exchange, "has", None)
+        if isinstance(capabilities, dict) and capabilities.get("fetchCurrencies") is True:
+            capabilities["fetchCurrencies"] = False
 
     @staticmethod
     def _market_type(market: dict[str, Any]) -> str:
