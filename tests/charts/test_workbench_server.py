@@ -173,6 +173,7 @@ def test_render_workbench_index_html_hosts_data_source_monitor():
     assert 'id="scheduleNextPageButton"' in html
     assert 'id="schedulePageSizeSelect"' in html
     assert 'id="schedulePaginationMeta"' in html
+    assert 'id="scheduleCreateButton"' in html
     assert 'id="scheduleRunPreviousPageButton"' in html
     assert 'id="scheduleRunNextPageButton"' in html
     assert 'id="scheduleRunPageSizeSelect"' in html
@@ -264,7 +265,17 @@ def test_render_workbench_index_html_supports_schedule_controls():
     assert 'id="scheduleEditUntil" type="datetime-local" step="1"' in html
     assert 'id="scheduleEditDaysOfWeekPills"' in html
     assert 'id="scheduleEditRepeatMode"' in html
-    assert 'id="scheduleEditSymbols"' in html
+    assert '<select id="scheduleEditSourceId">' in html
+    assert '<input id="scheduleEditSourceId" type="text"' not in html
+    assert 'id="scheduleEditSymbols" type="hidden"' in html
+    assert 'id="scheduleEditTargetMode" type="hidden"' in html
+    assert 'data-schedule-target-mode="symbols"' in html
+    assert 'data-schedule-target-mode="tag"' in html
+    assert 'id="scheduleInstrumentSearch"' in html
+    assert 'id="scheduleInstrumentSearchResults"' in html
+    assert 'id="scheduleSelectedInstruments"' in html
+    assert 'id="scheduleEditTagId"' in html
+    assert 'id="scheduleTagMemberPreview"' in html
     assert 'id="scheduleEditFrequencies" type="hidden"' in html
     assert 'class="frequency-multiselect" id="scheduleEditFrequencyDropdown"' in html
     assert 'id="scheduleEditFrequencyToggle"' in html
@@ -295,7 +306,10 @@ def test_render_workbench_index_html_supports_schedule_controls():
     assert "function toggleSchedule(scheduleId)" in html
     assert "function confirmScheduleToggle(schedule)" in html
     assert "window.confirm(message)" in html
+    assert "function openNewScheduleEditor()" in html
+    assert "function defaultNewScheduleConfig()" in html
     assert "function openScheduleEditor(scheduleId)" in html
+    assert "function scheduleEditorMode()" in html
     assert "function syncScheduleEditorControls()" in html
     assert "function setScheduleTriggerMode(triggerType)" in html
     assert "function selectedWeekdays()" in html
@@ -303,11 +317,50 @@ def test_render_workbench_index_html_supports_schedule_controls():
     assert "function updateFrequencySummary()" in html
     assert "function toggleFrequencyMenu()" in html
     assert "function closeFrequencyMenu()" in html
+    assert "function renderScheduleSourceOptions(selectedId)" in html
+    assert "function loadScheduleTargetTags(sourceId)" in html
+    assert "function searchScheduleInstruments()" in html
+    assert "const SCHEDULE_SELECTED_INSTRUMENT_DISPLAY_LIMIT = 20;" in html
+    assert "const SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET = 20;" in html
+    assert "const SCHEDULE_INSTRUMENT_SEARCH_PAGE_SIZE = 100;" in html
+    assert "function visibleScheduleSelectedInstruments()" in html
+    assert "function scheduleInstrumentIdentityKeys(instrument)" in html
+    assert "function scheduleInstrumentIdentityKeySet(instruments)" in html
+    assert "function scheduleInstrumentAlreadySelected(instrument, selectedKeys)" in html
+    assert '`symbol:${symbolKey}`' in html
+    assert "function enrichSelectedScheduleInstruments(instruments)" in html
+    assert "name: current.name || detail.name || \"\"," in html
+    assert "function scheduleSelectedInstrumentsForDisplay()" in html
+    assert "state.selectedInstruments.filter((instrument) => scheduleInstrumentMatchesQuery(instrument, state.searchQuery))" in html
+    assert "function scheduleSearchResultsForDisplay()" in html
+    assert "function visibleScheduleSearchResults()" in html
+    assert ".slice(0, SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET)" in html
+    assert "return state.searchResults.filter((instrument) => !scheduleInstrumentAlreadySelected(instrument, selectedKeys));" in html
+    assert "const visibleInstruments = visibleScheduleSelectedInstruments();" in html
+    assert "displayInstruments.length > visibleInstruments.length" in html
+    assert "&hellip; +${hiddenCount} more" in html
+    assert "No additional instruments match this search." in html
+    assert "while (!state.searchQuery && scheduleSearchResultsForDisplay().length < SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET)" in html
+    assert "enrichSelectedScheduleInstruments(state.searchResults);" in html
+    assert "function loadScheduleTagMembers()" in html
+    assert "async function fetchScheduleTagMembersFromInstruments(sourceId, tagId)" in html
+    assert "const pageSize = 500;" in html
+    assert "const effectivePageSize = Number.isFinite(responseLimit) && responseLimit > 0 ? responseLimit : pageSize;" in html
+    assert "page.length < effectivePageSize" in html
+    assert "fetchScheduleTagMembersFromInstruments(sourceId, tagId)" in html
+    assert 'params.set("tag", tagId);' in html
+    assert "function buildScheduleTargetPayload()" in html
+    assert "function syncScheduleTargetControls()" in html
+    assert "target: {" in html
+    assert 'fetch(dataApiUrl(`/api/instruments?${params.toString()}`), dataApiRequestOptions())' in html
+    assert 'fetch(dataApiUrl(`/api/instrument-tags?${params.toString()}`), dataApiRequestOptions())' in html
+    assert '`/api/instrument-tags/${encodeURIComponent(tagId)}/members?${params.toString()}`' in html
     assert "function openNativePicker(inputId)" not in html
     assert "function syncStartAtPickerLabels()" not in html
     assert "function combineDateTimeLocal(dateValue, timeValue)" not in html
     assert "function toDatetimeLocalValue(value)" in html
     assert "function saveScheduleEdits(event)" in html
+    assert 'fetch(dataApiUrl("/api/data/schedules"), dataApiMutationOptions("POST", payload))' in html
     assert "responsePayload = await response.json();" in html
     assert "responsePayload?.config?.trigger?.execution_delay_seconds" in html
     assert "does not support execution delay yet" in html

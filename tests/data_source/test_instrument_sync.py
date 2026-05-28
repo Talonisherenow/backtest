@@ -677,3 +677,25 @@ def test_instrument_sync_scheduler_can_restart_after_stop():
     scheduler.stop()
 
     assert service.ticks > first_ticks
+
+
+def test_instrument_sync_scheduler_loop_survives_tick_exception():
+    class FlakyService:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.recovered = Event()
+
+        def tick(self) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary instrument sync storage error")
+            self.recovered.set()
+
+    service = FlakyService()
+    scheduler = InstrumentSyncScheduler(service=service, poll_seconds=0.01)
+
+    scheduler.start()
+    assert service.recovered.wait(timeout=1)
+    scheduler.stop()
+
+    assert service.calls >= 2

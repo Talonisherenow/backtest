@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -621,3 +622,25 @@ def test_scheduler_tick_skips_when_previous_job_is_still_running(tmp_path: Path)
     assert updated.next_run_at is not None
     assert updated.next_run_at.isoformat() == "2026-05-18T10:00:00+08:00"
     assert service.runs(snapshot.schedule_id)["runs"][0]["status"] == "skipped"
+
+
+def test_scheduler_loop_survives_tick_exception():
+    class FlakyService:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.recovered = Event()
+
+        def tick(self) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary scheduler storage error")
+            self.recovered.set()
+
+    service = FlakyService()
+    scheduler = DataSourceScheduler(service=service, poll_seconds=0.01)
+
+    scheduler.start()
+    assert service.recovered.wait(timeout=1)
+    scheduler.stop()
+
+    assert service.calls >= 2

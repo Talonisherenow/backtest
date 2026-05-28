@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sqlite3
 import threading
@@ -22,6 +23,9 @@ from backtest.data_source.schedules import (
     TriggerConfig,
     compute_next_run_at,
 )
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -871,6 +875,8 @@ class InstrumentSyncScheduler:
         while not self._stop.is_set():
             try:
                 self.tick()
+            except Exception:
+                LOGGER.exception("Instrument sync scheduler tick failed")
             finally:
                 self._stop.wait(self.poll_seconds)
 

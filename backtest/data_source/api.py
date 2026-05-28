@@ -204,8 +204,41 @@ class DataSourceApi:
         return {"deleted": instrument_id.strip().upper()}
 
     def instrument_tags(self, *, source_id: str | None = None) -> dict[str, Any]:
-        self._validate_source_id(source_id)
-        return {"tags": self._jsonify(self._instrument_store(source_id).list_tags())}
+        effective_source_id = self._validate_source_id(source_id)
+        store = self._instrument_store(effective_source_id)
+        tags = store.list_tags()
+        if effective_source_id is None:
+            return {"tags": self._jsonify(tags)}
+        filtered_tags = []
+        for tag in tags:
+            source_member_count = 0
+            for member in store.tag_members(tag.tag_id).members:
+                record = store.get_instrument(member.instrument_id)
+                if record.source_id == effective_source_id:
+                    source_member_count += 1
+            if source_member_count or tag.tag_id == effective_source_id:
+                filtered_tags.append(tag.model_copy(update={"member_count": source_member_count}))
+        return {"tags": self._jsonify(filtered_tags)}
+
+    def instrument_tag_members(
+        self,
+        tag_id: str,
+        *,
+        source_id: str | None = None,
+    ) -> dict[str, Any]:
+        effective_source_id = self._validate_source_id(source_id)
+        store = self._instrument_store(effective_source_id)
+        members = self._jsonify(store.tag_members(tag_id))
+        if effective_source_id is None:
+            return members
+        filtered_members = []
+        for member in members["members"]:
+            record = store.get_instrument(member["instrument_id"])
+            if record.source_id == effective_source_id:
+                filtered_members.append(member)
+        members["members"] = filtered_members
+        members["tag"]["member_count"] = len(filtered_members)
+        return members
 
     def create_instrument_tag(self, payload: dict[str, Any]) -> dict[str, Any]:
         source_id = self._payload_source_id(payload)
@@ -350,6 +383,44 @@ class DataSourceApi:
     def schedule_runs(self, schedule_id: str) -> dict[str, list[dict[str, Any]]]:
         return self._schedules().runs(schedule_id)
 
+    def resolve_schedule_symbols(
+        self,
+        source_id: str,
+        target: Any | None,
+        fallback_symbols: list[str],
+    ) -> list[str]:
+        effective_source_id = self._validate_source_id(source_id)
+        if target is None:
+            if not fallback_symbols:
+                raise ValueError("symbols or target is required")
+            return list(fallback_symbols)
+        mode = self._target_value(target, "mode")
+        store = self._instrument_store(effective_source_id)
+        if mode == "symbols":
+            instrument_ids = self._target_value(target, "instrument_ids") or []
+            symbols: list[str] = []
+            for instrument_id in instrument_ids:
+                record = store.get_instrument(str(instrument_id))
+                self._ensure_instrument_source(record, effective_source_id)
+                symbols.append(self._record_symbol(record))
+            if not symbols:
+                raise ValueError("instrument_ids are required for symbols target")
+            return symbols
+        if mode == "tag":
+            tag_id = self._target_value(target, "tag_id")
+            if not tag_id:
+                raise ValueError("tag_id is required for tag target")
+            members = store.tag_members(str(tag_id)).members
+            symbols = []
+            for member in members:
+                record = store.get_instrument(member.instrument_id)
+                if record.source_id == effective_source_id:
+                    symbols.append(self._record_symbol(record))
+            if not symbols:
+                raise ValueError(f"Instrument list has no symbols for source: {effective_source_id}")
+            return symbols
+        raise ValueError(f"Unsupported schedule target mode: {mode}")
+
     def instrument_sync_schedules(self) -> dict[str, list[dict[str, Any]]]:
         return self._instrument_sync_schedules().list()
 
@@ -441,6 +512,20 @@ class DataSourceApi:
             return
         for instrument_id in instrument_ids:
             self._ensure_instrument_source(store.get_instrument(instrument_id), source_id)
+
+    @staticmethod
+    def _record_symbol(record: Any) -> str:
+        symbol = getattr(record, "symbol", None) or getattr(record, "instrument_id", "")
+        normalized = str(symbol).strip()
+        if not normalized:
+            raise ValueError(f"Instrument has no symbol: {getattr(record, 'instrument_id', '')}")
+        return normalized
+
+    @staticmethod
+    def _target_value(target: Any, key: str) -> Any:
+        if isinstance(target, dict):
+            return target.get(key)
+        return getattr(target, key, None)
 
     def _schedules(self) -> DataSourceScheduleService:
         if self.schedule_service is None:

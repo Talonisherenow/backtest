@@ -1914,6 +1914,12 @@ def render_workbench_index_html(
       color: var(--muted);
       font-size: 12px;
     }
+    .schedule-panel-title {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      min-width: 0;
+    }
     .schedule-panel-header strong {
       color: var(--text);
       font-size: 13px;
@@ -2169,6 +2175,87 @@ def render_workbench_index_html(
       box-shadow: 0 12px 28px rgb(21 31 43 / 18%);
     }
     .frequency-menu[hidden] { display: none; }
+    .schedule-target-field {
+      grid-column: 1 / -1;
+    }
+    .schedule-target-mode {
+      margin-bottom: 6px;
+    }
+    .schedule-target-panel {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfdff;
+    }
+    .schedule-target-panel[hidden] { display: none; }
+    .schedule-target-search-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+    }
+    .schedule-target-search-row button {
+      min-height: 32px;
+      padding: 0 12px;
+      border: 1px solid #cfe0f8;
+      border-radius: 6px;
+      background: #eef5ff;
+      color: #195bb8;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .schedule-selected-instruments,
+    .schedule-instrument-results {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .schedule-instrument-results {
+      max-height: 124px;
+      overflow: auto;
+      align-content: flex-start;
+    }
+    .schedule-instrument-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      min-height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: none;
+      cursor: pointer;
+    }
+    .schedule-instrument-chip.selected {
+      border-color: #b7d4ff;
+      background: #eef5ff;
+      color: #195bb8;
+    }
+    .schedule-instrument-chip button {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .schedule-target-meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.4;
+      text-transform: none;
+    }
     .schedule-editor-actions {
       display: flex;
       justify-content: flex-end;
@@ -2330,8 +2417,11 @@ def render_workbench_index_html(
     <div class="drawer-panel schedule-drawer-panel" id="scheduleDrawerPanel" role="tabpanel" aria-labelledby="scheduleDrawerTab">
       <section class="schedule-panel" aria-label="Data source schedules">
         <div class="schedule-panel-header">
-          <strong>Schedules</strong>
-          <span id="dataScheduleMeta"></span>
+          <div class="schedule-panel-title">
+            <strong>Schedules</strong>
+            <span id="dataScheduleMeta"></span>
+          </div>
+          <button class="text-button" id="scheduleCreateButton" type="button">New</button>
         </div>
         <div class="schedule-table-wrap">
           <table>
@@ -2462,7 +2552,7 @@ def render_workbench_index_html(
   <section class="schedule-editor" id="scheduleEditDialog" hidden aria-label="Edit schedule">
     <div class="schedule-editor-header">
       <div>
-        <h3>Edit Schedule</h3>
+        <h3 id="scheduleEditTitle">Edit Schedule</h3>
         <div class="subtitle" id="scheduleEditSubtitle"></div>
       </div>
       <button class="text-button" id="scheduleEditCloseButton" type="button">Close</button>
@@ -2478,7 +2568,7 @@ def render_workbench_index_html(
           </label>
           <label class="schedule-editor-field">
             <span>Source</span>
-            <input id="scheduleEditSourceId" type="text" autocomplete="off">
+            <select id="scheduleEditSourceId"></select>
           </label>
           <label class="schedule-editor-field">
             <span>Timezone</span>
@@ -2578,10 +2668,28 @@ def render_workbench_index_html(
       <section class="schedule-editor-section">
         <h4>Data</h4>
         <div class="schedule-editor-grid">
-          <label class="schedule-editor-field">
+          <div class="schedule-editor-field schedule-target-field">
             <span>Symbols</span>
-            <input id="scheduleEditSymbols" type="text" autocomplete="off">
-          </label>
+            <input id="scheduleEditSymbols" type="hidden">
+            <input id="scheduleEditTargetMode" type="hidden">
+            <div class="schedule-editor-segmented schedule-target-mode" id="scheduleEditTargetModeTabs">
+              <button data-schedule-target-mode="symbols" type="button">Search Symbols</button>
+              <button data-schedule-target-mode="tag" type="button">Use List</button>
+            </div>
+            <div class="schedule-target-panel" data-schedule-target-panel="symbols">
+              <div class="schedule-target-search-row">
+                <input id="scheduleInstrumentSearch" type="search" placeholder="Search symbol, name, or code" autocomplete="off">
+                <button id="scheduleInstrumentSearchButton" type="button">Search</button>
+              </div>
+              <div class="schedule-target-meta" id="scheduleInstrumentSearchMeta">Select instruments from the current source.</div>
+              <div class="schedule-selected-instruments" id="scheduleSelectedInstruments"></div>
+              <div class="schedule-instrument-results" id="scheduleInstrumentSearchResults"></div>
+            </div>
+            <div class="schedule-target-panel" data-schedule-target-panel="tag" hidden>
+              <select id="scheduleEditTagId"></select>
+              <div class="schedule-target-meta" id="scheduleTagMemberPreview">Select a list to preview its members.</div>
+            </div>
+          </div>
           <div class="schedule-editor-field">
             <span>Frequencies</span>
             <input id="scheduleEditFrequencies" type="hidden">
@@ -2669,6 +2777,7 @@ def render_workbench_index_html(
     const WORKBENCH_DISPLAY_TIME_ZONE_OFFSET = "+08:00";
     let dataMonitorTimer = null;
     let taskSearchTimer = null;
+    let scheduleInstrumentSearchTimer = null;
     let dataMonitorState = {
       sources: [],
       summariesBySource: {},
@@ -2684,9 +2793,22 @@ def render_workbench_index_html(
       scheduleRunPage: 1,
       scheduleRunPageSize: 25,
       editingScheduleId: "",
+      scheduleEditMode: "edit",
+      scheduleTarget: {
+        mode: "symbols",
+        selectedInstruments: [],
+        searchResults: [],
+        searchQuery: "",
+        tagsBySource: {},
+        tagMembersByKey: {},
+        selectedTagId: "",
+      },
       lastUpdated: "",
       error: "",
     };
+    const SCHEDULE_SELECTED_INSTRUMENT_DISPLAY_LIMIT = 20;
+    const SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET = 20;
+    const SCHEDULE_INSTRUMENT_SEARCH_PAGE_SIZE = 100;
 
     const escapeHtml = (value) => String(value ?? "")
       .replaceAll("&", "&amp;")
@@ -3095,8 +3217,15 @@ def render_workbench_index_html(
 
     function formatScheduleJob(schedule) {
       const job = scheduleConfig(schedule).job || {};
+      const target = job.target || null;
       const symbols = Array.isArray(job.symbols) ? job.symbols : [];
-      const symbolText = symbols.length <= 3 ? symbols.join(", ") : `${symbols.length} symbols`;
+      let symbolText = symbols.length <= 3 ? symbols.join(", ") : `${symbols.length} symbols`;
+      if (target?.mode === "tag") {
+        symbolText = `List: ${target.tag_id || ""}`;
+      } else if (target?.mode === "symbols" && !symbolText) {
+        const instrumentIds = Array.isArray(target.instrument_ids) ? target.instrument_ids : [];
+        symbolText = instrumentIds.length <= 3 ? instrumentIds.join(", ") : `${instrumentIds.length} symbols`;
+      }
       const frequencies = Array.isArray(job.frequencies) ? job.frequencies.join(", ") : "";
       return [job.source_id, symbolText, frequencies].filter(Boolean).join(" · ");
     }
@@ -3392,6 +3521,575 @@ def render_workbench_index_html(
       scheduleEditInput(id).value = value ?? "";
     }
 
+    function scheduleTargetState() {
+      if (!dataMonitorState.scheduleTarget) {
+        dataMonitorState.scheduleTarget = {
+          mode: "symbols",
+          selectedInstruments: [],
+          searchResults: [],
+          searchQuery: "",
+          tagsBySource: {},
+          tagMembersByKey: {},
+          selectedTagId: "",
+        };
+      }
+      return dataMonitorState.scheduleTarget;
+    }
+
+    function scheduleTargetKey(sourceId, tagId) {
+      return `${sourceId || ""}::${tagId || ""}`;
+    }
+
+    function scheduleInstrumentSymbol(instrument) {
+      return instrument?.symbol || instrument?.instrument_id || "";
+    }
+
+    function scheduleInstrumentLabel(instrument) {
+      const symbol = scheduleInstrumentSymbol(instrument);
+      const name = instrument?.name || "";
+      if (name && name !== symbol) {
+        return `${symbol} · ${name}`;
+      }
+      return symbol;
+    }
+
+    function normalizeScheduleInstrument(value, sourceId = "") {
+      const instrumentId = String(value?.instrument_id || value?.id || value?.symbol || "").trim();
+      const symbol = String(value?.symbol || instrumentId).trim();
+      return {
+        instrument_id: instrumentId,
+        symbol,
+        name: value?.name || "",
+        source_id: value?.source_id || sourceId || inputValue("scheduleEditSourceId"),
+      };
+    }
+
+    function scheduleInstrumentIdentityKeys(instrument) {
+      const instrumentIdKey = String(instrument?.instrument_id || "").trim().toLowerCase();
+      const symbolKey = String(scheduleInstrumentSymbol(instrument) || "").trim().toLowerCase();
+      const keys = [];
+      if (instrumentIdKey) keys.push(`id:${instrumentIdKey}`);
+      if (symbolKey) keys.push(`symbol:${symbolKey}`);
+      return keys;
+    }
+
+    function scheduleInstrumentIdentityKeySet(instruments) {
+      const keys = new Set();
+      for (const instrument of instruments || []) {
+        for (const key of scheduleInstrumentIdentityKeys(instrument)) {
+          keys.add(key);
+        }
+      }
+      return keys;
+    }
+
+    function scheduleInstrumentAlreadySelected(instrument, selectedKeys) {
+      return scheduleInstrumentIdentityKeys(instrument).some((key) => selectedKeys.has(key));
+    }
+
+    function scheduleInstrumentDetailMap(instruments) {
+      const detailsByKey = new Map();
+      for (const instrument of instruments || []) {
+        for (const key of scheduleInstrumentIdentityKeys(instrument)) {
+          if (!detailsByKey.has(key)) {
+            detailsByKey.set(key, instrument);
+          }
+        }
+      }
+      return detailsByKey;
+    }
+
+    function enrichSelectedScheduleInstruments(instruments) {
+      const state = scheduleTargetState();
+      const detailsByKey = scheduleInstrumentDetailMap(instruments);
+      state.selectedInstruments = state.selectedInstruments.map((current) => {
+        const detail = scheduleInstrumentIdentityKeys(current)
+          .map((key) => detailsByKey.get(key))
+          .find(Boolean);
+        if (!detail) return current;
+        return {
+          ...current,
+          instrument_id: current.instrument_id || detail.instrument_id || "",
+          symbol: current.symbol || detail.symbol || "",
+          name: current.name || detail.name || "",
+          source_id: current.source_id || detail.source_id || "",
+        };
+      });
+    }
+
+    function scheduleInstrumentMatchesQuery(instrument, query) {
+      const normalizedQuery = String(query || "").trim().toLowerCase();
+      if (!normalizedQuery) return true;
+      return [
+        instrument?.instrument_id,
+        instrument?.symbol,
+        instrument?.name,
+        scheduleInstrumentLabel(instrument),
+      ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+    }
+
+    function sortSelectedScheduleInstrumentsForDisplay(instruments, query) {
+      if (!String(query || "").trim()) {
+        return instruments;
+      }
+      return [...instruments].sort((left, right) => {
+        const leftMatches = scheduleInstrumentMatchesQuery(left, query);
+        const rightMatches = scheduleInstrumentMatchesQuery(right, query);
+        if (leftMatches !== rightMatches) return leftMatches ? -1 : 1;
+        return scheduleInstrumentLabel(left).localeCompare(scheduleInstrumentLabel(right));
+      });
+    }
+
+    function visibleScheduleSelectedInstruments() {
+      return scheduleSelectedInstrumentsForDisplay()
+        .slice(0, SCHEDULE_SELECTED_INSTRUMENT_DISPLAY_LIMIT);
+    }
+
+    function scheduleSelectedInstrumentsForDisplay() {
+      const state = scheduleTargetState();
+      const instruments = String(state.searchQuery || "").trim()
+        ? state.selectedInstruments.filter((instrument) => scheduleInstrumentMatchesQuery(instrument, state.searchQuery))
+        : state.selectedInstruments;
+      return sortSelectedScheduleInstrumentsForDisplay(instruments, state.searchQuery);
+    }
+
+    function scheduleSearchResultsForDisplay() {
+      const state = scheduleTargetState();
+      const selectedKeys = scheduleInstrumentIdentityKeySet(state.selectedInstruments);
+      return state.searchResults.filter((instrument) => !scheduleInstrumentAlreadySelected(instrument, selectedKeys));
+    }
+
+    function visibleScheduleSearchResults() {
+      return scheduleSearchResultsForDisplay()
+        .slice(0, SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET);
+    }
+
+    function selectedScheduleSymbols() {
+      return scheduleTargetState().selectedInstruments
+        .map((instrument) => scheduleInstrumentSymbol(instrument))
+        .filter(Boolean);
+    }
+
+    function syncScheduleSymbolsInput() {
+      setInputValue("scheduleEditSymbols", selectedScheduleSymbols().join(", "));
+    }
+
+    function renderScheduleSourceOptions(selectedId) {
+      const select = document.getElementById("scheduleEditSourceId");
+      const sources = Array.isArray(dataMonitorState.sources) ? dataMonitorState.sources : [];
+      const selected = selectedId || sources[0]?.source_id || "";
+      const hasSelected = sources.some((source) => source.source_id === selected);
+      const extra = selected && !hasSelected
+        ? `<option value="${escapeHtml(selected)}">${escapeHtml(selected)}</option>`
+        : "";
+      select.innerHTML = `${extra}${sources.map((source) => (
+        `<option value="${escapeHtml(source.source_id)}">${escapeHtml(sourceLabel(source))}</option>`
+      )).join("")}`;
+      if (selected) {
+        select.value = selected;
+      }
+    }
+
+    function tagsForScheduleSource(sourceId) {
+      const state = scheduleTargetState();
+      const tags = Array.isArray(state.tagsBySource[sourceId]) ? state.tagsBySource[sourceId] : [];
+      return [...tags].sort((left, right) => {
+        if (left.tag_id === sourceId && right.tag_id !== sourceId) return -1;
+        if (right.tag_id === sourceId && left.tag_id !== sourceId) return 1;
+        return String(left.name || left.tag_id || "").localeCompare(String(right.name || right.tag_id || ""));
+      });
+    }
+
+    function tagMembersForScheduleSource(sourceId, tagId) {
+      const state = scheduleTargetState();
+      const key = scheduleTargetKey(sourceId, tagId);
+      return Array.isArray(state.tagMembersByKey[key]) ? state.tagMembersByKey[key] : [];
+    }
+
+    function renderScheduleSelectedInstruments() {
+      const state = scheduleTargetState();
+      const container = document.getElementById("scheduleSelectedInstruments");
+      const displayInstruments = scheduleSelectedInstrumentsForDisplay();
+      const visibleInstruments = visibleScheduleSelectedInstruments();
+      const hiddenCount = Math.max(0, displayInstruments.length - visibleInstruments.length);
+      const hiddenMeta = displayInstruments.length > visibleInstruments.length
+        ? `<span class="schedule-target-meta">&hellip; +${hiddenCount} more</span>`
+        : "";
+      container.innerHTML = displayInstruments.length
+        ? `${visibleInstruments.map((instrument) => `
+            <span class="schedule-instrument-chip selected">
+              ${escapeHtml(scheduleInstrumentLabel(instrument))}
+              <button data-remove-schedule-instrument="${escapeHtml(instrument.instrument_id)}" type="button" aria-label="Remove ${escapeHtml(scheduleInstrumentLabel(instrument))}">×</button>
+            </span>
+          `).join("")}${hiddenMeta}`
+        : state.selectedInstruments.length && String(state.searchQuery || "").trim()
+          ? `<span class="schedule-target-meta">No selected symbols match this search.</span>`
+        : `<span class="schedule-target-meta">No symbols selected</span>`;
+      for (const button of container.querySelectorAll("[data-remove-schedule-instrument]")) {
+        button.addEventListener("click", () => {
+          const instrumentId = button.dataset.removeScheduleInstrument || "";
+          state.selectedInstruments = state.selectedInstruments.filter((instrument) => instrument.instrument_id !== instrumentId);
+          renderScheduleTargetControls();
+        });
+      }
+    }
+
+    function renderScheduleInstrumentResults() {
+      const state = scheduleTargetState();
+      const container = document.getElementById("scheduleInstrumentSearchResults");
+      const results = visibleScheduleSearchResults();
+      container.innerHTML = results.length
+        ? results.map((instrument) => {
+          return `<button class="schedule-instrument-chip" data-select-schedule-instrument="${escapeHtml(instrument.instrument_id)}" type="button">
+            ${escapeHtml(scheduleInstrumentLabel(instrument))}
+          </button>`;
+        }).join("")
+        : `<span class="schedule-target-meta">${state.searchQuery ? "No additional instruments match this search." : "Search existing instruments or pick from the first page."}</span>`;
+      for (const button of container.querySelectorAll("[data-select-schedule-instrument]")) {
+        button.addEventListener("click", () => {
+          const instrument = results.find((item) => item.instrument_id === button.dataset.selectScheduleInstrument);
+          if (!instrument) return;
+          const selectedKeys = scheduleInstrumentIdentityKeySet(state.selectedInstruments);
+          if (!scheduleInstrumentAlreadySelected(instrument, selectedKeys)) {
+            state.selectedInstruments = [...state.selectedInstruments, instrument];
+          }
+          renderScheduleTargetControls();
+        });
+      }
+    }
+
+    function renderScheduleTagOptions(sourceId) {
+      const state = scheduleTargetState();
+      const select = document.getElementById("scheduleEditTagId");
+      const tags = tagsForScheduleSource(sourceId);
+      if (state.selectedTagId && !tags.some((tag) => tag.tag_id === state.selectedTagId)) {
+        state.selectedTagId = "";
+      }
+      if (!state.selectedTagId && tags.length) {
+        state.selectedTagId = tags[0].tag_id;
+      }
+      select.innerHTML = tags.length
+        ? tags.map((tag) => {
+          const countText = Number.isFinite(Number(tag.member_count)) ? ` (${tag.member_count})` : "";
+          return `<option value="${escapeHtml(tag.tag_id)}">${escapeHtml(tag.name || tag.tag_id)}${escapeHtml(countText)}</option>`;
+        }).join("")
+        : `<option value="">No lists</option>`;
+      select.value = state.selectedTagId || "";
+    }
+
+    function renderScheduleTagPreview(sourceId) {
+      const state = scheduleTargetState();
+      const preview = document.getElementById("scheduleTagMemberPreview");
+      const tagId = state.selectedTagId || inputValue("scheduleEditTagId");
+      if (!tagId) {
+        preview.textContent = "Select a list to preview its members.";
+        return;
+      }
+      const members = tagMembersForScheduleSource(sourceId, tagId);
+      if (!members.length) {
+        preview.textContent = "List selected. Member preview will load when available.";
+        return;
+      }
+      const symbols = members
+        .map((member) => scheduleInstrumentSymbol(member) || member.instrument_id)
+        .filter(Boolean);
+      const sample = symbols.slice(0, 6).join(", ");
+      preview.textContent = symbols.length > 6
+        ? `${symbols.length} symbols · ${sample}, ...`
+        : `${symbols.length} symbols · ${sample}`;
+    }
+
+    function renderScheduleTargetControls() {
+      const state = scheduleTargetState();
+      const mode = state.mode === "tag" ? "tag" : "symbols";
+      const sourceId = inputValue("scheduleEditSourceId");
+      setInputValue("scheduleEditTargetMode", mode);
+      syncScheduleSymbolsInput();
+      for (const button of document.querySelectorAll("[data-schedule-target-mode]")) {
+        button.classList.toggle("active", button.dataset.scheduleTargetMode === mode);
+      }
+      for (const panel of document.querySelectorAll("[data-schedule-target-panel]")) {
+        panel.hidden = panel.dataset.scheduleTargetPanel !== mode;
+      }
+      const searchInput = document.getElementById("scheduleInstrumentSearch");
+      if (document.activeElement !== searchInput) {
+        searchInput.value = state.searchQuery || "";
+      }
+      const searchMeta = document.getElementById("scheduleInstrumentSearchMeta");
+      searchMeta.textContent = sourceId
+        ? `${state.selectedInstruments.length} selected from ${sourceId}`
+        : "Select a source before choosing symbols.";
+      renderScheduleSelectedInstruments();
+      renderScheduleInstrumentResults();
+      renderScheduleTagOptions(sourceId);
+      renderScheduleTagPreview(sourceId);
+      updateScheduleEditSummary();
+    }
+
+    function setScheduleTargetMode(mode) {
+      const state = scheduleTargetState();
+      state.mode = mode === "tag" ? "tag" : "symbols";
+      setInputValue("scheduleEditTargetMode", state.mode);
+      renderScheduleTargetControls();
+      if (state.mode === "tag") {
+        loadScheduleTargetTags(inputValue("scheduleEditSourceId"));
+      } else if (!state.searchResults.length) {
+        searchScheduleInstruments();
+      }
+    }
+
+    function scheduleTargetFromJob(job) {
+      const state = scheduleTargetState();
+      const sourceId = job.source_id || inputValue("scheduleEditSourceId");
+      const target = job.target || null;
+      const symbols = Array.isArray(job.symbols) ? job.symbols : [];
+      state.searchQuery = "";
+      state.searchResults = [];
+      state.selectedTagId = "";
+      if (target?.mode === "tag") {
+        state.mode = "tag";
+        state.selectedInstruments = [];
+        state.selectedTagId = target.tag_id || "";
+        return;
+      }
+      state.mode = "symbols";
+      const instrumentIds = target?.mode === "symbols" && Array.isArray(target.instrument_ids)
+        ? target.instrument_ids
+        : symbols;
+      state.selectedInstruments = instrumentIds.map((instrumentId, index) => normalizeScheduleInstrument({
+        instrument_id: instrumentId,
+        symbol: symbols[index] || instrumentId,
+        source_id: sourceId,
+      }, sourceId));
+    }
+
+    function syncScheduleTargetControls() {
+      const state = scheduleTargetState();
+      state.mode = inputValue("scheduleEditTargetMode") === "tag" ? "tag" : "symbols";
+      state.selectedTagId = inputValue("scheduleEditTagId") || state.selectedTagId;
+      renderScheduleTargetControls();
+    }
+
+    function handleScheduleSourceChange() {
+      const state = scheduleTargetState();
+      state.selectedInstruments = [];
+      state.searchResults = [];
+      state.searchQuery = "";
+      state.selectedTagId = "";
+      setInputValue("scheduleInstrumentSearch", "");
+      renderScheduleTargetControls();
+      loadScheduleTargetTags(inputValue("scheduleEditSourceId"));
+      searchScheduleInstruments();
+    }
+
+    async function loadScheduleTargetTags(sourceId) {
+      const state = scheduleTargetState();
+      if (!dataMonitorEnabled() || !sourceId) {
+        state.tagsBySource[sourceId || ""] = [];
+        renderScheduleTargetControls();
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set("source_id", sourceId);
+      try {
+        const response = await fetch(dataApiUrl(`/api/instrument-tags?${params.toString()}`), dataApiRequestOptions());
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        state.tagsBySource[sourceId] = Array.isArray(payload.tags) ? payload.tags : [];
+        renderScheduleTargetControls();
+        if (state.mode === "tag" && state.selectedTagId) {
+          await loadScheduleTagMembers();
+        }
+      } catch (error) {
+        state.tagsBySource[sourceId] = [];
+        document.getElementById("scheduleTagMemberPreview").textContent = `Unable to load lists · ${error.message}`;
+      }
+    }
+
+    async function fetchScheduleTagMembersFromInstruments(sourceId, tagId) {
+      const pageSize = 500;
+      let offset = 0;
+      const instruments = [];
+      while (true) {
+        const params = new URLSearchParams();
+        params.set("source_id", sourceId);
+        params.set("tag", tagId);
+        params.set("limit", String(pageSize));
+        params.set("offset", String(offset));
+        const response = await fetch(dataApiUrl(`/api/instruments?${params.toString()}`), dataApiRequestOptions());
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const page = Array.isArray(payload.instruments)
+          ? payload.instruments.map((instrument) => normalizeScheduleInstrument(instrument, sourceId))
+          : [];
+        instruments.push(...page);
+        const total = Number(payload.total);
+        const responseLimit = Number(payload.limit);
+        const responseOffset = Number(payload.offset);
+        const effectivePageSize = Number.isFinite(responseLimit) && responseLimit > 0 ? responseLimit : pageSize;
+        if (!page.length || (Number.isFinite(total) && instruments.length >= total) || page.length < effectivePageSize) {
+          break;
+        }
+        const nextOffset = Number.isFinite(responseOffset) && Number.isFinite(responseLimit)
+          ? responseOffset + responseLimit
+          : offset + pageSize;
+        if (nextOffset <= offset) {
+          break;
+        }
+        offset = nextOffset;
+      }
+      return instruments;
+    }
+
+    async function fetchScheduleInstrumentSearchPage(sourceId, query, offset, limit) {
+      const params = new URLSearchParams();
+      params.set("source_id", sourceId);
+      params.set("limit", String(limit));
+      params.set("offset", String(offset));
+      if (query) {
+        params.set("q", query);
+      }
+      const response = await fetch(dataApiUrl(`/api/instruments?${params.toString()}`), dataApiRequestOptions());
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      return {
+        instruments: Array.isArray(payload.instruments)
+          ? payload.instruments.map((instrument) => normalizeScheduleInstrument(instrument, sourceId))
+          : [],
+        total: Number(payload.total),
+        limit: Number(payload.limit),
+        offset: Number(payload.offset),
+      };
+    }
+
+    function nextScheduleInstrumentSearchOffset(page, fallbackOffset, fallbackLimit) {
+      if (!page.instruments.length) return null;
+      const effectiveLimit = Number.isFinite(page.limit) && page.limit > 0 ? page.limit : fallbackLimit;
+      if (Number.isFinite(page.total) && fallbackOffset + page.instruments.length >= page.total) return null;
+      if (page.instruments.length < effectiveLimit) return null;
+      const responseOffset = Number.isFinite(page.offset) ? page.offset : fallbackOffset;
+      const nextOffset = responseOffset + effectiveLimit;
+      return nextOffset > fallbackOffset ? nextOffset : null;
+    }
+
+    async function searchScheduleInstruments() {
+      const state = scheduleTargetState();
+      const sourceId = inputValue("scheduleEditSourceId");
+      state.searchQuery = inputValue("scheduleInstrumentSearch");
+      if (!dataMonitorEnabled() || !sourceId) {
+        state.searchResults = [];
+        renderScheduleTargetControls();
+        return;
+      }
+      try {
+        const pageSize = state.searchQuery
+          ? SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET
+          : SCHEDULE_INSTRUMENT_SEARCH_PAGE_SIZE;
+        let offset = 0;
+        let page = await fetchScheduleInstrumentSearchPage(sourceId, state.searchQuery, offset, pageSize);
+        state.searchResults = page.instruments;
+        enrichSelectedScheduleInstruments(state.searchResults);
+        while (!state.searchQuery && scheduleSearchResultsForDisplay().length < SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET) {
+          const nextOffset = nextScheduleInstrumentSearchOffset(page, offset, pageSize);
+          if (nextOffset === null) break;
+          offset = nextOffset;
+          page = await fetchScheduleInstrumentSearchPage(sourceId, state.searchQuery, offset, pageSize);
+          state.searchResults = [...state.searchResults, ...page.instruments];
+          enrichSelectedScheduleInstruments(state.searchResults);
+        }
+      } catch (error) {
+        state.searchResults = [];
+        document.getElementById("scheduleInstrumentSearchMeta").textContent = `Unable to search instruments · ${error.message}`;
+      }
+      renderScheduleTargetControls();
+    }
+
+    async function loadScheduleTagMembers() {
+      const state = scheduleTargetState();
+      const sourceId = inputValue("scheduleEditSourceId");
+      const tagId = inputValue("scheduleEditTagId") || state.selectedTagId;
+      state.selectedTagId = tagId;
+      if (!dataMonitorEnabled() || !sourceId || !tagId) {
+        renderScheduleTargetControls();
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set("source_id", sourceId);
+      const key = scheduleTargetKey(sourceId, tagId);
+      try {
+        let membersPayload = null;
+        let members = [];
+        const membersResponse = await fetch(
+          dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}/members?${params.toString()}`),
+          dataApiRequestOptions(),
+        );
+        if (membersResponse.ok) {
+          membersPayload = await membersResponse.json();
+          members = (Array.isArray(membersPayload.members) ? membersPayload.members : [])
+            .map((member) => normalizeScheduleInstrument(member, sourceId));
+        } else if (membersResponse.status !== 404) {
+          throw new Error(`HTTP ${membersResponse.status}`);
+        }
+        try {
+          const instrumentMembers = await fetchScheduleTagMembersFromInstruments(sourceId, tagId);
+          if (instrumentMembers.length) {
+            members = instrumentMembers;
+          }
+        } catch (fallbackError) {
+          if (!membersPayload) {
+            throw fallbackError;
+          }
+        }
+        state.tagMembersByKey[key] = members;
+      } catch (error) {
+        state.tagMembersByKey[key] = [];
+        document.getElementById("scheduleTagMemberPreview").textContent = `Unable to load list members · ${error.message}`;
+      }
+      renderScheduleTargetControls();
+    }
+
+    async function ensureScheduleTagMembersLoaded() {
+      const state = scheduleTargetState();
+      if (state.mode !== "tag") return;
+      const sourceId = inputValue("scheduleEditSourceId");
+      const tagId = inputValue("scheduleEditTagId") || state.selectedTagId;
+      if (!sourceId || !tagId) return;
+      if (!tagMembersForScheduleSource(sourceId, tagId).length) {
+        await loadScheduleTagMembers();
+      }
+    }
+
+    function buildScheduleTargetPayload() {
+      const state = scheduleTargetState();
+      if (state.mode === "tag") {
+        const sourceId = inputValue("scheduleEditSourceId");
+        const tagId = inputValue("scheduleEditTagId") || state.selectedTagId;
+        const members = tagMembersForScheduleSource(sourceId, tagId);
+        return {
+          symbols: members.map((member) => scheduleInstrumentSymbol(member) || member.instrument_id).filter(Boolean),
+          target: {
+            mode: "tag",
+            tag_id: tagId,
+            resolution: "dynamic",
+          },
+        };
+      }
+      return {
+        symbols: selectedScheduleSymbols(),
+        target: {
+          mode: "symbols",
+          instrument_ids: scheduleTargetState().selectedInstruments
+            .map((instrument) => instrument.instrument_id)
+            .filter(Boolean),
+          resolution: "dynamic",
+        },
+      };
+    }
+
+    function scheduleEditorMode() {
+      return dataMonitorState.scheduleEditMode === "create" ? "create" : "edit";
+    }
+
     function toDatetimeLocalValue(value) {
       if (!value) return "";
       const parts = displayDateTimeParts(value);
@@ -3547,24 +4245,64 @@ def render_workbench_index_html(
 
     function closeScheduleEditor() {
       dataMonitorState.editingScheduleId = "";
+      dataMonitorState.scheduleEditMode = "edit";
       document.getElementById("scheduleEditDialog").hidden = true;
       document.getElementById("scheduleEditBackdrop").hidden = true;
       setScheduleEditError("");
     }
 
-    function openScheduleEditor(scheduleId) {
-      const schedule = scheduleById(scheduleId);
-      if (!schedule) {
-        return;
-      }
+    function defaultNewScheduleConfig() {
+      const source = selectedSource() || (dataMonitorState.sources || [])[0] || {};
+      const sourceId = source.source_id || "";
+      const nowValue = toDatetimeLocalValue(new Date());
+      return {
+        schedule_id: "",
+        name: `${sourceId || "source"}-schedule`,
+        config: {
+          name: `${sourceId || "source"}-schedule`,
+          enabled: false,
+          trigger: {
+            type: "interval",
+            every: 1,
+            unit: "hours",
+            start_at: nowValue,
+            timezone: "Asia/Shanghai",
+            execution_delay_seconds: 0,
+          },
+          repeat: { mode: "forever" },
+          job: {
+            source_id: sourceId,
+            symbols: [],
+            frequencies: ["1h"],
+            date_range: {
+              type: "last_n_days",
+              lookback_value: 7,
+              lookback_unit: "days",
+              days: 7,
+              end_offset_value: 0,
+              end_offset_unit: "minutes",
+              end_offset_days: 0,
+            },
+            page_delay_seconds: 0,
+            refresh_existing: true,
+          },
+          overlap_policy: "skip",
+        },
+      };
+    }
+
+    function populateScheduleEditor(schedule, mode) {
       const config = scheduleConfig(schedule);
       const trigger = config.trigger || {};
       const repeat = config.repeat || {};
       const job = config.job || {};
       const dateRange = job.date_range || {};
-      dataMonitorState.editingScheduleId = schedule.schedule_id;
-      document.getElementById("scheduleEditSubtitle").textContent = schedule.schedule_id || "";
+      dataMonitorState.scheduleEditMode = mode === "create" ? "create" : "edit";
+      dataMonitorState.editingScheduleId = schedule.schedule_id || "";
+      document.getElementById("scheduleEditTitle").textContent = scheduleEditorMode() === "create" ? "New Schedule" : "Edit Schedule";
+      document.getElementById("scheduleEditSubtitle").textContent = schedule.schedule_id || "Create a disabled schedule, then enable it when ready.";
       setInputValue("scheduleEditName", config.name || schedule.name || "");
+      renderScheduleSourceOptions(job.source_id || "");
       setInputValue("scheduleEditSourceId", job.source_id || "");
       setInputValue("scheduleEditOverlapPolicy", config.overlap_policy || "skip");
       setInputValue("scheduleEditTriggerType", trigger.type || "interval");
@@ -3580,7 +4318,7 @@ def render_workbench_index_html(
       setInputValue("scheduleEditRepeatMode", repeat.mode || "forever");
       setInputValue("scheduleEditRepeatCount", repeat.count || "");
       setInputValue("scheduleEditUntil", toDatetimeLocalValue(repeat.until));
-      setInputValue("scheduleEditSymbols", Array.isArray(job.symbols) ? job.symbols.join(", ") : "");
+      scheduleTargetFromJob(job);
       setSelectedFrequencies(Array.isArray(job.frequencies) ? job.frequencies : []);
       setInputValue("scheduleEditRangePreset", rangePresetForDateRange(dateRange));
       setInputValue("scheduleEditDateRangeType", dateRange.type || "last_n_days");
@@ -3597,8 +4335,25 @@ def render_workbench_index_html(
       scheduleEditInput("scheduleEditRefreshExisting").checked = job.refresh_existing !== false;
       setScheduleEditError("");
       syncScheduleEditorControls();
+      renderScheduleTargetControls();
+      loadScheduleTargetTags(inputValue("scheduleEditSourceId"));
+      if (scheduleTargetState().mode === "symbols") {
+        searchScheduleInstruments();
+      }
       document.getElementById("scheduleEditBackdrop").hidden = false;
       document.getElementById("scheduleEditDialog").hidden = false;
+    }
+
+    function openScheduleEditor(scheduleId) {
+      const schedule = scheduleById(scheduleId);
+      if (!schedule) {
+        return;
+      }
+      populateScheduleEditor(schedule, "edit");
+    }
+
+    function openNewScheduleEditor() {
+      populateScheduleEditor(defaultNewScheduleConfig(), "create");
     }
 
     function buildScheduleEditPayload(schedule) {
@@ -3664,13 +4419,14 @@ def render_workbench_index_html(
         dateRange.end_offset_days = 0;
       }
 
-      return {
+      const targetPayload = buildScheduleTargetPayload();
+      const payload = {
         name: inputValue("scheduleEditName") || config.name || schedule.name,
         trigger,
         repeat,
         job: {
           source_id: inputValue("scheduleEditSourceId") || config.job?.source_id || "",
-          symbols: listValue("scheduleEditSymbols"),
+          ...targetPayload,
           frequencies: selectedFrequencies(),
           date_range: dateRange,
           page_delay_seconds: numberValue("scheduleEditPageDelaySeconds", 0),
@@ -3678,6 +4434,44 @@ def render_workbench_index_html(
         },
         overlap_policy: inputValue("scheduleEditOverlapPolicy") || "skip",
       };
+      if (scheduleEditorMode() === "create") {
+        payload.enabled = false;
+      }
+      return payload;
+    }
+
+    function validateScheduleEditPayload(payload) {
+      if (!payload.name) return "Name is required.";
+      if (!payload.job?.source_id) return "Source is required.";
+      if (!Array.isArray(payload.job?.frequencies) || !payload.job.frequencies.length) {
+        return "Select at least one frequency.";
+      }
+      const target = payload.job?.target || {};
+      const symbols = Array.isArray(payload.job?.symbols) ? payload.job.symbols : [];
+      if (target.mode === "tag") {
+        if (!target.tag_id) return "Select a symbol list.";
+        if (!symbols.length) return "Selected list has no symbols. Wait for member preview to load or choose another list.";
+      } else if (!symbols.length && !Array.isArray(target.instrument_ids)) {
+        return "Select at least one symbol.";
+      } else if (!symbols.length && !target.instrument_ids.length) {
+        return "Select at least one symbol.";
+      }
+      const trigger = payload.trigger || {};
+      if (trigger.type === "interval" && (!trigger.every || !trigger.unit)) {
+        return "Interval trigger requires every and unit.";
+      }
+      if (trigger.type === "once" && !trigger.run_at) return "Once trigger requires run at.";
+      if (trigger.type === "weekly" && !selectedWeekdays().length) {
+        return "Weekly trigger requires at least one day.";
+      }
+      const range = payload.job?.date_range || {};
+      if (range.type === "fixed" && (!range.start_at || !range.end_at)) {
+        return "Fixed range requires start and end.";
+      }
+      if (range.type !== "fixed" && !range.lookback_value) {
+        return "Range N is required.";
+      }
+      return "";
     }
 
     async function readApiError(response) {
@@ -3740,15 +4534,24 @@ def render_workbench_index_html(
 
     async function saveScheduleEdits(event) {
       event.preventDefault();
-      const schedule = scheduleById(dataMonitorState.editingScheduleId);
-      if (!schedule) {
+      const isCreate = scheduleEditorMode() === "create";
+      const schedule = isCreate ? defaultNewScheduleConfig() : scheduleById(dataMonitorState.editingScheduleId);
+      if (!schedule && !isCreate) {
         closeScheduleEditor();
         return;
       }
-      const payload = buildScheduleEditPayload(schedule);
       setScheduleEditError("");
+      await ensureScheduleTagMembersLoaded();
+      const payload = buildScheduleEditPayload(schedule);
+      const validationError = validateScheduleEditPayload(payload);
+      if (validationError) {
+        setScheduleEditError(validationError);
+        return;
+      }
       try {
-        const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}`), dataApiMutationOptions("PATCH", payload));
+        const response = isCreate
+          ? await fetch(dataApiUrl("/api/data/schedules"), dataApiMutationOptions("POST", payload))
+          : await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}`), dataApiMutationOptions("PATCH", payload));
         let responsePayload = {};
         try {
           responsePayload = await response.json();
@@ -4026,6 +4829,7 @@ def render_workbench_index_html(
       button.addEventListener("click", () => setDrawerTab(button.dataset.drawerTab || "schedules"));
     }
     document.getElementById("scheduleEditForm").addEventListener("submit", saveScheduleEdits);
+    document.getElementById("scheduleCreateButton").addEventListener("click", openNewScheduleEditor);
     document.getElementById("scheduleEditCloseButton").addEventListener("click", closeScheduleEditor);
     document.getElementById("scheduleEditDismissButton").addEventListener("click", closeScheduleEditor);
     document.getElementById("scheduleEditBackdrop").addEventListener("click", closeScheduleEditor);
@@ -4049,6 +4853,27 @@ def render_workbench_index_html(
       input.addEventListener("input", syncScheduleEditorControls);
       input.addEventListener("change", syncScheduleEditorControls);
     }
+    document.getElementById("scheduleEditSourceId").addEventListener("change", handleScheduleSourceChange);
+    for (const button of document.querySelectorAll("[data-schedule-target-mode]")) {
+      button.addEventListener("click", () => setScheduleTargetMode(button.dataset.scheduleTargetMode || "symbols"));
+    }
+    document.getElementById("scheduleEditTagId").addEventListener("change", () => {
+      scheduleTargetState().selectedTagId = inputValue("scheduleEditTagId");
+      loadScheduleTagMembers();
+    });
+    document.getElementById("scheduleInstrumentSearch").addEventListener("input", () => {
+      if (scheduleInstrumentSearchTimer) {
+        clearTimeout(scheduleInstrumentSearchTimer);
+      }
+      scheduleInstrumentSearchTimer = setTimeout(searchScheduleInstruments, 250);
+    });
+    document.getElementById("scheduleInstrumentSearch").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchScheduleInstruments();
+      }
+    });
+    document.getElementById("scheduleInstrumentSearchButton").addEventListener("click", searchScheduleInstruments);
     document.getElementById("schedulePageSizeSelect").addEventListener("change", (event) => {
       dataMonitorState.schedulePageSize = Number(event.target.value) || 25;
       dataMonitorState.schedulePage = 1;

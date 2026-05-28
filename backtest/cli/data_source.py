@@ -115,6 +115,7 @@ def serve(
             server_config=config,
             submit_job=api.submit_job,
             get_job=api.job,
+            resolve_symbols=api.resolve_schedule_symbols,
         )
         api.schedule_service = schedule_service
         api.instrument_sync_service = InstrumentSyncService(

@@ -81,6 +81,14 @@ def make_data_source_handler(api: DataSourceApi):
                         200,
                         api.instrument_tags(source_id=self._optional(query, "source_id")),
                     )
+                elif parsed.path.endswith("/members") and parsed.path.startswith("/api/instrument-tags/"):
+                    self._send_json(
+                        200,
+                        api.instrument_tag_members(
+                            self._tag_id_for_members_path(parsed.path),
+                            source_id=self._optional(query, "source_id"),
+                        ),
+                    )
                 elif parsed.path == "/api/data/schedule-options":
                     self._send_json(200, api.schedule_options())
                 elif parsed.path == "/api/data/schedules":

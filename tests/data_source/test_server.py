@@ -410,6 +410,10 @@ def test_instrument_http_routes(tmp_path: Path):
             "/api/instruments/BTC%2FUSDT?source_id=a_share",
         )
         _, _, tags = _json_request(base_url, "/api/instrument-tags?source_id=a_share")
+        _, _, listed_members = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members?source_id=a_share",
+        )
         _, _, updated = _json_request(
             base_url,
             "/api/instruments/BTC%2FUSDT?source_id=a_share",
@@ -456,6 +460,8 @@ def test_instrument_http_routes(tmp_path: Path):
         assert filtered["total"] == 1
         assert detail["tags"][0]["tag_id"] == "watchlist"
         assert tags["tags"][0]["member_count"] == 1
+        assert listed_members["tag"]["tag_id"] == "watchlist"
+        assert listed_members["members"][0]["instrument_id"] == "BTC/USDT"
         assert updated["name"] == "BTCUSDT"
         assert replaced["members"] == []
         assert readded["members"][0]["instrument_id"] == "BTC/USDT"
