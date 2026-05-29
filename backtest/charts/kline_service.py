@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from pyarrow.lib import ArrowException
 import pyarrow.parquet as pq
+from pyarrow.lib import ArrowException
 
 from backtest.charts.kline_viewer import (
     BAR_COLUMNS,
@@ -280,25 +280,47 @@ class KlineCacheService:
             raise last_error
         return 0, None, None
 
-    @staticmethod
-    def _read_series_metadata_once(paths: list[Path]) -> tuple[int, pd.Timestamp | None, pd.Timestamp | None]:
+    def _read_series_metadata_once(self, paths: list[Path]) -> tuple[int, pd.Timestamp | None, pd.Timestamp | None]:
         rows = 0
         first_bar: pd.Timestamp | None = None
         last_bar: pd.Timestamp | None = None
         for path in paths:
-            parquet_file = pq.ParquetFile(path)
-            rows += parquet_file.metadata.num_rows
-            date_index = parquet_file.schema.names.index("date")
-            for row_group_index in range(parquet_file.metadata.num_row_groups):
-                column = parquet_file.metadata.row_group(row_group_index).column(date_index)
+            path_rows, path_first, path_last = self._parquet_date_bounds(path)
+            rows += path_rows
+            if path_first is None or path_last is None:
+                continue
+            first_bar = path_first if first_bar is None else min(first_bar, path_first)
+            last_bar = path_last if last_bar is None else max(last_bar, path_last)
+        return rows, first_bar, last_bar
+
+    def _parquet_date_bounds(self, path: Path) -> tuple[int, pd.Timestamp | None, pd.Timestamp | None]:
+        metadata = pq.ParquetFile(path).metadata
+        rows = int(metadata.num_rows)
+        first_bar: pd.Timestamp | None = None
+        last_bar: pd.Timestamp | None = None
+        for row_group_index in range(metadata.num_row_groups):
+            row_group = metadata.row_group(row_group_index)
+            for column_index in range(row_group.num_columns):
+                column = row_group.column(column_index)
+                if column.path_in_schema != "date":
+                    continue
                 stats = column.statistics
                 if stats is None or not stats.has_min_max:
-                    raise ValueError(f"Missing date statistics in parquet metadata: {path}")
+                    break
                 current_min = pd.Timestamp(stats.min)
                 current_max = pd.Timestamp(stats.max)
-                first_bar = current_min if first_bar is None else min(first_bar, current_min)
-                last_bar = current_max if last_bar is None else max(last_bar, current_max)
-        return rows, first_bar, last_bar
+                if first_bar is None or current_min < first_bar:
+                    first_bar = current_min
+                if last_bar is None or current_max > last_bar:
+                    last_bar = current_max
+                break
+        if rows == 0 or (first_bar is not None and last_bar is not None):
+            return rows, first_bar, last_bar
+
+        dates = pq.read_table(path, columns=["date"]).column("date").to_pandas()
+        if dates.empty:
+            return rows, None, None
+        return rows, pd.Timestamp(dates.min()), pd.Timestamp(dates.max())
 
     def _read_frame(
         self,

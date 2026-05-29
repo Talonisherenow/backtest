@@ -310,6 +310,9 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "bars.map((bar) => formatBarDateTime(bar.date, series?.frequency || state.frequency))" in html
     assert "loaded_rows" in html
     assert "status-symbol-group" in html
+    assert 'id="dataStatusPager"' in html
+    assert "DATA_STATUS_PAGE_SIZE = 50" in html
+    assert "symbols.slice(start, start + DATA_STATUS_PAGE_SIZE)" in html
     assert "sourceButtons" in html
     assert "currentSource" in html
     assert "Source" in html
@@ -405,6 +408,7 @@ def test_render_kline_viewer_supports_workbench_home_link():
     assert 'class="home-link" id="workbenchHomeLink"' in html
     assert 'class="data-status-button" id="dataStatusButton"' in html
     assert 'id="dataStatusStripMeta"' in html
+    assert 'id="dataStatusPager"' in html
     assert 'id="frequencyButtons" aria-label="Frequency"></div>' in html
     assert 'class="toolbar-button data-status-control" id="dataStatusButton"' not in html
     assert 'class="status-action"' not in html
