@@ -28,6 +28,13 @@ GET /api/data/schedule-options
 GET /api/data/schedules
 GET /api/data/schedules/<schedule_id>
 GET /api/data/schedules/<schedule_id>/runs
+GET /api/instruments?source_id=<source_id>&q=<query>&tag=<tag_id>&limit=<n>&offset=<n>
+GET /api/instrument-tags?source_id=<source_id>
+GET /api/instrument-tags/<tag_id>/members?source_id=<source_id>
+GET /api/instrument-sources
+GET /api/instrument-sync/schedules
+GET /api/instrument-sync/schedules/<schedule_id>
+GET /api/instrument-sync/schedules/<schedule_id>/runs
 ```
 
 `/api/data/tasks` is paginated. Use `/api/data/tasks/summary` for status and
@@ -157,6 +164,29 @@ Schedule body example:
 }
 ```
 
+Instrument-backed target example:
+
+```json
+{
+  "name": "watchlist-hourly",
+  "enabled": false,
+  "trigger": {"type": "interval", "every": 1, "unit": "hours", "timezone": "Asia/Shanghai"},
+  "repeat": {"mode": "forever"},
+  "job": {
+    "source_id": "bitget",
+    "target": {"mode": "tag", "tag_id": "watchlist", "resolution": "dynamic"},
+    "frequencies": ["1h"],
+    "date_range": {"type": "last_n_days", "lookback_value": 7, "lookback_unit": "days"},
+    "refresh_existing": true
+  },
+  "overlap_policy": "skip"
+}
+```
+
+For selected instruments, use `{"mode":"symbols","instrument_ids":[...]}`.
+Do not put `instrument_id` values into `job.symbols`; the backend resolves
+provider symbols from instrument records.
+
 `start_at` is optional for `interval`, `daily`, and `weekly` triggers. When it is
 set, the backend will not submit the first scheduled crawl before that concrete
 time; for `daily` and `weekly`, the first run is the first configured wall-clock
@@ -192,6 +222,21 @@ Compatibility check: if `GET /api/data/schedule-options` does not include
 `config.trigger.execution_delay_seconds` after the caller sent it, the API server
 is older than this contract. Do not tell the user the execution delay was saved;
 ask an operator to deploy/restart the updated data-source service.
+
+## Instrument And Source Sync APIs
+
+Read `instrument-api.md` for detailed instrument flows.
+
+Instrument source sync refreshes instrument catalogs/lists. It is separate from
+data crawl schedules:
+
+```text
+GET  /api/instrument-sources
+POST /api/instrument-sync/run
+GET  /api/instrument-sync/schedules
+POST /api/instrument-sync/schedules
+POST /api/instrument-sync/schedules/<schedule_id>/run-now
+```
 
 ## Status Meaning
 

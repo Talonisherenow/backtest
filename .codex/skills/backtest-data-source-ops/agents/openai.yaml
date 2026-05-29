@@ -1,4 +1,4 @@
 interface:
   display_name: "Backtest Data Source Ops"
-  short_description: "Operate data-source services and jobs"
-  default_prompt: "Use $backtest-data-source-ops to operate the backtest data-source service, deployment chain, crawl jobs, and task status."
+  short_description: "Operate data-source services, jobs, schedules, and instruments"
+  default_prompt: "Use $backtest-data-source-ops to operate the backtest data-source service, deployment chain, crawl jobs, schedules, task status, instruments, tags/lists, and instrument sync."
