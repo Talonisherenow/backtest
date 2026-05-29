@@ -1,6 +1,8 @@
 from datetime import datetime
 from pathlib import Path
+import sys
 from threading import Event, Thread
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -180,6 +182,30 @@ def test_ccxt_provider_skips_currency_prefetch_for_catalog_sync():
 
     assert exchange.has["fetchCurrencies"] is False
     assert items[0].symbol == "BTC/USDT"
+
+
+def test_ccxt_provider_passes_env_proxy_to_exchange_factory(monkeypatch):
+    captured_config: dict = {}
+
+    class FakeExchangeFactory(FakeExchange):
+        def __init__(self, config=None) -> None:
+            captured_config.update(config or {})
+
+    monkeypatch.setenv("CCXT_HTTP_PROXY", "http://127.0.0.1:7897")
+    monkeypatch.setenv("CCXT_HTTPS_PROXY", "http://127.0.0.1:7897")
+    monkeypatch.setitem(sys.modules, "ccxt", SimpleNamespace(bitget=FakeExchangeFactory))
+
+    CCXTInstrumentCatalogProvider(
+        source_id="bitget",
+        asset_class="crypto",
+        exchange_id="bitget",
+    )
+
+    assert captured_config["enableRateLimit"] is True
+    assert captured_config["proxies"] == {
+        "http": "http://127.0.0.1:7897",
+        "https": "http://127.0.0.1:7897",
+    }
 
 
 def test_universe_csv_provider_normalizes_a_share_rows(tmp_path: Path):

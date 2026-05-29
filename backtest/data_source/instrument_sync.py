@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import sqlite3
 import threading
@@ -167,7 +168,33 @@ class CCXTInstrumentCatalogProvider:
         exchange_cls = getattr(ccxt, exchange_id, None)
         if exchange_cls is None:
             raise ValueError(f"Unknown ccxt exchange: {exchange_id}")
-        return exchange_cls()
+        config: dict[str, Any] = {"enableRateLimit": True}
+        proxies = CCXTInstrumentCatalogProvider._proxy_config_from_env()
+        if proxies:
+            config["proxies"] = proxies
+        return exchange_cls(config)
+
+    @staticmethod
+    def _proxy_config_from_env() -> dict[str, str]:
+        all_proxy = os.environ.get("CCXT_PROXY") or os.environ.get("ALL_PROXY") or os.environ.get("all_proxy")
+        http_proxy = (
+            os.environ.get("CCXT_HTTP_PROXY")
+            or os.environ.get("HTTP_PROXY")
+            or os.environ.get("http_proxy")
+            or all_proxy
+        )
+        https_proxy = (
+            os.environ.get("CCXT_HTTPS_PROXY")
+            or os.environ.get("HTTPS_PROXY")
+            or os.environ.get("https_proxy")
+            or all_proxy
+        )
+        proxies: dict[str, str] = {}
+        if http_proxy:
+            proxies["http"] = http_proxy
+        if https_proxy:
+            proxies["https"] = https_proxy
+        return proxies
 
     @staticmethod
     def _disable_currency_prefetch(exchange: Any) -> None:

@@ -63,6 +63,35 @@ def test_kline_cache_service_manifest_indexes_cached_series_without_bars(tmp_pat
     assert item["series"][0]["first_bar"] == "2025-01-01T00:00:00"
 
 
+def test_kline_cache_service_manifest_uses_parquet_metadata_not_frame_reads(
+    tmp_path: Path,
+    monkeypatch,
+):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(
+        bars_root,
+        "BTC/USDT",
+        frequency="1h",
+        dates=[
+            "2025-01-01 00:00:00",
+            "2025-01-01 01:00:00",
+            "2025-01-01 02:00:00",
+        ],
+    )
+
+    def fail_read_parquet(*args, **kwargs):
+        raise AssertionError("manifest should not read full parquet frames")
+
+    monkeypatch.setattr(pd, "read_parquet", fail_read_parquet)
+
+    manifest = KlineCacheService(bars_root=bars_root, adjust="none").manifest()
+
+    series = manifest["sources"][0]["symbols"][0]["series"][0]
+    assert series["rows"] == 3
+    assert series["first_bar"] == "2025-01-01T00:00:00"
+    assert series["last_bar"] == "2025-01-01T02:00:00"
+
+
 def test_kline_cache_service_manifest_skips_unreadable_cached_series(tmp_path: Path):
     bars_root = tmp_path / "bars"
     _write_cached_bars(bars_root, "BTC/USDT", frequency="1d")

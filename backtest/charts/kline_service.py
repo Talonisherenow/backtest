@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 from pyarrow.lib import ArrowException
+import pyarrow.parquet as pq
 
 from backtest.charts.kline_viewer import (
     BAR_COLUMNS,
@@ -235,17 +236,69 @@ class KlineCacheService:
         frequency: str,
         adjust: str,
     ) -> dict[str, Any] | None:
-        frame, paths = self._read_frame(root, symbol, frequency, adjust)
-        if frame.empty:
+        paths = self._series_paths(root, symbol, frequency, adjust)
+        if not paths:
+            return None
+        rows, first_bar, last_bar = self._read_series_metadata(paths)
+        if rows <= 0 or first_bar is None or last_bar is None:
             return None
         return {
             "frequency": frequency,
             "adjust": adjust,
-            "rows": int(len(frame)),
-            "first_bar": _timestamp_label(frame["date"].iloc[0], frequency),
-            "last_bar": _timestamp_label(frame["date"].iloc[-1], frequency),
+            "rows": int(rows),
+            "first_bar": _timestamp_label(first_bar, frequency),
+            "last_bar": _timestamp_label(last_bar, frequency),
             "years": _years_from_paths(paths),
         }
+
+    def _series_paths(
+        self,
+        root: Path,
+        symbol: str,
+        frequency: str,
+        adjust: str,
+    ) -> list[Path]:
+        symbol_root = (
+            root
+            / f"frequency={frequency}"
+            / f"adjust={adjust}"
+            / f"symbol={safe_symbol_path(symbol)}"
+        )
+        return sorted(symbol_root.glob("year=*/bars.parquet"))
+
+    def _read_series_metadata(self, paths: list[Path]) -> tuple[int, pd.Timestamp | None, pd.Timestamp | None]:
+        last_error: Exception | None = None
+        for attempt in range(self.read_retries + 1):
+            try:
+                return self._read_series_metadata_once(paths)
+            except _READ_ERRORS as exc:
+                last_error = exc
+                if attempt >= self.read_retries:
+                    break
+                time.sleep(self.retry_delay_seconds)
+        if last_error is not None:
+            raise last_error
+        return 0, None, None
+
+    @staticmethod
+    def _read_series_metadata_once(paths: list[Path]) -> tuple[int, pd.Timestamp | None, pd.Timestamp | None]:
+        rows = 0
+        first_bar: pd.Timestamp | None = None
+        last_bar: pd.Timestamp | None = None
+        for path in paths:
+            parquet_file = pq.ParquetFile(path)
+            rows += parquet_file.metadata.num_rows
+            date_index = parquet_file.schema.names.index("date")
+            for row_group_index in range(parquet_file.metadata.num_row_groups):
+                column = parquet_file.metadata.row_group(row_group_index).column(date_index)
+                stats = column.statistics
+                if stats is None or not stats.has_min_max:
+                    raise ValueError(f"Missing date statistics in parquet metadata: {path}")
+                current_min = pd.Timestamp(stats.min)
+                current_max = pd.Timestamp(stats.max)
+                first_bar = current_min if first_bar is None else min(first_bar, current_min)
+                last_bar = current_max if last_bar is None else max(last_bar, current_max)
+        return rows, first_bar, last_bar
 
     def _read_frame(
         self,
@@ -254,13 +307,7 @@ class KlineCacheService:
         frequency: str,
         adjust: str,
     ) -> tuple[pd.DataFrame, list[Path]]:
-        symbol_root = (
-            root
-            / f"frequency={frequency}"
-            / f"adjust={adjust}"
-            / f"symbol={safe_symbol_path(symbol)}"
-        )
-        paths = sorted(symbol_root.glob("year=*/bars.parquet"))
+        paths = self._series_paths(root, symbol, frequency, adjust)
         if not paths:
             return pd.DataFrame(columns=BAR_COLUMNS), []
 
