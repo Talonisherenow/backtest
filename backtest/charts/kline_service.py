@@ -154,19 +154,15 @@ class KlineCacheService:
         offset = max(int(offset), 0)
         query = (q or "").strip().lower()
         selected: list[str] = []
-        skipped = 0
-        has_more = False
+        total = 0
         for symbol in self._iter_symbols(source, frequencies):
             details = self._metadata.get(source.source_id, {}).get(symbol, {})
             if not self._symbol_matches(symbol, details, query=query, board=board):
                 continue
-            if skipped < offset:
-                skipped += 1
-                continue
-            if len(selected) >= limit:
-                has_more = True
-                break
-            selected.append(symbol)
+            if total >= offset and len(selected) < limit:
+                selected.append(symbol)
+            total += 1
+        has_more = offset + len(selected) < total
         return {
             "source_id": source.source_id,
             "source_label": source.source_label,
@@ -176,6 +172,7 @@ class KlineCacheService:
             "symbols": self._manifest_symbols(source, selected, frequencies),
             "offset": offset,
             "limit": limit,
+            "total": total,
             "has_more": has_more,
             "next_offset": offset + limit if has_more else None,
         }

@@ -367,7 +367,16 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert "renderGlobalOffset" in html
     assert "navigateToGlobalOffset" in html
     assert "windowSlider.max = String(globalMaxStart)" in html
-    assert "Loaded" not in html
+    assert "LOAD_MORE_OPTION_VALUE" in html
+    assert "mergeSymbolLists" in html
+    assert "loadMoreSymbols" in html
+    assert "Scroll to load more" in html
+    assert "symbolLoadLabel" in html
+    assert "loadRemoteSourceTotals" in html
+    assert 'requestJson(`/api/kline/symbols?source_id=${encodeURIComponent(source.source_id)}&limit=1&offset=0`, "Symbol summary")' in html
+    assert 'id="symbolOptions"' in html
+    assert 'symbolOptions.addEventListener("scroll"' in html
+    assert "toggleSymbolMenu" in html
 
 
 def test_render_kline_viewer_honors_dynamic_default_selection():

@@ -123,6 +123,7 @@ def test_kline_cache_service_symbols_returns_one_page(tmp_path: Path):
     assert page["source_id"] == "default"
     assert page["offset"] == 0
     assert page["limit"] == 2
+    assert page["total"] == 3
     assert page["has_more"] is True
     assert [item["symbol"] for item in page["symbols"]] == ["BTC/USDT", "ETH/USDT"]
     assert page["symbols"][0]["series"][0]["rows"] == 10
