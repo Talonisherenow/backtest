@@ -3544,6 +3544,46 @@ def render_workbench_index_html(
       return instrument?.symbol || instrument?.instrument_id || "";
     }
 
+    function scheduleSymbolFromInstrumentId(instrumentId) {
+      const value = String(instrumentId || "").trim();
+      const sourceSeparatorIndex = value.indexOf(":");
+      if (sourceSeparatorIndex >= 0 && !value.slice(0, sourceSeparatorIndex).includes("/")) {
+        return value.slice(sourceSeparatorIndex + 1);
+      }
+      return value;
+    }
+
+    function schedulePayloadSymbolFromValue(rawSymbol) {
+      let value = scheduleSymbolFromInstrumentId(rawSymbol);
+      const contractSeparatorIndex = value.indexOf(":");
+      if (contractSeparatorIndex >= 0 && value.includes("/")) {
+        value = value.slice(0, contractSeparatorIndex);
+      }
+      return value.trim().toUpperCase();
+    }
+
+    function supportedScheduleSymbol(symbol) {
+      const value = String(symbol || "").trim().toUpperCase();
+      return /^\\d{6}\\.(SZ|SH|BJ)$/.test(value)
+        || /^(SZ|SH|BJ)\\d{6}$/.test(value)
+        || /^\\d{6}$/.test(value)
+        || /^[A-Z0-9]+\\/[A-Z0-9]+$/.test(value);
+    }
+
+    function schedulePayloadSymbolsForInstruments(instruments) {
+      const symbols = [];
+      const seen = new Set();
+      for (const instrument of instruments || []) {
+        const symbol = schedulePayloadSymbolFromValue(scheduleInstrumentSymbol(instrument));
+        if (!symbol || !supportedScheduleSymbol(symbol) || seen.has(symbol)) {
+          continue;
+        }
+        seen.add(symbol);
+        symbols.push(symbol);
+      }
+      return symbols;
+    }
+
     function scheduleInstrumentLabel(instrument) {
       const symbol = scheduleInstrumentSymbol(instrument);
       const name = instrument?.name || "";
@@ -3555,10 +3595,9 @@ def render_workbench_index_html(
 
     function normalizeScheduleInstrument(value, sourceId = "") {
       const instrumentId = String(value?.instrument_id || value?.id || value?.symbol || "").trim();
-      const symbol = String(value?.symbol || instrumentId).trim();
       return {
         instrument_id: instrumentId,
-        symbol,
+        symbol: String(value?.symbol || scheduleSymbolFromInstrumentId(instrumentId)).trim(),
         name: value?.name || "",
         source_id: value?.source_id || sourceId || inputValue("scheduleEditSourceId"),
       };
@@ -3665,9 +3704,7 @@ def render_workbench_index_html(
     }
 
     function selectedScheduleSymbols() {
-      return scheduleTargetState().selectedInstruments
-        .map((instrument) => scheduleInstrumentSymbol(instrument))
-        .filter(Boolean);
+      return schedulePayloadSymbolsForInstruments(scheduleTargetState().selectedInstruments);
     }
 
     function syncScheduleSymbolsInput() {
@@ -3790,9 +3827,7 @@ def render_workbench_index_html(
         preview.textContent = "List selected. Member preview will load when available.";
         return;
       }
-      const symbols = members
-        .map((member) => scheduleInstrumentSymbol(member) || member.instrument_id)
-        .filter(Boolean);
+      const symbols = schedulePayloadSymbolsForInstruments(members);
       const sample = symbols.slice(0, 6).join(", ");
       preview.textContent = symbols.length > 6
         ? `${symbols.length} symbols · ${sample}, ...`
@@ -4066,7 +4101,7 @@ def render_workbench_index_html(
         const tagId = inputValue("scheduleEditTagId") || state.selectedTagId;
         const members = tagMembersForScheduleSource(sourceId, tagId);
         return {
-          symbols: members.map((member) => scheduleInstrumentSymbol(member) || member.instrument_id).filter(Boolean),
+          symbols: schedulePayloadSymbolsForInstruments(members),
           target: {
             mode: "tag",
             tag_id: tagId,

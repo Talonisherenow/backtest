@@ -290,6 +290,35 @@ def test_job_template_compiles_to_existing_data_job_payload(tmp_path: Path):
     assert payload["retry"]["max_attempts"] == 5
 
 
+def test_target_symbols_strip_crypto_contract_suffixes_and_skip_unsupported(tmp_path: Path):
+    schedule = DataScheduleConfig.model_validate(
+        _schedule_payload(
+            name="bitget-list-refresh",
+            job={
+                "source_id": "bitget",
+                "symbols": [],
+                "target": {"mode": "tag", "tag_id": "bitget", "resolution": "dynamic"},
+                "frequencies": ["1h"],
+                "date_range": {"type": "last_n_days", "days": 7},
+            },
+        )
+    )
+
+    payload = build_job_payload(
+        schedule,
+        _server_config(tmp_path),
+        now=datetime.fromisoformat("2026-05-18T12:00:00+08:00"),
+        resolve_symbols=lambda *_: [
+            "BTC/USDT:USDT",
+            "eth/usdt:usdt",
+            "龙虾/USDT:USDT",
+            "BITGET:XRP/USDT:USDT",
+        ],
+    )
+
+    assert payload["symbols"] == ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
+
+
 def test_job_template_accepts_intraday_relative_range(tmp_path: Path):
     schedule = DataScheduleConfig.model_validate(
         _schedule_payload(

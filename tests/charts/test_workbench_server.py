@@ -328,6 +328,13 @@ def test_render_workbench_index_html_supports_schedule_controls():
     assert "function scheduleInstrumentIdentityKeySet(instruments)" in html
     assert "function scheduleInstrumentAlreadySelected(instrument, selectedKeys)" in html
     assert '`symbol:${symbolKey}`' in html
+    assert "function scheduleSymbolFromInstrumentId(instrumentId)" in html
+    assert "function schedulePayloadSymbolFromValue(rawSymbol)" in html
+    assert "function supportedScheduleSymbol(symbol)" in html
+    assert "function schedulePayloadSymbolsForInstruments(instruments)" in html
+    assert 'const contractSeparatorIndex = value.indexOf(":");' in html
+    assert 'return symbols;' in html
+    assert "symbol: String(value?.symbol || scheduleSymbolFromInstrumentId(instrumentId)).trim()," in html
     assert "function enrichSelectedScheduleInstruments(instruments)" in html
     assert "name: current.name || detail.name || \"\"," in html
     assert "function scheduleSelectedInstrumentsForDisplay()" in html

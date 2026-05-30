@@ -363,10 +363,34 @@ def _resolved_job_symbols(
         return job.symbols
     if resolve_symbols is None:
         raise ValueError("schedule target resolver is required")
-    symbols = [normalize_symbol(symbol) for symbol in resolve_symbols(job.source_id, job.target, job.symbols)]
+    symbols: list[str] = []
+    seen: set[str] = set()
+    for raw_symbol in resolve_symbols(job.source_id, job.target, job.symbols):
+        symbol = _normalize_resolved_job_symbol(raw_symbol)
+        if symbol is None or symbol in seen:
+            continue
+        seen.add(symbol)
+        symbols.append(symbol)
     if not symbols:
-        raise ValueError("schedule target resolved no symbols")
+        raise ValueError("schedule target resolved no supported symbols")
     return symbols
+
+
+def _normalize_resolved_job_symbol(raw: str) -> str | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    source_separator_index = value.find(":")
+    if source_separator_index >= 0 and "/" not in value[:source_separator_index]:
+        value = value[source_separator_index + 1 :]
+    contract_separator_index = value.find(":")
+    if contract_separator_index >= 0 and "/" in value:
+        value = value[:contract_separator_index]
+    try:
+        return normalize_symbol(value)
+    except ValueError:
+        LOGGER.debug("Skipping unsupported schedule target symbol: %s", raw)
+        return None
 
 
 class DataSourceScheduleStore:
