@@ -4121,6 +4121,42 @@ def render_workbench_index_html(
       };
     }
 
+    function scheduleStaticFallbackPayload(payload) {
+      const symbols = Array.isArray(payload.job?.symbols) ? payload.job.symbols : [];
+      return {
+        ...payload,
+        job: {
+          ...payload.job,
+          symbols,
+          target: null,
+        },
+      };
+    }
+
+    function shouldFallbackScheduleToStaticSymbols(payload, message) {
+      return payload.job?.target?.mode === "tag"
+        && Array.isArray(payload.job?.symbols)
+        && payload.job.symbols.length > 0
+        && String(message || "").includes("Unsupported symbol");
+    }
+
+    function scheduleApiErrorMessage(response, responsePayload) {
+      return responsePayload.error || responsePayload.message || `HTTP ${response.status}`;
+    }
+
+    async function saveScheduleEditPayload(isCreate, schedule, payload) {
+      const response = isCreate
+        ? await fetch(dataApiUrl("/api/data/schedules"), dataApiMutationOptions("POST", payload))
+        : await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}`), dataApiMutationOptions("PATCH", payload));
+      let responsePayload = {};
+      try {
+        responsePayload = await response.json();
+      } catch (error) {
+        responsePayload = {};
+      }
+      return { response, responsePayload };
+    }
+
     function scheduleEditorMode() {
       return dataMonitorState.scheduleEditMode === "create" ? "create" : "edit";
     }
@@ -4584,20 +4620,20 @@ def render_workbench_index_html(
         return;
       }
       try {
-        const response = isCreate
-          ? await fetch(dataApiUrl("/api/data/schedules"), dataApiMutationOptions("POST", payload))
-          : await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}`), dataApiMutationOptions("PATCH", payload));
-        let responsePayload = {};
-        try {
-          responsePayload = await response.json();
-        } catch (error) {
-          responsePayload = {};
-        }
+        let savePayload = payload;
+        let { response, responsePayload } = await saveScheduleEditPayload(isCreate, schedule, savePayload);
         if (!response.ok) {
-          setScheduleEditError(responsePayload.error || responsePayload.message || `HTTP ${response.status}`);
-          return;
+          const errorMessage = scheduleApiErrorMessage(response, responsePayload);
+          if (shouldFallbackScheduleToStaticSymbols(payload, errorMessage)) {
+            savePayload = scheduleStaticFallbackPayload(payload);
+            ({ response, responsePayload } = await saveScheduleEditPayload(isCreate, schedule, savePayload));
+          }
+          if (!response.ok) {
+            setScheduleEditError(scheduleApiErrorMessage(response, responsePayload));
+            return;
+          }
         }
-        const requestedDelay = Number(payload.trigger?.execution_delay_seconds || 0);
+        const requestedDelay = Number(savePayload.trigger?.execution_delay_seconds || 0);
         const savedDelay = Number(responsePayload?.config?.trigger?.execution_delay_seconds || 0);
         if (requestedDelay > 0 && Math.abs(savedDelay - requestedDelay) > 0.001) {
           setScheduleEditError("The data source server does not support execution delay yet. Deploy the updated data-source API, then save again.");

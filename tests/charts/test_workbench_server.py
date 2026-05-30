@@ -357,6 +357,12 @@ def test_render_workbench_index_html_supports_schedule_controls():
     assert "fetchScheduleTagMembersFromInstruments(sourceId, tagId)" in html
     assert 'params.set("tag", tagId);' in html
     assert "function buildScheduleTargetPayload()" in html
+    assert "function scheduleStaticFallbackPayload(payload)" in html
+    assert "function shouldFallbackScheduleToStaticSymbols(payload, message)" in html
+    assert "function saveScheduleEditPayload(isCreate, schedule, payload)" in html
+    assert "payload.job?.target?.mode === \"tag\"" in html
+    assert "target: null," in html
+    assert "shouldFallbackScheduleToStaticSymbols(payload, errorMessage)" in html
     assert "function syncScheduleTargetControls()" in html
     assert "target: {" in html
     assert 'fetch(dataApiUrl(`/api/instruments?${params.toString()}`), dataApiRequestOptions())' in html
