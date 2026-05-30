@@ -60,8 +60,28 @@ class DataSourceApi:
             raise ValueError("source_id is required")
         return self._instrument_sync().sync_source(str(source_id))
 
-    def kline_manifest(self) -> dict[str, Any]:
-        return self.kline_service.manifest(default_window_size=self.config.default_window_size)
+    def kline_manifest(self, *, include_symbols: bool = True) -> dict[str, Any]:
+        return self.kline_service.manifest(
+            default_window_size=self.config.default_window_size,
+            include_symbols=include_symbols,
+        )
+
+    def kline_symbols(
+        self,
+        *,
+        source_id: str | None = None,
+        q: str | None = None,
+        board: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return self.kline_service.symbols(
+            source_id=source_id,
+            q=q,
+            board=board,
+            limit=limit,
+            offset=offset,
+        )
 
     def kline_bars(
         self,

@@ -477,8 +477,11 @@ def test_workbench_server_supports_legacy_and_kline_api_manifest_routes(monkeypa
         def __init__(self, **kwargs):
             pass
 
-        def manifest(self, *, default_window_size):
-            return {"window": default_window_size}
+        def manifest(self, *, default_window_size, include_symbols=True):
+            return {"window": default_window_size, "include_symbols": include_symbols}
+
+        def symbols(self, **kwargs):
+            return {"source_id": kwargs["source_id"], "limit": kwargs["limit"]}
 
         def bars(self, **kwargs):
             return {"source_id": kwargs["source_id"], "symbol": kwargs["symbol"]}
@@ -517,7 +520,25 @@ def test_workbench_server_supports_legacy_and_kline_api_manifest_routes(monkeypa
 
         handler.do_GET()
 
-        assert sent["payload"] == {"window": 321}
+        assert sent["payload"] == {"window": 321, "include_symbols": True}
+
+    sent = {}
+    handler = object.__new__(handler_class)
+    handler.path = "/api/kline/manifest?symbols=0"
+    handler._send_json = lambda payload, status=None: sent.update(payload=payload)
+
+    handler.do_GET()
+
+    assert sent["payload"] == {"window": 321, "include_symbols": False}
+
+    sent = {}
+    handler = object.__new__(handler_class)
+    handler.path = "/api/kline/symbols?source_id=bitget&limit=25"
+    handler._send_json = lambda payload, status=None: sent.update(payload=payload)
+
+    handler.do_GET()
+
+    assert sent["payload"] == {"source_id": "bitget", "limit": 25}
 
     for path in [
         "/api/bars?source_id=bitget&symbol=BTC%2FUSDT&frequency=1d",

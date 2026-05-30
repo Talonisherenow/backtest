@@ -141,6 +141,9 @@ def test_get_routes_and_cors_headers(tmp_path: Path):
         status, headers, health = _json_request(base_url, "/api/health")
         _, _, sources = _json_request(base_url, "/api/data-sources")
         _, _, manifest = _json_request(base_url, "/api/kline/manifest")
+        _, _, kline_symbols = _json_request(
+            base_url, "/api/kline/symbols?source_id=a_share&limit=1"
+        )
         query = urlencode(
             {
                 "source_id": "a_share",
@@ -162,6 +165,7 @@ def test_get_routes_and_cors_headers(tmp_path: Path):
         assert health["status"] == "ok"
         assert sources["sources"][0]["source_id"] == "a_share"
         assert manifest["default_window_size"] == 1
+        assert kline_symbols["symbols"][0]["symbol"] == "000001.SZ"
         assert bars["loaded_rows"] == 1
         assert tasks["tasks"][0]["status"] == "failed"
         assert tasks["page"] == 1
@@ -252,7 +256,7 @@ def test_get_route_returns_json_error_for_unexpected_failure():
     class BrokenApi:
         config = type("Config", (), {"api_token": None})()
 
-        def kline_manifest(self):
+        def kline_manifest(self, *, include_symbols=True):
             raise OSError("corrupt parquet")
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), make_data_source_handler(BrokenApi()))

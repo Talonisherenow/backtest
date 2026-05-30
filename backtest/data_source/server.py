@@ -57,7 +57,9 @@ def make_data_source_handler(api: DataSourceApi):
                         ),
                     )
                 elif parsed.path == "/api/kline/manifest":
-                    self._send_json(200, api.kline_manifest())
+                    self._send_json(200, api.kline_manifest(**self._kline_manifest_args(query)))
+                elif parsed.path == "/api/kline/symbols":
+                    self._send_json(200, api.kline_symbols(**self._kline_symbols_args(query)))
                 elif parsed.path == "/api/kline/bars":
                     self._send_json(200, api.kline_bars(**self._bars_args(query)))
                 elif parsed.path == "/api/data/tasks/summary":
@@ -349,6 +351,23 @@ def make_data_source_handler(api: DataSourceApi):
                 "start": self._optional(query, "start"),
             }
             offset = self._optional(query, "offset")
+            if offset is not None:
+                args["offset"] = int(offset)
+            return args
+
+        def _kline_manifest_args(self, query: dict[str, list[str]]) -> dict[str, Any]:
+            return {"include_symbols": self._optional(query, "symbols") != "0"}
+
+        def _kline_symbols_args(self, query: dict[str, list[str]]) -> dict[str, Any]:
+            args: dict[str, Any] = {
+                "source_id": self._optional(query, "source_id"),
+                "q": self._optional(query, "q"),
+                "board": self._optional(query, "board"),
+            }
+            limit = self._optional(query, "limit")
+            offset = self._optional(query, "offset")
+            if limit is not None:
+                args["limit"] = int(limit)
             if offset is not None:
                 args["offset"] = int(offset)
             return args

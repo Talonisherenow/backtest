@@ -46,7 +46,15 @@ def serve_kline_viewer(
                 self._send_bytes(html, "text/html; charset=utf-8")
                 return
             if parsed.path in {"/api/manifest", "/api/kline/manifest"}:
-                self._send_json(service.manifest(default_window_size=default_window_size))
+                self._send_json(
+                    service.manifest(
+                        default_window_size=default_window_size,
+                        include_symbols=self._manifest_include_symbols(parsed.query),
+                    )
+                )
+                return
+            if parsed.path == "/api/kline/symbols":
+                self._handle_symbols(parsed.query)
                 return
             if parsed.path in {"/api/bars", "/api/kline/bars"}:
                 self._handle_bars(parsed.query)
@@ -75,6 +83,24 @@ def serve_kline_viewer(
                 self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
                 return
             self._send_json(result)
+
+        def _handle_symbols(self, query: str) -> None:
+            params = parse_qs(query)
+            try:
+                result = service.symbols(
+                    source_id=self._optional(params, "source_id"),
+                    q=self._optional(params, "q"),
+                    board=self._optional(params, "board"),
+                    limit=self._int_param(params, "limit", 50),
+                    offset=self._int_param(params, "offset", 0),
+                )
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(result)
+
+        def _manifest_include_symbols(self, query: str) -> bool:
+            return self._optional(parse_qs(query), "symbols") != "0"
 
         def _send_json(self, payload: object, status: HTTPStatus = HTTPStatus.OK) -> None:
             body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")

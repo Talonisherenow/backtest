@@ -92,6 +92,42 @@ def test_kline_cache_service_manifest_uses_parquet_metadata_not_frame_reads(
     assert series["last_bar"] == "2025-01-01T02:00:00"
 
 
+def test_kline_cache_service_manifest_can_skip_symbol_expansion(tmp_path: Path, monkeypatch):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(bars_root, "BTC/USDT", frequency="1d")
+
+    def fail_manifest_symbols(*args, **kwargs):
+        raise AssertionError("lightweight manifest should not expand all symbols")
+
+    monkeypatch.setattr(KlineCacheService, "_manifest_symbols", fail_manifest_symbols)
+
+    manifest = KlineCacheService(bars_root=bars_root, adjust="none").manifest(
+        default_window_size=300,
+        include_symbols=False,
+    )
+
+    assert manifest["default_window_size"] == 300
+    assert manifest["symbols"] == []
+    assert manifest["sources"][0]["source_id"] == "default"
+    assert manifest["sources"][0]["symbols"] == []
+
+
+def test_kline_cache_service_symbols_returns_one_page(tmp_path: Path):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(bars_root, "BTC/USDT", frequency="1d")
+    _write_cached_bars(bars_root, "ETH/USDT", frequency="1d")
+    _write_cached_bars(bars_root, "SOL/USDT", frequency="1d")
+
+    page = KlineCacheService(bars_root=bars_root, adjust="none").symbols(limit=2)
+
+    assert page["source_id"] == "default"
+    assert page["offset"] == 0
+    assert page["limit"] == 2
+    assert page["has_more"] is True
+    assert [item["symbol"] for item in page["symbols"]] == ["BTC/USDT", "ETH/USDT"]
+    assert page["symbols"][0]["series"][0]["rows"] == 10
+
+
 def test_kline_cache_service_manifest_skips_unreadable_cached_series(tmp_path: Path):
     bars_root = tmp_path / "bars"
     _write_cached_bars(bars_root, "BTC/USDT", frequency="1d")

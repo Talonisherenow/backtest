@@ -25,7 +25,7 @@ from backtest.charts.kline_viewer import (
     _timestamp_label,
     _years_from_paths,
 )
-from backtest.core.symbols import normalize_symbol, safe_symbol_path
+from backtest.core.symbols import normalize_symbol, safe_symbol_path, symbol_from_safe_path
 
 _READ_ERRORS = (OSError, ValueError, ArrowException)
 _MANIFEST_SERIES_ERRORS = (*_READ_ERRORS, KeyError)
@@ -95,13 +95,22 @@ class KlineCacheService:
             for source in self.sources
         }
 
-    def manifest(self, *, default_window_size: int = 5000) -> dict[str, Any]:
+    def manifest(
+        self,
+        *,
+        default_window_size: int = 5000,
+        include_symbols: bool = True,
+    ) -> dict[str, Any]:
         sources = []
         for source in self.sources:
             frequencies = self._frequencies_for(source)
-            requested_symbols = source.symbols or _discover_symbols(source.bars_root, frequencies, source.adjust)
-            symbols = self._manifest_symbols(source, requested_symbols, frequencies)
-            if not symbols:
+            symbols = []
+            if include_symbols:
+                requested_symbols = source.symbols or _discover_symbols(
+                    source.bars_root, frequencies, source.adjust
+                )
+                symbols = self._manifest_symbols(source, requested_symbols, frequencies)
+            if include_symbols and not symbols:
                 continue
             sources.append(
                 {
@@ -128,6 +137,47 @@ class KlineCacheService:
             "adjust": primary["adjust"] if primary else "qfq",
             "symbols": primary["symbols"] if primary else [],
             "sources": sources,
+        }
+
+    def symbols(
+        self,
+        *,
+        source_id: str | None = None,
+        q: str | None = None,
+        board: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        source = self._source(source_id)
+        frequencies = self._frequencies_for(source)
+        limit = min(max(int(limit), 1), 500)
+        offset = max(int(offset), 0)
+        query = (q or "").strip().lower()
+        selected: list[str] = []
+        skipped = 0
+        has_more = False
+        for symbol in self._iter_symbols(source, frequencies):
+            details = self._metadata.get(source.source_id, {}).get(symbol, {})
+            if not self._symbol_matches(symbol, details, query=query, board=board):
+                continue
+            if skipped < offset:
+                skipped += 1
+                continue
+            if len(selected) >= limit:
+                has_more = True
+                break
+            selected.append(symbol)
+        return {
+            "source_id": source.source_id,
+            "source_label": source.source_label,
+            "frequency": frequencies[0] if len(frequencies) == 1 else "multi",
+            "frequencies": frequencies,
+            "adjust": source.adjust,
+            "symbols": self._manifest_symbols(source, selected, frequencies),
+            "offset": offset,
+            "limit": limit,
+            "has_more": has_more,
+            "next_offset": offset + limit if has_more else None,
         }
 
     def bars(
@@ -196,6 +246,54 @@ class KlineCacheService:
         if source.frequencies:
             return source.frequencies
         return _discover_frequencies(source.bars_root, source.adjust)
+
+    def _iter_symbols(self, source: KlineSource, frequencies: list[str]):
+        if source.symbols:
+            for symbol in sorted(set(source.symbols)):
+                yield symbol
+            return
+        seen = set()
+        for frequency in frequencies:
+            base = source.bars_root / f"frequency={frequency}" / f"adjust={source.adjust}"
+            if not base.exists():
+                continue
+            for path in sorted(base.glob("symbol=*")):
+                if not path.is_dir():
+                    continue
+                symbol = symbol_from_safe_path(path.name.removeprefix("symbol="))
+                if symbol in seen:
+                    continue
+                seen.add(symbol)
+                yield symbol
+
+    @staticmethod
+    def _symbol_matches(
+        symbol: str,
+        details: dict[str, Any],
+        *,
+        query: str,
+        board: str | None,
+    ) -> bool:
+        if board and board != "all":
+            item_board = _metadata_text(details, "board", _symbol_board(symbol))
+            item_exchange = _metadata_text(details, "exchange", _symbol_exchange(symbol))
+            if " / " in board:
+                if f"{item_exchange} / {item_board}" != board:
+                    return False
+            elif item_board != board and item_exchange != board:
+                return False
+        if not query:
+            return True
+        target = " ".join(
+            [
+                symbol,
+                str(details.get("code", _symbol_code(symbol))),
+                str(details.get("name", "")),
+                str(details.get("exchange", _symbol_exchange(symbol))),
+                str(details.get("board", _symbol_board(symbol))),
+            ]
+        ).lower()
+        return query in target
 
     def _manifest_symbols(
         self,

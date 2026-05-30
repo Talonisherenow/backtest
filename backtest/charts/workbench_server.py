@@ -72,7 +72,15 @@ def serve_chart_workbench(
                 self._send_bytes(instrument_html, "text/html; charset=utf-8")
                 return
             if parsed.path in {"/api/manifest", "/api/kline/manifest"}:
-                self._send_json(kline_service.manifest(default_window_size=default_window_size))
+                self._send_json(
+                    kline_service.manifest(
+                        default_window_size=default_window_size,
+                        include_symbols=self._optional(params, "symbols") != "0",
+                    )
+                )
+                return
+            if parsed.path == "/api/kline/symbols":
+                self._handle_kline_symbols(params)
                 return
             if parsed.path in {"/api/bars", "/api/kline/bars"}:
                 self._handle_kline_bars(params)
@@ -111,6 +119,20 @@ def serve_chart_workbench(
                     offset=self._optional_int(params, "offset"),
                     start=self._optional(params, "start"),
                     anchor=self._optional(params, "anchor", "latest") or "latest",
+                )
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(result)
+
+        def _handle_kline_symbols(self, params: dict[str, list[str]]) -> None:
+            try:
+                result = kline_service.symbols(
+                    source_id=self._optional(params, "source_id"),
+                    q=self._optional(params, "q"),
+                    board=self._optional(params, "board"),
+                    limit=self._int_param(params, "limit", 50),
+                    offset=self._int_param(params, "offset", 0),
                 )
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)

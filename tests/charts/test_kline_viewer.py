@@ -333,7 +333,18 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert 'mode": "dynamic"' not in html
     assert '"mode":"dynamic"' in html
     assert "loadManifest" in html
-    assert 'apiUrl("/api/kline/manifest")' in html
+    assert '"/api/kline/manifest?symbols=0"' in html
+    assert "loadSymbolsPage" in html
+    assert "loadRemoteDataSources" in html
+    assert 'requestJson("/api/data-sources", "Data sources")' in html
+    assert "loadTaskSymbolsPage" in html
+    assert "requestJson(`/api/data/tasks?${params.toString()}`, \"Task symbols\")" in html
+    assert "useManifestSymbolPage" in html
+    assert "loadLegacySymbolsPage" in html
+    assert "source.all_symbols" in html
+    assert "legacy: true" in html
+    assert "await useManifestSymbolPage({ loadBars: true })" in html
+    assert 'requestJson(`/api/kline/symbols?${params.toString()}`, "Symbol")' in html
     assert "apiUrl(`/api/kline/bars?${params.toString()}`)" in html
     assert "olderPageButton" in html
     assert "newerPageButton" in html
@@ -394,7 +405,10 @@ def test_render_kline_viewer_supports_remote_data_api_base_url():
     assert "function apiUrl(path)" in html
     assert "function apiRequestOptions()" in html
     assert '"Authorization", `Bearer ${payload.data_api_token}`' in html
-    assert 'fetch(apiUrl("/api/kline/manifest"), apiRequestOptions())' in html
+    assert "function requestJson(path, label)" in html
+    assert "const manifest = await requestJson(manifestPath, \"Manifest\")" in html
+    assert "requestJson(`/api/kline/symbols?${params.toString()}`, \"Symbol\")" in html
+    assert "requestJson(`/api/data/tasks?${params.toString()}`, \"Task symbols\")" in html
     assert "fetch(apiUrl(`/api/kline/bars?${params.toString()}`), apiRequestOptions())" in html
 
 
@@ -422,8 +436,11 @@ def test_kline_server_supports_legacy_and_kline_api_manifest_routes(monkeypatch)
         def __init__(self, **kwargs):
             pass
 
-        def manifest(self, *, default_window_size):
-            return {"window": default_window_size}
+        def manifest(self, *, default_window_size, include_symbols=True):
+            return {"window": default_window_size, "include_symbols": include_symbols}
+
+        def symbols(self, **kwargs):
+            return {"limit": kwargs["limit"], "source_id": kwargs["source_id"]}
 
         def bars(self, **kwargs):
             return {"symbol": kwargs["symbol"], "frequency": kwargs["frequency"]}
@@ -452,7 +469,25 @@ def test_kline_server_supports_legacy_and_kline_api_manifest_routes(monkeypatch)
 
         handler.do_GET()
 
-        assert sent["payload"] == {"window": 123}
+        assert sent["payload"] == {"window": 123, "include_symbols": True}
+
+    sent = {}
+    handler = object.__new__(handler_class)
+    handler.path = "/api/kline/manifest?symbols=0"
+    handler._send_json = lambda payload, status=None: sent.update(payload=payload)
+
+    handler.do_GET()
+
+    assert sent["payload"] == {"window": 123, "include_symbols": False}
+
+    sent = {}
+    handler = object.__new__(handler_class)
+    handler.path = "/api/kline/symbols?source_id=bitget&limit=25"
+    handler._send_json = lambda payload, status=None: sent.update(payload=payload)
+
+    handler.do_GET()
+
+    assert sent["payload"] == {"limit": 25, "source_id": "bitget"}
 
     for path in [
         "/api/bars?symbol=BTC%2FUSDT&frequency=1d",

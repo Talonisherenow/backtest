@@ -76,6 +76,7 @@ def test_kline_manifest_and_bars_delegate_to_cache_service(tmp_path: Path):
     api = _api(tmp_path)
 
     manifest = api.kline_manifest()
+    symbols = api.kline_symbols(source_id="a_share", limit=1)
     bars = api.kline_bars(
         source_id="a_share",
         symbol="000001.SZ",
@@ -87,6 +88,9 @@ def test_kline_manifest_and_bars_delegate_to_cache_service(tmp_path: Path):
 
     assert manifest["default_window_size"] == 2
     assert manifest["sources"][0]["source_id"] == "a_share"
+    assert symbols["source_id"] == "a_share"
+    assert symbols["limit"] == 1
+    assert symbols["symbols"][0]["symbol"] == "000001.SZ"
     assert bars["loaded_rows"] == 2
     assert [bar["date"] for bar in bars["bars"]] == ["2025-01-02", "2025-01-03"]
 
