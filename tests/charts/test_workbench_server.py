@@ -157,7 +157,10 @@ def test_render_workbench_index_html_hosts_data_source_monitor():
     assert "height: min(76vh, 760px);" in html
     assert 'role="tablist" aria-label="Data source monitor sections"' in html
     assert 'data-drawer-tab="schedules"' in html
+    assert 'data-drawer-tab="runs"' in html
     assert 'data-drawer-tab="tasks"' in html
+    assert 'id="scheduleRunsDrawerPanel"' in html
+    assert 'aria-controls="scheduleRunsDrawerPanel"' in html
     assert 'id="scheduleDrawerPanel"' in html
     assert 'id="taskDrawerPanel"' in html
     assert 'aria-controls="scheduleDrawerPanel"' in html
@@ -190,6 +193,9 @@ def test_render_workbench_index_html_hosts_data_source_monitor():
     assert "Last Job" in html
     assert "Range" in html
     assert "Triggered" in html
+    assert "Task Progress" in html
+    assert "Job Status" not in html
+    assert "function formatJobTaskProgress(job)" in html
     assert "function dataApiUrl(path)" in html
     assert "function dataApiRequestOptions()" in html
     assert "function setDrawerTab(tabId)" in html

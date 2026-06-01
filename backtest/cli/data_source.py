@@ -147,7 +147,11 @@ def serve(
     serve_data_source_api(api=api, host=host, port=port)
 
 
-def _run_data_job(config: DataSyncJobConfig):
+def _run_data_job(
+    config: DataSyncJobConfig,
+    *,
+    on_item_finished=None,
+):
     metadata = MetadataStore(config.metadata)
     catalog = DataCatalog(metadata)
     service = DataSyncService(
@@ -160,4 +164,7 @@ def _run_data_job(config: DataSyncJobConfig):
         catalog=catalog,
         tasks=CrawlTaskManager(metadata),
     )
-    return MarketDataJobRunner(service=service, catalog=catalog).run(config)
+    return MarketDataJobRunner(service=service, catalog=catalog).run(
+        config,
+        on_item_finished=on_item_finished,
+    )

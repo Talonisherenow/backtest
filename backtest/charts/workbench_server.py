@@ -1723,6 +1723,11 @@ def render_workbench_index_html(
       white-space: nowrap;
     }
     .text-button:hover { background: #f8fafc; border-color: #b8c7d6; }
+    .text-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
     .text-button.danger-button {
       border-color: #f1b8ad;
       background: #fff7f5;
@@ -1803,11 +1808,13 @@ def render_workbench_index_html(
       overflow: hidden;
     }
     .drawer-panel[hidden] { display: none; }
-    .schedule-drawer-panel {
-      display: grid;
-      grid-template-rows: minmax(220px, 1fr) minmax(170px, 0.85fr);
-      gap: 12px;
+    .schedule-drawer-panel,
+    .schedule-runs-drawer-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
       padding: 12px 16px;
+      overflow: hidden;
     }
     .task-drawer-panel {
       display: grid;
@@ -1909,15 +1916,33 @@ def render_workbench_index_html(
       border-bottom: 1px solid var(--line);
     }
     .schedule-runs-panel { max-height: 180px; }
-    .schedule-drawer-panel .schedule-panel {
-      max-height: none;
+    .schedule-drawer-panel .schedule-panel,
+    .schedule-runs-drawer-panel .schedule-panel {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 8px;
       min-height: 0;
+      max-height: none;
       overflow: hidden;
       padding: 10px;
       border: 1px solid var(--line-soft);
       border-radius: 6px;
     }
-    .schedule-drawer-panel .schedule-runs-panel { max-height: none; }
+    .schedule-drawer-panel .schedule-table-wrap,
+    .schedule-runs-drawer-panel .schedule-table-wrap {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow: auto;
+    }
+    .schedule-drawer-panel .panel-pagination,
+    .schedule-runs-drawer-panel .panel-pagination {
+      position: relative;
+      z-index: 2;
+      flex: 0 0 auto;
+      padding-top: 4px;
+      background: var(--surface);
+    }
     .schedule-actions {
       display: flex;
       gap: 6px;
@@ -1996,6 +2021,31 @@ def render_workbench_index_html(
       color: var(--muted);
       font-size: 11px;
       font-weight: 500;
+    }
+    .schedule-run-progress {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      min-width: 220px;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.35;
+      text-transform: none;
+      white-space: normal;
+    }
+    .schedule-run-progress span {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .schedule-run-progress .ok { color: #1f7a45; }
+    .schedule-run-progress .fail { color: var(--red); }
+    .schedule-run-progress .run { color: #195bb8; }
+    .schedule-run-progress .wait { color: #8a5b00; }
+    .schedule-run-progress .muted {
+      color: var(--muted);
+      font-weight: 600;
     }
     .schedule-editor-backdrop {
       position: fixed;
@@ -2397,7 +2447,6 @@ def render_workbench_index_html(
         width: calc(100vw - 16px);
         height: calc(100vh - 16px);
       }
-      .schedule-drawer-panel { grid-template-rows: minmax(180px, 1fr) minmax(150px, 0.8fr); }
       .drawer-filters { grid-template-columns: 1fr; }
       .panel-pagination { align-items: flex-start; flex-direction: column; }
       .panel-pagination-controls { flex-wrap: wrap; }
@@ -2434,6 +2483,7 @@ def render_workbench_index_html(
     </div>
     <div class="drawer-main-tabs" role="tablist" aria-label="Data source monitor sections">
       <button class="drawer-main-tab active" id="scheduleDrawerTab" data-drawer-tab="schedules" type="button" role="tab" aria-selected="true" aria-controls="scheduleDrawerPanel">Schedules</button>
+      <button class="drawer-main-tab" id="scheduleRunsDrawerTab" data-drawer-tab="runs" type="button" role="tab" aria-selected="false" aria-controls="scheduleRunsDrawerPanel">Recent Runs</button>
       <button class="drawer-main-tab" id="taskDrawerTab" data-drawer-tab="tasks" type="button" role="tab" aria-selected="false" aria-controls="taskDrawerPanel">Crawl Tasks</button>
     </div>
     <div class="drawer-panel schedule-drawer-panel" id="scheduleDrawerPanel" role="tabpanel" aria-labelledby="scheduleDrawerTab">
@@ -2479,6 +2529,8 @@ def render_workbench_index_html(
           </div>
         </div>
       </section>
+    </div>
+    <div class="drawer-panel schedule-runs-drawer-panel" id="scheduleRunsDrawerPanel" role="tabpanel" aria-labelledby="scheduleRunsDrawerTab" hidden>
       <section class="schedule-panel schedule-runs-panel" aria-label="Recent schedule runs">
         <div class="schedule-panel-header">
           <strong>Recent Runs</strong>
@@ -2492,9 +2544,8 @@ def render_workbench_index_html(
                 <th>Target</th>
                 <th>Range</th>
                 <th>Run Status</th>
-                <th>Job Status</th>
                 <th>Triggered</th>
-                <th>Job</th>
+                <th>Task Progress</th>
               </tr>
             </thead>
             <tbody id="dataScheduleRunRows"></tbody>
@@ -3171,7 +3222,11 @@ def render_workbench_index_html(
     }
 
     function activeDrawerTab() {
-      return dataMonitorState.activeDrawerTab === "tasks" ? "tasks" : "schedules";
+      const tab = dataMonitorState.activeDrawerTab;
+      if (tab === "tasks" || tab === "runs") {
+        return tab;
+      }
+      return "schedules";
     }
 
     function syncDrawerTabs() {
@@ -3189,7 +3244,13 @@ def render_workbench_index_html(
     }
 
     function setDrawerTab(tabId) {
-      dataMonitorState.activeDrawerTab = tabId === "tasks" ? "tasks" : "schedules";
+      if (tabId === "tasks") {
+        dataMonitorState.activeDrawerTab = "tasks";
+      } else if (tabId === "runs") {
+        dataMonitorState.activeDrawerTab = "runs";
+      } else {
+        dataMonitorState.activeDrawerTab = "schedules";
+      }
       syncDrawerTabs();
       renderTaskDrawer();
       const source = selectedSource();
@@ -3208,6 +3269,44 @@ def render_workbench_index_html(
 
     function scheduleById(scheduleId) {
       return scheduleList().find((schedule) => schedule.schedule_id === scheduleId) || null;
+    }
+
+    function formatJobTaskProgress(job) {
+      if (!job) {
+        return { html: '<span class="muted">No job linked</span>', title: "" };
+      }
+      const total = Number(job.total_items || 0);
+      const success = Number(job.success_count || 0);
+      const failed = Number(job.failed_count || 0);
+      const completed = success + failed;
+      const status = String(job.status || "");
+      let running = 0;
+      let pending = 0;
+      if (status === "running") {
+        running = total > completed ? 1 : 0;
+        pending = Math.max(0, total - completed - running);
+      } else if (status === "submitted") {
+        pending = total > 0 ? Math.max(0, total - completed) : 0;
+      }
+      const parts = [
+        `<span class="ok">Success ${success}</span>`,
+        `<span class="fail">Failed ${failed}</span>`,
+        `<span class="run">Running ${running}</span>`,
+        `<span class="wait">Pending ${pending}</span>`,
+      ];
+      const title = total
+        ? `${total} items · ${status}`
+        : status || "unknown";
+      if (!total && status === "submitted") {
+        return {
+          html: '<span class="muted">Starting…</span>',
+          title,
+        };
+      }
+      return {
+        html: `<div class="schedule-run-progress">${parts.join("")}</div>`,
+        title,
+      };
     }
 
     function jobById(jobId) {
@@ -3306,7 +3405,7 @@ def render_workbench_index_html(
         const leftTime = new Date(left.triggered_at || left.created_at || "").getTime();
         const rightTime = new Date(right.triggered_at || right.created_at || "").getTime();
         return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime);
-      }).slice(0, 8);
+      });
     }
 
     function taskPageUrl(sourceId, filters) {
@@ -4674,7 +4773,7 @@ def render_workbench_index_html(
       if (dataMonitorState.error) {
         metaEl.textContent = "Run history unavailable";
         renderScheduleRunPagination(paginatedItems([], 1, dataMonitorState.scheduleRunPageSize));
-        rowsEl.innerHTML = `<tr><td class="empty" colspan="7">Unable to load schedule runs</td></tr>`;
+        rowsEl.innerHTML = `<tr><td class="empty" colspan="6">Unable to load schedule runs</td></tr>`;
         return;
       }
       const runs = recentScheduleRuns();
@@ -4687,11 +4786,11 @@ def render_workbench_index_html(
         const schedule = run.schedule || scheduleById(run.schedule_id) || {};
         const job = run.job_id ? jobById(run.job_id) : null;
         const runStatus = escapeHtml(run.status || "unknown");
-        const jobStatus = escapeHtml(job?.status || (run.job_id ? "submitted" : ""));
-        const jobLine = job
-          ? `${job.success_count || 0}/${job.total_items || 0} ok · failed ${job.failed_count || 0}`
-          : run.error || "";
+        const progress = formatJobTaskProgress(job);
         const rangeText = formatScheduleDateRange(schedule, run.triggered_at || run.due_at);
+        const progressSubline = run.job_id
+          ? escapeHtml(run.job_id)
+          : escapeHtml(run.error || "");
         return `<tr>
           <td>
             <div class="schedule-name">
@@ -4702,16 +4801,15 @@ def render_workbench_index_html(
           <td>${escapeHtml(formatScheduleJob(schedule))}</td>
           <td>${escapeHtml(rangeText)}</td>
           <td><span class="task-status ${runStatus}">${runStatus}</span></td>
-          <td>${jobStatus ? `<span class="task-status ${jobStatus}">${jobStatus}</span>` : ""}</td>
           <td>${escapeHtml(formatDateTime(run.triggered_at))}</td>
           <td>
-            <div class="schedule-name">
-              <strong>${escapeHtml(run.job_id || "")}</strong>
-              <span class="schedule-subline">${escapeHtml(jobLine)}</span>
+            <div class="schedule-name" title="${escapeHtml(progress.title)}">
+              ${progress.html}
+              <span class="schedule-subline">${progressSubline}</span>
             </div>
           </td>
         </tr>`;
-      }).join("") : `<tr><td class="empty" colspan="7">No schedule runs yet</td></tr>`;
+      }).join("") : `<tr><td class="empty" colspan="6">No schedule runs yet</td></tr>`;
     }
 
     function renderTaskDrawer() {
@@ -4766,7 +4864,7 @@ def render_workbench_index_html(
           <td>${escapeHtml(formatTaskRange(task))}</td>
           <td><span class="task-status ${status}">${status}</span></td>
           <td>${escapeHtml(task.attempts ?? "")}</td>
-          <td>${escapeHtml(formatClock(taskUpdatedAt(task)))}</td>
+          <td>${escapeHtml(formatDateTime(taskUpdatedAt(task)))}</td>
           <td>${escapeHtml(task.last_error || "")}</td>
         </tr>`;
       }).join("") : `<tr><td class="empty" colspan="9">No matching crawl tasks</td></tr>`;
@@ -4977,7 +5075,12 @@ def render_workbench_index_html(
       renderScheduleRows();
     });
     document.getElementById("scheduleNextPageButton").addEventListener("click", () => {
-      dataMonitorState.schedulePage += 1;
+      const schedules = scheduleList();
+      const totalPages = Math.max(
+        1,
+        Math.ceil(schedules.length / Math.max(1, dataMonitorState.schedulePageSize || 25)),
+      );
+      dataMonitorState.schedulePage = Math.min(totalPages, dataMonitorState.schedulePage + 1);
       renderScheduleRows();
     });
     document.getElementById("scheduleRunPageSizeSelect").addEventListener("change", (event) => {
@@ -4990,7 +5093,12 @@ def render_workbench_index_html(
       renderScheduleRunRows();
     });
     document.getElementById("scheduleRunNextPageButton").addEventListener("click", () => {
-      dataMonitorState.scheduleRunPage += 1;
+      const runs = recentScheduleRuns();
+      const totalPages = Math.max(
+        1,
+        Math.ceil(runs.length / Math.max(1, dataMonitorState.scheduleRunPageSize || 25)),
+      );
+      dataMonitorState.scheduleRunPage = Math.min(totalPages, dataMonitorState.scheduleRunPage + 1);
       renderScheduleRunRows();
     });
     document.getElementById("taskSymbolSearch").addEventListener("input", (event) => {

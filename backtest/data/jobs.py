@@ -178,12 +178,19 @@ class MarketDataJobRunner:
         self.sleep = sleep
         self.now = now
 
-    def run(self, config: DataSyncJobConfig) -> JobResult:
+    def run(
+        self,
+        config: DataSyncJobConfig,
+        *,
+        on_item_finished: Callable[[JobItemResult], None] | None = None,
+    ) -> JobResult:
         result = JobResult(name=config.name, started_at=self.now())
         try:
             for item in self._items(config):
                 item_result = self._run_item(config, item)
                 result.items.append(item_result)
+                if on_item_finished is not None:
+                    on_item_finished(item_result)
                 if item_result.status == "failed" and not config.retry.continue_on_error:
                     raise RuntimeError(
                         f"Data sync job {config.name} failed at "
