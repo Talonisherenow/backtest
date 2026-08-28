@@ -2,6 +2,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from backtest.core.contracts import CatalogRecord
 from backtest.core.enums import AdjustMode, Frequency
@@ -75,6 +76,7 @@ def test_kline_manifest_and_bars_delegate_to_cache_service(tmp_path: Path):
     api = _api(tmp_path)
 
     manifest = api.kline_manifest()
+    symbols = api.kline_symbols(source_id="a_share", limit=1)
     bars = api.kline_bars(
         source_id="a_share",
         symbol="000001.SZ",
@@ -86,6 +88,9 @@ def test_kline_manifest_and_bars_delegate_to_cache_service(tmp_path: Path):
 
     assert manifest["default_window_size"] == 2
     assert manifest["sources"][0]["source_id"] == "a_share"
+    assert symbols["source_id"] == "a_share"
+    assert symbols["limit"] == 1
+    assert symbols["symbols"][0]["symbol"] == "000001.SZ"
     assert bars["loaded_rows"] == 2
     assert [bar["date"] for bar in bars["bars"]] == ["2025-01-02", "2025-01-03"]
 
@@ -154,6 +159,236 @@ def test_tasks_inventory_and_retry_failed_serialize_real_store_records(tmp_path:
     assert inventory_payload["records"][0]["quality_status"] == "ok"
     assert retry_payload == {"queued": 1, "task_ids": [task_id]}
     assert api.tasks("a_share")["tasks"][0]["status"] == "retrying"
+
+
+def test_api_exposes_instrument_and_tag_methods(tmp_path: Path):
+    api = _api(tmp_path)
+
+    created = api.create_instrument(
+        {
+            "instrument_id": "btc/usdt",
+            "symbol": "btc/usdt",
+            "name": "Bitcoin",
+            "source_id": "a_share",
+            "metadata": {"base": "BTC"},
+        }
+    )
+    tag = api.create_instrument_tag(
+        {"tag_id": "watchlist", "name": "Watchlist", "source_id": "a_share"}
+    )
+    members = api.add_instrument_tag_members(
+        "watchlist",
+        {"source_id": "a_share", "instrument_ids": ["BTC/USDT"]},
+    )
+    filtered = api.instruments(source_id="a_share", tag="Watchlist")
+
+    assert created["instrument_id"] == "BTC/USDT"
+    assert created["metadata"] == {"base": "BTC"}
+    assert tag["tag_id"] == "watchlist"
+    assert members["members"][0]["instrument_id"] == "BTC/USDT"
+    assert filtered["total"] == 1
+    assert filtered["instruments"][0]["tags"][0]["name"] == "Watchlist"
+
+
+def test_instrument_tags_filter_member_counts_by_source(tmp_path: Path):
+    api = _api(tmp_path)
+    api.config.sources.append(
+        DataSourceSpec(
+            source_id="bitget",
+            source_label="Bitget",
+            asset_class="crypto",
+            bars_root=tmp_path / "bitget-bars",
+            metadata_path=tmp_path / "metadata.sqlite",
+            adjust="none",
+            catalog_source="ccxt",
+        )
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "A_SHARE:000001.SZ",
+            "symbol": "000001.SZ",
+            "source_id": "a_share",
+        }
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "BITGET:BTC/USDT",
+            "symbol": "BTC/USDT",
+            "source_id": "bitget",
+        }
+    )
+    api.create_instrument_tag({"tag_id": "a_share", "name": "A-share"})
+    api.add_instrument_tag_members(
+        "a_share",
+        {"instrument_ids": ["A_SHARE:000001.SZ"]},
+    )
+    api.create_instrument_tag({"tag_id": "bitget", "name": "Bitget"})
+    api.add_instrument_tag_members(
+        "bitget",
+        {"instrument_ids": ["BITGET:BTC/USDT"]},
+    )
+    api.create_instrument_tag({"tag_id": "mixed", "name": "Mixed"})
+    api.add_instrument_tag_members(
+        "mixed",
+        {"instrument_ids": ["A_SHARE:000001.SZ", "BITGET:BTC/USDT"]},
+    )
+
+    tags = api.instrument_tags(source_id="bitget")
+
+    assert [(tag["tag_id"], tag["member_count"]) for tag in tags["tags"]] == [
+        ("bitget", 1),
+        ("mixed", 1),
+    ]
+
+
+def test_api_exposes_instrument_source_sync_methods(tmp_path: Path):
+    api = _api(tmp_path)
+    spec = api.config.source("a_share")
+    universe = tmp_path / "a_share.csv"
+    pd.DataFrame(
+        [{"symbol": "000001.SZ", "name": "平安银行", "exchange": "SZ", "industry": "bank"}]
+    ).to_csv(universe, index=False)
+    object.__setattr__(spec, "universe_path", universe)
+    api.instrument_sync_service = None
+
+    sources = api.instrument_sources()
+    result = api.run_instrument_sync({"source_id": "a_share"})
+    instruments = api.instruments(source_id="a_share")
+    tags = api.instrument_tags()
+
+    assert sources["sources"][0]["provider_type"] == "universe_csv"
+    assert result["source_id"] == "a_share"
+    assert result["created"] == 1
+    assert instruments["instruments"][0]["instrument_id"] == "A_SHARE:000001.SZ"
+    assert instruments["instruments"][0]["symbol"] == "000001.SZ"
+    assert tags["tags"][0]["tag_id"] == "a_share"
+    assert tags["tags"][0]["member_count"] == 1
+
+
+def test_instrument_api_rejects_unknown_source_id(tmp_path: Path):
+    api = _api(tmp_path)
+
+    with pytest.raises(ValueError, match="Unknown source: missing"):
+        api.create_instrument(
+            {
+                "instrument_id": "btc/usdt",
+                "symbol": "btc/usdt",
+                "source_id": "missing",
+            }
+        )
+
+
+def test_instrument_detail_rejects_source_mismatch(tmp_path: Path):
+    api = _api(tmp_path)
+    api.config.sources.append(
+        DataSourceSpec(
+            source_id="bitget",
+            source_label="Bitget",
+            asset_class="crypto",
+            bars_root=api.config.sources[0].bars_root,
+            metadata_path=api.config.sources[0].metadata_path,
+            adjust="none",
+            catalog_source="ccxt:bitget",
+        )
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "btc/usdt",
+            "symbol": "btc/usdt",
+            "source_id": "a_share",
+        }
+    )
+
+    with pytest.raises(ValueError, match="Unknown instrument: BTC/USDT"):
+        api.instrument("BTC/USDT", source_id="bitget")
+
+
+def test_update_delete_reject_source_mismatch_without_modifying_record(tmp_path: Path):
+    api = _api(tmp_path)
+    api.config.sources.append(
+        DataSourceSpec(
+            source_id="bitget",
+            source_label="Bitget",
+            asset_class="crypto",
+            bars_root=api.config.sources[0].bars_root,
+            metadata_path=api.config.sources[0].metadata_path,
+            adjust="none",
+            catalog_source="ccxt:bitget",
+        )
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "btc/usdt",
+            "symbol": "btc/usdt",
+            "name": "Bitcoin",
+            "source_id": "a_share",
+        }
+    )
+
+    with pytest.raises(ValueError, match="Unknown instrument: BTC/USDT"):
+        api.update_instrument("BTC/USDT", {"name": "Wrong"}, source_id="bitget")
+    assert api.instrument("BTC/USDT")["name"] == "Bitcoin"
+
+    with pytest.raises(ValueError, match="Unknown instrument: BTC/USDT"):
+        api.delete_instrument("BTC/USDT", source_id="bitget")
+    assert api.instrument("BTC/USDT")["instrument_id"] == "BTC/USDT"
+
+
+def test_replace_tag_members_with_source_id_preserves_other_source_members(tmp_path: Path):
+    api = _api(tmp_path)
+    api.config.sources.append(
+        DataSourceSpec(
+            source_id="bitget",
+            source_label="Bitget",
+            asset_class="crypto",
+            bars_root=api.config.sources[0].bars_root,
+            metadata_path=api.config.sources[0].metadata_path,
+            adjust="none",
+            catalog_source="ccxt:bitget",
+        )
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "A_SHARE:000001.SZ",
+            "symbol": "000001.SZ",
+            "source_id": "a_share",
+        }
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "BITGET:BTC/USDT",
+            "symbol": "BTC/USDT",
+            "source_id": "bitget",
+        }
+    )
+    api.create_instrument_tag(
+        {"tag_id": "watchlist", "name": "Watchlist", "source_id": "a_share"}
+    )
+    api.add_instrument_tag_members(
+        "watchlist",
+        {
+            "instrument_ids": ["A_SHARE:000001.SZ", "BITGET:BTC/USDT"],
+        },
+    )
+
+    after_remove = api.replace_instrument_tag_members(
+        "watchlist",
+        {"instrument_ids": []},
+        source_id="bitget",
+    )
+    assert [member["instrument_id"] for member in after_remove["members"]] == [
+        "A_SHARE:000001.SZ"
+    ]
+
+    after_restore = api.replace_instrument_tag_members(
+        "watchlist",
+        {"instrument_ids": ["BITGET:BTC/USDT"]},
+        source_id="bitget",
+    )
+    assert [member["instrument_id"] for member in after_restore["members"]] == [
+        "A_SHARE:000001.SZ",
+        "BITGET:BTC/USDT",
+    ]
 
 
 def test_submit_job_normalizes_path_fields_and_exposes_job_snapshots(tmp_path: Path):
@@ -255,3 +490,162 @@ def test_api_exposes_schedule_service_methods(tmp_path: Path):
     assert job["status"] == "success"
     assert submitted[0]["symbols"] == ["000002.SZ"]
     assert api.schedule_runs(created["schedule_id"])["runs"][0]["status"] == "submitted"
+
+
+def test_schedule_target_symbols_resolve_existing_instruments(tmp_path: Path):
+    api = _api(tmp_path)
+    api.create_instrument(
+        {
+            "instrument_id": "A_SHARE:000001.SZ",
+            "symbol": "000001.SZ",
+            "source_id": "a_share",
+        }
+    )
+    submitted = []
+    service = DataSourceScheduleService(
+        store=DataSourceScheduleStore(tmp_path / "target-schedules.sqlite"),
+        server_config=api.config,
+        submit_job=lambda payload: submitted.append(payload) or api.submit_job(payload),
+        get_job=api.job,
+        resolve_symbols=api.resolve_schedule_symbols,
+        now=lambda: datetime(2026, 5, 18, 9, 0, 0),
+    )
+    api.schedule_service = service
+
+    created = api.create_schedule(
+        {
+            "name": "target-symbols",
+            "trigger": {"type": "once", "run_at": "2026-05-18T09:00:00+08:00"},
+            "job": {
+                "source_id": "a_share",
+                "target": {
+                    "mode": "symbols",
+                    "instrument_ids": ["A_SHARE:000001.SZ"],
+                },
+                "frequencies": ["1d"],
+                "date_range": {
+                    "type": "fixed",
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-01-03",
+                },
+            },
+        }
+    )
+    job = api.run_schedule_now(created["schedule_id"])
+
+    assert created["config"]["job"]["target"]["mode"] == "symbols"
+    assert created["config"]["job"]["symbols"] == []
+    assert job["status"] == "success"
+    assert submitted[0]["symbols"] == ["000001.SZ"]
+
+
+def test_schedule_target_tag_resolves_members_dynamically(tmp_path: Path):
+    api = _api(tmp_path)
+    api.create_instrument(
+        {
+            "instrument_id": "A_SHARE:000001.SZ",
+            "symbol": "000001.SZ",
+            "source_id": "a_share",
+        }
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "A_SHARE:000002.SZ",
+            "symbol": "000002.SZ",
+            "source_id": "a_share",
+        }
+    )
+    api.create_instrument_tag({"tag_id": "watchlist", "name": "Watchlist", "source_id": "a_share"})
+    api.add_instrument_tag_members(
+        "watchlist",
+        {"source_id": "a_share", "instrument_ids": ["A_SHARE:000001.SZ"]},
+    )
+    submitted = []
+    service = DataSourceScheduleService(
+        store=DataSourceScheduleStore(tmp_path / "target-tag-schedules.sqlite"),
+        server_config=api.config,
+        submit_job=lambda payload: submitted.append(payload) or api.submit_job(payload),
+        get_job=api.job,
+        resolve_symbols=api.resolve_schedule_symbols,
+        now=lambda: datetime(2026, 5, 18, 9, 0, 0),
+    )
+    api.schedule_service = service
+    created = api.create_schedule(
+        {
+            "name": "target-tag",
+            "trigger": {"type": "once", "run_at": "2026-05-18T09:00:00+08:00"},
+            "job": {
+                "source_id": "a_share",
+                "target": {
+                    "mode": "tag",
+                    "tag_id": "watchlist",
+                    "resolution": "dynamic",
+                },
+                "frequencies": ["1d"],
+                "date_range": {
+                    "type": "fixed",
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-01-03",
+                },
+            },
+        }
+    )
+    api.add_instrument_tag_members(
+        "watchlist",
+        {"source_id": "a_share", "instrument_ids": ["A_SHARE:000002.SZ"]},
+    )
+
+    api.run_schedule_now(created["schedule_id"])
+
+    assert submitted[0]["symbols"] == ["000001.SZ", "000002.SZ"]
+
+
+def test_schedule_target_rejects_source_mismatch(tmp_path: Path):
+    api = _api(tmp_path)
+    api.config.sources.append(
+        DataSourceSpec(
+            source_id="bitget",
+            source_label="Bitget",
+            asset_class="crypto",
+            bars_root=api.config.sources[0].bars_root,
+            metadata_path=api.config.sources[0].metadata_path,
+            adjust="none",
+            catalog_source="ccxt:bitget",
+        )
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "A_SHARE:000001.SZ",
+            "symbol": "000001.SZ",
+            "source_id": "a_share",
+        }
+    )
+    service = DataSourceScheduleService(
+        store=DataSourceScheduleStore(tmp_path / "mismatch-schedules.sqlite"),
+        server_config=api.config,
+        submit_job=api.submit_job,
+        get_job=api.job,
+        resolve_symbols=api.resolve_schedule_symbols,
+    )
+    api.schedule_service = service
+
+    with pytest.raises(ValueError, match="Unknown instrument"):
+        api.create_schedule(
+            {
+                "name": "mismatch-target",
+                "trigger": {"type": "once", "run_at": "2026-05-18T09:00:00+08:00"},
+                "job": {
+                    "source_id": "bitget",
+                    "target": {
+                        "mode": "symbols",
+                        "instrument_ids": ["A_SHARE:000001.SZ"],
+                    },
+                    "frequencies": ["1d"],
+                    "date_range": {
+                        "type": "fixed",
+                        "start_date": "2025-01-01",
+                        "end_date": "2025-01-03",
+                    },
+                },
+            }
+        )

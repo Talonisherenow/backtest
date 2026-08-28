@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sqlite3
 import threading
@@ -23,6 +24,35 @@ from backtest.data_source.config import DataSourceServerConfig
 WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 DEFAULT_TIMEZONE = "Asia/Shanghai"
 RangeUnit = Literal["minutes", "hours", "days"]
+LOGGER = logging.getLogger(__name__)
+
+
+class ScheduleTargetConfig(BaseModel):
+    mode: Literal["symbols", "tag"]
+    instrument_ids: list[str] = Field(default_factory=list)
+    tag_id: str | None = None
+    resolution: Literal["dynamic"] = "dynamic"
+
+    @field_validator("instrument_ids")
+    @classmethod
+    def normalize_instrument_ids(cls, value: list[str]) -> list[str]:
+        return [str(item).strip().upper() for item in value if str(item).strip()]
+
+    @field_validator("tag_id")
+    @classmethod
+    def clean_tag_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def validate_target(self) -> "ScheduleTargetConfig":
+        if self.mode == "symbols" and not self.instrument_ids:
+            raise ValueError("instrument_ids are required for symbols target")
+        if self.mode == "tag" and self.tag_id is None:
+            raise ValueError("tag_id is required for tag target")
+        return self
 
 
 class TriggerConfig(BaseModel):
@@ -136,7 +166,8 @@ class DateRangeConfig(BaseModel):
 
 class ScheduleJobTemplate(BaseModel):
     source_id: str
-    symbols: list[str]
+    symbols: list[str] = Field(default_factory=list)
+    target: ScheduleTargetConfig | None = None
     frequencies: list[Frequency]
     date_range: DateRangeConfig
     source: str | None = None
@@ -157,8 +188,6 @@ class ScheduleJobTemplate(BaseModel):
     @field_validator("symbols")
     @classmethod
     def normalize_symbols(cls, value: list[str]) -> list[str]:
-        if not value:
-            raise ValueError("symbols must not be empty")
         return [normalize_symbol(symbol) for symbol in value]
 
     @field_validator("frequencies")
@@ -167,6 +196,12 @@ class ScheduleJobTemplate(BaseModel):
         if not value:
             raise ValueError("frequencies must not be empty")
         return value
+
+    @model_validator(mode="after")
+    def validate_symbols_or_target(self) -> "ScheduleJobTemplate":
+        if not self.symbols and self.target is None:
+            raise ValueError("symbols or target is required")
+        return self
 
 
 class DataScheduleConfig(BaseModel):
@@ -288,6 +323,7 @@ def build_job_payload(
     server_config: DataSourceServerConfig,
     *,
     now: datetime,
+    resolve_symbols: Callable[[str, ScheduleTargetConfig | None, list[str]], list[str]] | None = None,
 ) -> dict[str, Any]:
     spec = server_config.source(schedule.job.source_id)
     source, exchange = _source_and_exchange(spec.catalog_source)
@@ -299,12 +335,13 @@ def build_job_payload(
     if schedule.job.adjust is not None and adjust != spec.adjust:
         raise ValueError(f"adjust override conflicts with source_id={spec.source_id}")
     start_date, end_date = _date_range(schedule.job.date_range, now=now)
+    symbols = _resolved_job_symbols(schedule.job, resolve_symbols)
     safe_name = _slug(schedule.name)
     return {
         "name": f"scheduled-{safe_name}",
         "source": source,
         "exchange": exchange,
-        "symbols": schedule.job.symbols,
+        "symbols": symbols,
         "frequencies": [frequency.value for frequency in schedule.job.frequencies],
         "adjust": adjust,
         "start_date": start_date.isoformat(),
@@ -316,6 +353,44 @@ def build_job_payload(
         "refresh_existing": schedule.job.refresh_existing,
         "retry": schedule.job.retry.model_dump(mode="json"),
     }
+
+
+def _resolved_job_symbols(
+    job: ScheduleJobTemplate,
+    resolve_symbols: Callable[[str, ScheduleTargetConfig | None, list[str]], list[str]] | None,
+) -> list[str]:
+    if job.target is None:
+        return job.symbols
+    if resolve_symbols is None:
+        raise ValueError("schedule target resolver is required")
+    symbols: list[str] = []
+    seen: set[str] = set()
+    for raw_symbol in resolve_symbols(job.source_id, job.target, job.symbols):
+        symbol = _normalize_resolved_job_symbol(raw_symbol)
+        if symbol is None or symbol in seen:
+            continue
+        seen.add(symbol)
+        symbols.append(symbol)
+    if not symbols:
+        raise ValueError("schedule target resolved no supported symbols")
+    return symbols
+
+
+def _normalize_resolved_job_symbol(raw: str) -> str | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    source_separator_index = value.find(":")
+    if source_separator_index >= 0 and "/" not in value[:source_separator_index]:
+        value = value[source_separator_index + 1 :]
+    contract_separator_index = value.find(":")
+    if contract_separator_index >= 0 and "/" in value:
+        value = value[:contract_separator_index]
+    try:
+        return normalize_symbol(value)
+    except ValueError:
+        LOGGER.debug("Skipping unsupported schedule target symbol: %s", raw)
+        return None
 
 
 class DataSourceScheduleStore:
@@ -625,12 +700,14 @@ class DataSourceScheduleService:
         server_config: DataSourceServerConfig,
         submit_job: Callable[[dict[str, Any]], Any],
         get_job: Callable[[str], Any] | None = None,
+        resolve_symbols: Callable[[str, ScheduleTargetConfig | None, list[str]], list[str]] | None = None,
         now: Callable[[], datetime] = datetime.now,
     ) -> None:
         self.store = store
         self.server_config = server_config
         self.submit_job = submit_job
         self.get_job = get_job
+        self.resolve_symbols = resolve_symbols
         self.now = now
 
     def options(self) -> dict[str, Any]:
@@ -751,6 +828,7 @@ class DataSourceScheduleService:
                     triggered_at=triggered_at,
                     manual=manual,
                 ),
+                resolve_symbols=self.resolve_symbols,
             )
             job = self.submit_job(payload)
             job_id = str(_value(job, "job_id"))
@@ -867,7 +945,12 @@ class DataSourceScheduleService:
         return _value(job, "status") in {"submitted", "running"}
 
     def _validate_job(self, config: DataScheduleConfig) -> None:
-        build_job_payload(config, self.server_config, now=self.now())
+        build_job_payload(
+            config,
+            self.server_config,
+            now=self.now(),
+            resolve_symbols=self.resolve_symbols,
+        )
 
     @staticmethod
     def _source_options(source) -> dict[str, Any]:
@@ -909,6 +992,8 @@ class DataSourceScheduler:
         while not self._stop.is_set():
             try:
                 self.tick()
+            except Exception:
+                LOGGER.exception("Data source scheduler tick failed")
             finally:
                 self._stop.wait(self.poll_seconds)
 

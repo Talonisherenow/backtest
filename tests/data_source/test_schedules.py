@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -287,6 +288,35 @@ def test_job_template_compiles_to_existing_data_job_payload(tmp_path: Path):
     assert payload["page_delay_seconds"] == 0.35
     assert payload["refresh_existing"] is True
     assert payload["retry"]["max_attempts"] == 5
+
+
+def test_target_symbols_strip_crypto_contract_suffixes_and_skip_unsupported(tmp_path: Path):
+    schedule = DataScheduleConfig.model_validate(
+        _schedule_payload(
+            name="bitget-list-refresh",
+            job={
+                "source_id": "bitget",
+                "symbols": [],
+                "target": {"mode": "tag", "tag_id": "bitget", "resolution": "dynamic"},
+                "frequencies": ["1h"],
+                "date_range": {"type": "last_n_days", "days": 7},
+            },
+        )
+    )
+
+    payload = build_job_payload(
+        schedule,
+        _server_config(tmp_path),
+        now=datetime.fromisoformat("2026-05-18T12:00:00+08:00"),
+        resolve_symbols=lambda *_: [
+            "BTC/USDT:USDT",
+            "eth/usdt:usdt",
+            "龙虾/USDT:USDT",
+            "BITGET:XRP/USDT:USDT",
+        ],
+    )
+
+    assert payload["symbols"] == ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
 
 
 def test_job_template_accepts_intraday_relative_range(tmp_path: Path):
@@ -621,3 +651,25 @@ def test_scheduler_tick_skips_when_previous_job_is_still_running(tmp_path: Path)
     assert updated.next_run_at is not None
     assert updated.next_run_at.isoformat() == "2026-05-18T10:00:00+08:00"
     assert service.runs(snapshot.schedule_id)["runs"][0]["status"] == "skipped"
+
+
+def test_scheduler_loop_survives_tick_exception():
+    class FlakyService:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.recovered = Event()
+
+        def tick(self) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary scheduler storage error")
+            self.recovered.set()
+
+    service = FlakyService()
+    scheduler = DataSourceScheduler(service=service, poll_seconds=0.01)
+
+    scheduler.start()
+    assert service.recovered.wait(timeout=1)
+    scheduler.stop()
+
+    assert service.calls >= 2

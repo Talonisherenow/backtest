@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pyarrow.parquet as pq
 from pyarrow.lib import ArrowException
 
 from backtest.charts.kline_viewer import (
@@ -24,7 +25,7 @@ from backtest.charts.kline_viewer import (
     _timestamp_label,
     _years_from_paths,
 )
-from backtest.core.symbols import normalize_symbol, safe_symbol_path
+from backtest.core.symbols import normalize_symbol, safe_symbol_path, symbol_from_safe_path
 
 _READ_ERRORS = (OSError, ValueError, ArrowException)
 _MANIFEST_SERIES_ERRORS = (*_READ_ERRORS, KeyError)
@@ -94,13 +95,22 @@ class KlineCacheService:
             for source in self.sources
         }
 
-    def manifest(self, *, default_window_size: int = 5000) -> dict[str, Any]:
+    def manifest(
+        self,
+        *,
+        default_window_size: int = 5000,
+        include_symbols: bool = True,
+    ) -> dict[str, Any]:
         sources = []
         for source in self.sources:
             frequencies = self._frequencies_for(source)
-            requested_symbols = source.symbols or _discover_symbols(source.bars_root, frequencies, source.adjust)
-            symbols = self._manifest_symbols(source, requested_symbols, frequencies)
-            if not symbols:
+            symbols = []
+            if include_symbols:
+                requested_symbols = source.symbols or _discover_symbols(
+                    source.bars_root, frequencies, source.adjust
+                )
+                symbols = self._manifest_symbols(source, requested_symbols, frequencies)
+            if include_symbols and not symbols:
                 continue
             sources.append(
                 {
@@ -127,6 +137,44 @@ class KlineCacheService:
             "adjust": primary["adjust"] if primary else "qfq",
             "symbols": primary["symbols"] if primary else [],
             "sources": sources,
+        }
+
+    def symbols(
+        self,
+        *,
+        source_id: str | None = None,
+        q: str | None = None,
+        board: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        source = self._source(source_id)
+        frequencies = self._frequencies_for(source)
+        limit = min(max(int(limit), 1), 500)
+        offset = max(int(offset), 0)
+        query = (q or "").strip().lower()
+        selected: list[str] = []
+        total = 0
+        for symbol in self._iter_symbols(source, frequencies):
+            details = self._metadata.get(source.source_id, {}).get(symbol, {})
+            if not self._symbol_matches(symbol, details, query=query, board=board):
+                continue
+            if total >= offset and len(selected) < limit:
+                selected.append(symbol)
+            total += 1
+        has_more = offset + len(selected) < total
+        return {
+            "source_id": source.source_id,
+            "source_label": source.source_label,
+            "frequency": frequencies[0] if len(frequencies) == 1 else "multi",
+            "frequencies": frequencies,
+            "adjust": source.adjust,
+            "symbols": self._manifest_symbols(source, selected, frequencies),
+            "offset": offset,
+            "limit": limit,
+            "total": total,
+            "has_more": has_more,
+            "next_offset": offset + limit if has_more else None,
         }
 
     def bars(
@@ -196,6 +244,54 @@ class KlineCacheService:
             return source.frequencies
         return _discover_frequencies(source.bars_root, source.adjust)
 
+    def _iter_symbols(self, source: KlineSource, frequencies: list[str]):
+        if source.symbols:
+            for symbol in sorted(set(source.symbols)):
+                yield symbol
+            return
+        seen = set()
+        for frequency in frequencies:
+            base = source.bars_root / f"frequency={frequency}" / f"adjust={source.adjust}"
+            if not base.exists():
+                continue
+            for path in sorted(base.glob("symbol=*")):
+                if not path.is_dir():
+                    continue
+                symbol = symbol_from_safe_path(path.name.removeprefix("symbol="))
+                if symbol in seen:
+                    continue
+                seen.add(symbol)
+                yield symbol
+
+    @staticmethod
+    def _symbol_matches(
+        symbol: str,
+        details: dict[str, Any],
+        *,
+        query: str,
+        board: str | None,
+    ) -> bool:
+        if board and board != "all":
+            item_board = _metadata_text(details, "board", _symbol_board(symbol))
+            item_exchange = _metadata_text(details, "exchange", _symbol_exchange(symbol))
+            if " / " in board:
+                if f"{item_exchange} / {item_board}" != board:
+                    return False
+            elif item_board != board and item_exchange != board:
+                return False
+        if not query:
+            return True
+        target = " ".join(
+            [
+                symbol,
+                str(details.get("code", _symbol_code(symbol))),
+                str(details.get("name", "")),
+                str(details.get("exchange", _symbol_exchange(symbol))),
+                str(details.get("board", _symbol_board(symbol))),
+            ]
+        ).lower()
+        return query in target
+
     def _manifest_symbols(
         self,
         source: KlineSource,
@@ -235,17 +331,91 @@ class KlineCacheService:
         frequency: str,
         adjust: str,
     ) -> dict[str, Any] | None:
-        frame, paths = self._read_frame(root, symbol, frequency, adjust)
-        if frame.empty:
+        paths = self._series_paths(root, symbol, frequency, adjust)
+        if not paths:
+            return None
+        rows, first_bar, last_bar = self._read_series_metadata(paths)
+        if rows <= 0 or first_bar is None or last_bar is None:
             return None
         return {
             "frequency": frequency,
             "adjust": adjust,
-            "rows": int(len(frame)),
-            "first_bar": _timestamp_label(frame["date"].iloc[0], frequency),
-            "last_bar": _timestamp_label(frame["date"].iloc[-1], frequency),
+            "rows": int(rows),
+            "first_bar": _timestamp_label(first_bar, frequency),
+            "last_bar": _timestamp_label(last_bar, frequency),
             "years": _years_from_paths(paths),
         }
+
+    def _series_paths(
+        self,
+        root: Path,
+        symbol: str,
+        frequency: str,
+        adjust: str,
+    ) -> list[Path]:
+        symbol_root = (
+            root
+            / f"frequency={frequency}"
+            / f"adjust={adjust}"
+            / f"symbol={safe_symbol_path(symbol)}"
+        )
+        return sorted(symbol_root.glob("year=*/bars.parquet"))
+
+    def _read_series_metadata(self, paths: list[Path]) -> tuple[int, pd.Timestamp | None, pd.Timestamp | None]:
+        last_error: Exception | None = None
+        for attempt in range(self.read_retries + 1):
+            try:
+                return self._read_series_metadata_once(paths)
+            except _READ_ERRORS as exc:
+                last_error = exc
+                if attempt >= self.read_retries:
+                    break
+                time.sleep(self.retry_delay_seconds)
+        if last_error is not None:
+            raise last_error
+        return 0, None, None
+
+    def _read_series_metadata_once(self, paths: list[Path]) -> tuple[int, pd.Timestamp | None, pd.Timestamp | None]:
+        rows = 0
+        first_bar: pd.Timestamp | None = None
+        last_bar: pd.Timestamp | None = None
+        for path in paths:
+            path_rows, path_first, path_last = self._parquet_date_bounds(path)
+            rows += path_rows
+            if path_first is None or path_last is None:
+                continue
+            first_bar = path_first if first_bar is None else min(first_bar, path_first)
+            last_bar = path_last if last_bar is None else max(last_bar, path_last)
+        return rows, first_bar, last_bar
+
+    def _parquet_date_bounds(self, path: Path) -> tuple[int, pd.Timestamp | None, pd.Timestamp | None]:
+        metadata = pq.ParquetFile(path).metadata
+        rows = int(metadata.num_rows)
+        first_bar: pd.Timestamp | None = None
+        last_bar: pd.Timestamp | None = None
+        for row_group_index in range(metadata.num_row_groups):
+            row_group = metadata.row_group(row_group_index)
+            for column_index in range(row_group.num_columns):
+                column = row_group.column(column_index)
+                if column.path_in_schema != "date":
+                    continue
+                stats = column.statistics
+                if stats is None or not stats.has_min_max:
+                    break
+                current_min = pd.Timestamp(stats.min)
+                current_max = pd.Timestamp(stats.max)
+                if first_bar is None or current_min < first_bar:
+                    first_bar = current_min
+                if last_bar is None or current_max > last_bar:
+                    last_bar = current_max
+                break
+        if rows == 0 or (first_bar is not None and last_bar is not None):
+            return rows, first_bar, last_bar
+
+        dates = pq.read_table(path, columns=["date"]).column("date").to_pandas()
+        if dates.empty:
+            return rows, None, None
+        return rows, pd.Timestamp(dates.min()), pd.Timestamp(dates.max())
 
     def _read_frame(
         self,
@@ -254,13 +424,7 @@ class KlineCacheService:
         frequency: str,
         adjust: str,
     ) -> tuple[pd.DataFrame, list[Path]]:
-        symbol_root = (
-            root
-            / f"frequency={frequency}"
-            / f"adjust={adjust}"
-            / f"symbol={safe_symbol_path(symbol)}"
-        )
-        paths = sorted(symbol_root.glob("year=*/bars.parquet"))
+        paths = self._series_paths(root, symbol, frequency, adjust)
         if not paths:
             return pd.DataFrame(columns=BAR_COLUMNS), []
 

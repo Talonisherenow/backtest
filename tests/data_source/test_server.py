@@ -66,6 +66,7 @@ def _api(
             sources=[spec],
             default_window_size=default_window_size,
             api_token=api_token,
+            schedule_db_path=tmp_path / "data_source_schedules.sqlite",
         ),
         DataSourceJobRegistry(
             lambda config: type(
@@ -140,6 +141,9 @@ def test_get_routes_and_cors_headers(tmp_path: Path):
         status, headers, health = _json_request(base_url, "/api/health")
         _, _, sources = _json_request(base_url, "/api/data-sources")
         _, _, manifest = _json_request(base_url, "/api/kline/manifest")
+        _, _, kline_symbols = _json_request(
+            base_url, "/api/kline/symbols?source_id=a_share&limit=1"
+        )
         query = urlencode(
             {
                 "source_id": "a_share",
@@ -161,6 +165,7 @@ def test_get_routes_and_cors_headers(tmp_path: Path):
         assert health["status"] == "ok"
         assert sources["sources"][0]["source_id"] == "a_share"
         assert manifest["default_window_size"] == 1
+        assert kline_symbols["symbols"][0]["symbol"] == "000001.SZ"
         assert bars["loaded_rows"] == 1
         assert tasks["tasks"][0]["status"] == "failed"
         assert tasks["page"] == 1
@@ -170,6 +175,54 @@ def test_get_routes_and_cors_headers(tmp_path: Path):
         assert task_summary["frequency_counts"] == {"1d": 1}
         assert inventory == {"records": []}
         assert jobs == {"jobs": []}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_instrument_sync_schedule_http_routes(tmp_path: Path):
+    api = _api(tmp_path)
+    server = _server_for_api(api)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        _, _, created = _json_request(
+            base_url,
+            "/api/instrument-sync/schedules",
+            method="POST",
+            payload={
+                "name": "a-share once",
+                "enabled": False,
+                "source_id": "a_share",
+                "trigger": {
+                    "type": "once",
+                    "run_at": "2099-05-25T09:00:00+08:00",
+                },
+            },
+        )
+        schedule_id = created["schedule_id"]
+        _, _, listed = _json_request(base_url, "/api/instrument-sync/schedules")
+        _, _, enabled = _json_request(
+            base_url,
+            f"/api/instrument-sync/schedules/{schedule_id}/enable",
+            method="POST",
+            payload={},
+        )
+        _, _, disabled = _json_request(
+            base_url,
+            f"/api/instrument-sync/schedules/{schedule_id}/disable",
+            method="POST",
+            payload={},
+        )
+        _, _, deleted = _json_request(
+            base_url,
+            f"/api/instrument-sync/schedules/{schedule_id}",
+            method="DELETE",
+        )
+
+        assert listed["schedules"][0]["schedule_id"] == schedule_id
+        assert enabled["enabled"] is True
+        assert disabled["enabled"] is False
+        assert deleted == {"deleted": schedule_id}
     finally:
         server.shutdown()
         server.server_close()
@@ -203,7 +256,7 @@ def test_get_route_returns_json_error_for_unexpected_failure():
     class BrokenApi:
         config = type("Config", (), {"api_token": None})()
 
-        def kline_manifest(self):
+        def kline_manifest(self, *, include_symbols=True):
             raise OSError("corrupt parquet")
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), make_data_source_handler(BrokenApi()))
@@ -319,6 +372,139 @@ def test_post_job_retry_failed_options_and_error_routes(tmp_path: Path):
         except HTTPError as exc:
             assert exc.code == 400
             assert "source_id is required" in json.loads(exc.read().decode("utf-8"))["error"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_instrument_http_routes(tmp_path: Path):
+    api = _api(tmp_path)
+    server = _server_for_api(api)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        _, _, created = _json_request(
+            base_url,
+            "/api/instruments",
+            method="POST",
+            payload={
+                "instrument_id": "btc/usdt",
+                "symbol": "btc/usdt",
+                "name": "Bitcoin",
+                "source_id": "a_share",
+            },
+        )
+        _, _, tag = _json_request(
+            base_url,
+            "/api/instrument-tags",
+            method="POST",
+            payload={"tag_id": "watchlist", "name": "Watchlist", "source_id": "a_share"},
+        )
+        _, _, members = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members",
+            method="POST",
+            payload={"source_id": "a_share", "instrument_ids": ["BTC/USDT"]},
+        )
+        _, _, filtered = _json_request(
+            base_url,
+            "/api/instruments?source_id=a_share&tag=Watchlist",
+        )
+        _, _, detail = _json_request(
+            base_url,
+            "/api/instruments/BTC%2FUSDT?source_id=a_share",
+        )
+        _, _, tags = _json_request(base_url, "/api/instrument-tags?source_id=a_share")
+        _, _, listed_members = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members?source_id=a_share",
+        )
+        _, _, updated = _json_request(
+            base_url,
+            "/api/instruments/BTC%2FUSDT?source_id=a_share",
+            method="PATCH",
+            payload={"name": "BTCUSDT"},
+        )
+        _, _, replaced = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members?source_id=a_share",
+            method="PUT",
+            payload={"instrument_ids": []},
+        )
+        _, _, readded = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members?source_id=a_share",
+            method="POST",
+            payload={"instrument_ids": ["BTC/USDT"]},
+        )
+        _, _, removed = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist/members/BTC%2FUSDT?source_id=a_share",
+            method="DELETE",
+        )
+        _, _, renamed_tag = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist?source_id=a_share",
+            method="PATCH",
+            payload={"name": "Favorites"},
+        )
+        _, _, deleted_tag = _json_request(
+            base_url,
+            "/api/instrument-tags/watchlist?source_id=a_share",
+            method="DELETE",
+        )
+        _, _, deleted_instrument = _json_request(
+            base_url,
+            "/api/instruments/BTC%2FUSDT?source_id=a_share",
+            method="DELETE",
+        )
+
+        assert created["instrument_id"] == "BTC/USDT"
+        assert tag["name"] == "Watchlist"
+        assert members["members"][0]["instrument_id"] == "BTC/USDT"
+        assert filtered["total"] == 1
+        assert detail["tags"][0]["tag_id"] == "watchlist"
+        assert tags["tags"][0]["member_count"] == 1
+        assert listed_members["tag"]["tag_id"] == "watchlist"
+        assert listed_members["members"][0]["instrument_id"] == "BTC/USDT"
+        assert updated["name"] == "BTCUSDT"
+        assert replaced["members"] == []
+        assert readded["members"][0]["instrument_id"] == "BTC/USDT"
+        assert removed["members"] == []
+        assert renamed_tag["name"] == "Favorites"
+        assert deleted_tag == {"deleted": "watchlist"}
+        assert deleted_instrument == {"deleted": "BTC/USDT"}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_instrument_source_sync_http_routes(tmp_path: Path):
+    api = _api(tmp_path)
+    spec = api.config.source("a_share")
+    universe = tmp_path / "a_share.csv"
+    pd.DataFrame(
+        [{"symbol": "000001.SZ", "name": "平安银行", "exchange": "SZ", "industry": "bank"}]
+    ).to_csv(universe, index=False)
+    object.__setattr__(spec, "universe_path", universe)
+
+    server = _server_for_api(api)
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        _, _, sources = _json_request(base_url, "/api/instrument-sources")
+        _, _, sync_result = _json_request(
+            base_url,
+            "/api/instrument-sync/run",
+            method="POST",
+            payload={"source_id": "a_share"},
+        )
+        _, _, instruments = _json_request(base_url, "/api/instruments?source_id=a_share")
+        _, _, tags = _json_request(base_url, "/api/instrument-tags")
+
+        assert sources["sources"][0]["source_id"] == "a_share"
+        assert sources["sources"][0]["provider_type"] == "universe_csv"
+        assert sync_result["created"] == 1
+        assert instruments["total"] == 1
+        assert tags["tags"][0]["tag_id"] == "a_share"
     finally:
         server.shutdown()
         server.server_close()
