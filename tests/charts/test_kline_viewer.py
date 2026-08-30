@@ -316,6 +316,20 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "rangeButtons" not in html
     assert "60D" not in html
     assert '|| "Unclassified"' in html
+    assert 'id="toggleCustomIndicatorForm"' in html
+    assert 'id="customIndicatorForm"' in html
+    assert 'id="customIndicatorFormulaInput"' in html
+    assert 'id="customIndicatorTemplates"' in html
+    assert 'id="customIndicatorList"' in html
+    assert "backtest.kline.customIndicators.v1" in html
+    assert "CUSTOM_INDICATOR_TEMPLATES" in html
+    assert "MACD Spread" in html
+    assert "Volume Ratio" in html
+    assert "parseCustomIndicatorLines" in html
+    assert "renderCustomIndicatorTemplates" in html
+    assert "applyCustomIndicatorTemplate" in html
+    assert "buildCustomIndicatorSeries" in html
+    assert "subplotIndicatorIds()" in html
 
 
 def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
@@ -354,6 +368,9 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert "navigateToGlobalOffset" in html
     assert "windowSlider.max = String(globalMaxStart)" in html
     assert "Loaded" not in html
+    assert "saveCustomIndicator" in html
+    assert "deleteCustomIndicator" in html
+    assert "createCustomIndicator" in html
 
 
 def test_render_kline_viewer_supports_remote_data_api_base_url():

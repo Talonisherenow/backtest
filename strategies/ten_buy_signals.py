@@ -408,6 +408,20 @@ _BUY_SIGNAL_GENERATORS = {
 }
 
 
+def generate_buy_signal_any(context) -> pd.DataFrame:
+    frames = [generator(context) for generator in _BUY_SIGNAL_GENERATORS.values()]
+    non_empty = [frame for frame in frames if not frame.empty]
+    if not non_empty:
+        return _empty_signals()
+    combined = pd.concat(non_empty, ignore_index=True)
+    combined["date"] = pd.to_datetime(combined["date"])
+    return (
+        combined.sort_values(["date", "symbol"])
+        .drop_duplicates(["date", "symbol"], keep="first")
+        .reset_index(drop=True)[SIGNAL_COLUMNS]
+    )
+
+
 def _make_fixed_holding_generator(
     signal_number: int,
     entry_generator: Callable[[object], pd.DataFrame],

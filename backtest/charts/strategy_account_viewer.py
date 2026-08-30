@@ -112,9 +112,13 @@ def _filter_orders(orders: pd.DataFrame, case_id: str | None) -> pd.DataFrame:
     frame["notional"] = frame["filled_shares"] * frame["price"]
     frame["fee_total"] = frame["commission"] + frame["tax"] + frame["transfer_fee"] + frame["slippage_cost"]
     frame["order_id"] = frame["_source_order"].map(lambda value: f"order-{int(value):06d}")
+    output_columns = ["order_id", *ORDER_COLUMNS, "notional", "fee_total"]
+    for optional_column in ("signal_id", "signal_label", "signal_date"):
+        if optional_column in frame.columns:
+            output_columns.append(optional_column)
     return (
         frame.sort_values(["date", "_source_order"], kind="mergesort")
-        .reset_index(drop=True)[["order_id", *ORDER_COLUMNS, "notional", "fee_total"]]
+        .reset_index(drop=True)[output_columns]
     )
 
 
@@ -285,6 +289,9 @@ def _limit_position_series(
 
 
 def _order_to_json(row: pd.Series) -> dict[str, Any]:
+    signal_id = "" if "signal_id" not in row.index or pd.isna(row["signal_id"]) else str(row["signal_id"])
+    signal_label = "" if "signal_label" not in row.index or pd.isna(row["signal_label"]) else str(row["signal_label"])
+    signal_date = "" if "signal_date" not in row.index or pd.isna(row["signal_date"]) else str(row["signal_date"])
     return {
         "date": _date_to_json(row["date"]),
         "order_id": str(row["order_id"]),
@@ -297,6 +304,9 @@ def _order_to_json(row: pd.Series) -> dict[str, Any]:
         "notional": _round_float(float(row["notional"])),
         "status": str(row["status"]),
         "reason": "" if pd.isna(row["reason"]) else str(row["reason"]),
+        "signal_id": signal_id,
+        "signal_label": signal_label,
+        "signal_date": signal_date,
     }
 
 
@@ -673,6 +683,7 @@ HTML_TEMPLATE = """<!doctype html>
               <th>Date</th>
               <th>Symbol</th>
               <th>Side</th>
+              <th>Signal</th>
               <th>Shares</th>
               <th>Price</th>
               <th>Notional</th>
@@ -977,6 +988,7 @@ HTML_TEMPLATE = """<!doctype html>
         <td>${dateCell}</td>
         <td>${escapeHtml(order.symbol)}</td>
         <td class="${order.side === "buy" ? "buy" : order.side === "sell" ? "sell" : ""}">${escapeHtml(order.side)}</td>
+        <td>${escapeHtml(order.signal_label || order.signal_id || "")}</td>
         <td>${fmtNumber(order.filled_shares, 0)}</td>
         <td>${fmtNumber(order.price, 3)}</td>
         <td>${fmtNumber(order.notional, 2)}</td>

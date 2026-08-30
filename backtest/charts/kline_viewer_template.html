@@ -199,6 +199,150 @@
       padding-top: 12px;
       border-top: 1px solid var(--line);
     }
+    .custom-indicator-panel {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .custom-indicator-panel.compact {
+      margin-top: 0;
+      padding: 8px 10px;
+      border-top: 0;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfd;
+    }
+    .custom-indicator-panel.compact .custom-indicator-header {
+      gap: 8px;
+    }
+    .custom-indicator-panel.compact .custom-indicator-title {
+      gap: 6px;
+    }
+    .custom-indicator-panel.compact .custom-indicator-title strong {
+      font-size: 12px;
+    }
+    .custom-indicator-panel.compact .custom-indicator-title span {
+      font-size: 11px;
+    }
+    .custom-indicator-panel.compact .custom-indicator-form,
+    .custom-indicator-panel.compact .custom-indicator-feedback,
+    .custom-indicator-panel.compact .custom-indicator-templates,
+    .custom-indicator-panel.compact .custom-indicator-list,
+    .custom-indicator-panel.compact .custom-indicator-empty {
+      margin-top: 6px;
+    }
+    .custom-indicator-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .custom-indicator-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .custom-indicator-title strong {
+      font-size: 13px;
+      line-height: 1.2;
+    }
+    .custom-indicator-title span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .custom-indicator-form {
+      display: none;
+      margin-top: 10px;
+      grid-template-columns: minmax(180px, 240px) minmax(180px, 240px) auto;
+      gap: 10px;
+      align-items: end;
+    }
+    .custom-indicator-form.open {
+      display: grid;
+    }
+    .custom-indicator-form textarea {
+      min-height: 36px;
+      height: 36px;
+      resize: vertical;
+    }
+    .custom-indicator-form input {
+      height: 36px;
+    }
+    .formula-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .formula-help {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border: 1px solid #9db2c7;
+      border-radius: 50%;
+      color: #6b7f93;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: help;
+      user-select: none;
+      background: #fff;
+    }
+    .custom-indicator-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .custom-indicator-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .custom-indicator-templates {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .template-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border: 1px dashed #b8c7d6;
+      border-radius: 999px;
+      background: #f8fafc;
+      color: var(--text);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .template-chip:hover {
+      border-color: #6fa8ff;
+      background: #eef6ff;
+    }
+    .template-chip.active {
+      border-style: solid;
+      border-color: #6fa8ff;
+      background: #e9f2ff;
+      color: #1f5da6;
+      font-weight: 700;
+    }
+    .custom-indicator-empty,
+    .custom-indicator-feedback {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .custom-indicator-feedback.error {
+      color: var(--red);
+    }
     .position-meta {
       display: grid;
       gap: 2px;
@@ -334,15 +478,152 @@
     }
     main {
       padding: 14px 20px 20px;
+      display: grid;
+      gap: 6px;
+      align-items: start;
     }
-    #chart {
-      width: 100%;
-      height: calc(100vh - 262px);
-      min-height: 560px;
+    .chart-shell {
+      position: sticky;
+      top: 12px;
+      z-index: 5;
       background: var(--surface);
       border: 1px solid var(--line);
       border-radius: 8px;
+      overflow: hidden;
     }
+    #topChart {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: min(62vh, 680px);
+      min-height: 460px;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+    }
+    .top-chart-hint { display: none; }
+    .indicator-stack-shell {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .indicator-stack-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfd;
+    }
+    .indicator-stack-title {
+      display: grid;
+      gap: 3px;
+    }
+    .indicator-stack-title strong {
+      font-size: 13px;
+      line-height: 1.2;
+    }
+    .indicator-stack-title span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .indicator-panel-list {
+      max-height: min(54vh, 760px);
+      overflow-y: auto;
+      padding: 6px 8px 8px;
+      display: grid;
+      gap: 8px;
+    }
+    .indicator-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .indicator-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfd;
+      flex-wrap: nowrap;
+    }
+    .indicator-panel-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: nowrap;
+      flex: 0 0 auto;
+    }
+    .indicator-panel-select {
+      min-width: 104px;
+      max-width: 152px;
+      height: 24px;
+      padding: 2px 6px;
+      font-size: 11px;
+    }
+    .indicator-panel-values {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 6px;
+      align-items: center;
+      min-width: 0;
+      justify-content: flex-end;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .indicator-panel-controls .toolbar-button {
+      min-height: 24px;
+      padding: 0 8px;
+      font-size: 11px;
+      border-radius: 4px;
+    }
+    .indicator-panel-values .indicator-value {
+      gap: 2px;
+      padding: 0 2px;
+      font-size: 10px;
+    }
+    .indicator-panel-values .indicator-value .number {
+      font-size: 10px;
+    }
+    .indicator-chart {
+      width: 100%;
+      height: 220px;
+    }
+    .indicator-empty {
+      padding: 24px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+    .indicator-value {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 3px;
+      padding: 0 2px;
+      border-radius: 2px;
+      white-space: nowrap;
+    }
+    .indicator-value.hidden {
+      opacity: 0.4;
+    }
+    .indicator-value .label {
+      font-weight: 600;
+    }
+    .indicator-value .number {
+      font-family: "SF Mono", "Monaco", "Consolas", monospace;
+      font-size: 10px;
+    }
+    .indicator-value .arrow {
+      font-size: 10px;
+    }
+    .arrow-up { color: var(--red); }
+    .arrow-down { color: var(--green); }
     .empty {
       display: grid;
       place-items: center;
@@ -514,6 +795,9 @@
       .time-window {
         grid-template-columns: minmax(120px, 170px) minmax(94px, 116px) minmax(180px, 1fr) auto;
       }
+      .custom-indicator-form.open {
+        grid-template-columns: 1fr;
+      }
       .window-actions {
         grid-column: 3 / -1;
       }
@@ -525,7 +809,7 @@
       }
       .position-control { grid-column: 1 / -1; }
       .summary { grid-template-columns: repeat(3, minmax(90px, 1fr)); }
-      #chart { height: 640px; }
+      #topChart { height: 560px; }
     }
     @media (max-width: 620px) {
       .topbar-header {
@@ -553,7 +837,14 @@
       .summary { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
       main { padding: 10px; }
       .topbar { padding: 12px; }
-      #chart { min-height: 520px; }
+      .indicator-stack-header,
+      .indicator-panel-header {
+        display: grid;
+      }
+      .indicator-panel-values {
+        justify-content: flex-start;
+      }
+      #topChart { min-height: 420px; }
     }
   </style>
 </head>
@@ -628,7 +919,44 @@
   </header>
   <section class="summary" id="summary"></section>
   <main>
-    <div id="chart"></div>
+    <div class="chart-shell">
+      <div id="topChart"></div>
+    </div>
+    <section class="indicator-stack-shell" aria-label="Indicator stack">
+      <section class="custom-indicator-panel compact" aria-label="Custom indicators">
+        <div class="custom-indicator-header">
+          <div class="custom-indicator-title">
+            <strong>自定义指标</strong>
+            <span>用收盘价、成交量或已有指标写公式，保存后即可在底部指标区下拉选择并展示。</span>
+          </div>
+          <div class="custom-indicator-actions">
+            <button type="button" class="toolbar-button" id="toggleCustomIndicatorForm">Add Custom Indicator</button>
+          </div>
+        </div>
+        <div class="custom-indicator-form" id="customIndicatorForm">
+          <label>名称
+            <input id="customIndicatorNameInput" type="text" maxlength="24" autocomplete="off" placeholder="例如：MACD Spread">
+          </label>
+          <label><span class="formula-label">公式 <span class="formula-help" id="customFormulaHelp" aria-label="公式帮助">i</span></span>
+            <textarea id="customIndicatorFormulaInput" spellcheck="false" placeholder="支持单行公式，或多行 alias = formula&#10;例如：spread = macd.dif - macd.dea&#10;signal = ema(&quot;spread&quot;, 5)"></textarea>
+          </label>
+          <div class="custom-indicator-actions">
+            <button type="button" class="toolbar-button" id="saveCustomIndicatorButton">Save</button>
+            <button type="button" class="toolbar-button" id="cancelCustomIndicatorButton">Cancel</button>
+          </div>
+        </div>
+        <div class="custom-indicator-feedback" id="customIndicatorFeedback" hidden></div>
+        <div class="custom-indicator-templates" id="customIndicatorTemplates"></div>
+      </section>
+      <div class="indicator-stack-header">
+        <div class="indicator-stack-title">
+          <strong>指标堆栈</strong>
+          <span>默认指标和自定义指标会在下方持续叠加，滚动区域单独查看。</span>
+        </div>
+        <button type="button" class="toolbar-button" id="addIndicatorPanelButton">Add Indicator Panel</button>
+      </div>
+      <div class="indicator-panel-list" id="indicatorPanelList"></div>
+    </section>
   </main>
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
   <aside class="data-drawer" id="dataStatusDrawer" aria-label="Data status">
@@ -691,11 +1019,71 @@
     const summary = document.getElementById("summary");
     const datasetMeta = document.getElementById("datasetMeta");
     const workbenchHomeLink = document.getElementById("workbenchHomeLink");
-    const chart = document.getElementById("chart");
+    const chart = document.getElementById("topChart");
+    const indicatorPanelList = document.getElementById("indicatorPanelList");
+    const addIndicatorPanelButton = document.getElementById("addIndicatorPanelButton");
+    const toggleCustomIndicatorFormButton = document.getElementById("toggleCustomIndicatorForm");
+    const customIndicatorForm = document.getElementById("customIndicatorForm");
+    const customIndicatorNameInput = document.getElementById("customIndicatorNameInput");
+    const customIndicatorFormulaInput = document.getElementById("customIndicatorFormulaInput");
+    const customFormulaHelp = document.getElementById("customFormulaHelp");
+    const saveCustomIndicatorButton = document.getElementById("saveCustomIndicatorButton");
+    const cancelCustomIndicatorButton = document.getElementById("cancelCustomIndicatorButton");
+    const customIndicatorFeedback = document.getElementById("customIndicatorFeedback");
+    const customIndicatorTemplates = document.getElementById("customIndicatorTemplates");
+
+    const CUSTOM_INDICATOR_STORAGE_KEY = "backtest.kline.customIndicators.v1";
+    const CUSTOM_INDICATOR_ID_PREFIX = "custom:";
+    const CUSTOM_INDICATOR_COLORS = [
+      "#6d4c41",
+      "#00838f",
+      "#c62828",
+      "#2e7d32",
+      "#283593",
+      "#ad1457",
+      "#ef6c00",
+      "#455a64",
+    ];
+    const CUSTOM_INDICATOR_TEMPLATES = [
+      {
+        id: "macd-spread",
+        name: "MACD Spread",
+        formula: "macd.dif - macd.dea",
+      },
+      {
+        id: "macd-signal",
+        name: "MACD Signal",
+        formula: "spread = macd.dif - macd.dea\nsignal = ema(\"spread\", 5)",
+      },
+      {
+        id: "volume-ratio",
+        name: "Volume Ratio",
+        formula: "volume / sma(\"volume\", 5)",
+      },
+      {
+        id: "rsi-diff",
+        name: "RSI Diff",
+        formula: "rsi.rsi - 50",
+      },
+    ];
+    const CUSTOM_FORMULA_TOOLTIP = [
+      "可用基础字段：open, high, low, close, volume, amount",
+      "可用基础指标：",
+      "  macd.dif, macd.dea, macd.macd",
+      "  kdj.k, kdj.d, kdj.j",
+      "  rsi.rsi",
+      "  boll.mid, boll.upper, boll.lower",
+      "  wr.wr, volume.ma5, volume.ma10",
+      "可用函数：sma(x,n), ema(x,n), highest(x,n), lowest(x,n), abs(x), max(a,b), min(a,b)",
+    ].join("\n");
 
     if (workbenchHomeHref) {
       workbenchHomeLink.href = workbenchHomeHref;
       workbenchHomeLink.hidden = false;
+    }
+    customIndicatorFormulaInput.title = CUSTOM_FORMULA_TOOLTIP;
+    if (customFormulaHelp) {
+      customFormulaHelp.title = CUSTOM_FORMULA_TOOLTIP;
     }
 
     function apiUrl(path) {
@@ -1122,6 +1510,682 @@
       });
     }
 
+    function ema(data, period) {
+      const result = [];
+      const multiplier = 2 / (period + 1);
+      for (let i = 0; i < data.length; i++) {
+        if (data[i] === null || data[i] === undefined) {
+          result.push(null);
+          continue;
+        }
+        if (i === 0 || result[i - 1] === null) {
+          result.push(data[i]);
+        } else {
+          result.push((data[i] - result[i - 1]) * multiplier + result[i - 1]);
+        }
+      }
+      return result;
+    }
+
+    function calculateMACD(bars, short = 12, long = 26, signal = 9) {
+      const closes = bars.map(bar => Number(bar.close));
+      const emaShort = ema(closes, short);
+      const emaLong = ema(closes, long);
+      const dif = emaShort.map((val, i) => {
+        if (val === null || emaLong[i] === null) return null;
+        return val - emaLong[i];
+      });
+      const dea = ema(dif, signal);
+      const macd = dif.map((val, i) => {
+        if (val === null || dea[i] === null) return null;
+        return (val - dea[i]) * 2;
+      });
+      return { dif, dea, macd };
+    }
+
+    function calculateKDJ(bars, n = 9, m1 = 3, m2 = 3) {
+      const result = { k: [], d: [], j: [] };
+      let prevK = 50, prevD = 50;
+      for (let i = 0; i < bars.length; i++) {
+        if (i < n - 1) {
+          result.k.push(null);
+          result.d.push(null);
+          result.j.push(null);
+          continue;
+        }
+        const window = bars.slice(i - n + 1, i + 1);
+        const highest = Math.max(...window.map(b => Number(b.high)));
+        const lowest = Math.min(...window.map(b => Number(b.low)));
+        const close = Number(bars[i].close);
+        const rsv = highest === lowest ? 50 : ((close - lowest) / (highest - lowest)) * 100;
+        const k = (prevK * (m1 - 1) + rsv) / m1;
+        const d = (prevD * (m2 - 1) + k) / m2;
+        const j = 3 * k - 2 * d;
+        result.k.push(k);
+        result.d.push(d);
+        result.j.push(j);
+        prevK = k;
+        prevD = d;
+      }
+      return result;
+    }
+
+    function kdjPlotYRange(jValues) {
+      const values = jValues.filter((v) => v !== null && Number.isFinite(v));
+      if (!values.length) {
+        return [0, 100];
+      }
+      let lo = Math.min(...values);
+      let hi = Math.max(...values);
+      const pad = lo === hi ? 5 : Math.max((hi - lo) * 0.05, 3);
+      return [lo - pad, hi + pad];
+    }
+
+    function calculateRSI(bars, period = 14) {
+      const result = [];
+      let avgGain = 0, avgLoss = 0;
+      for (let i = 0; i < bars.length; i++) {
+        if (i === 0) {
+          result.push(null);
+          continue;
+        }
+        const change = Number(bars[i].close) - Number(bars[i - 1].close);
+        const gain = change > 0 ? change : 0;
+        const loss = change < 0 ? -change : 0;
+        if (i < period) {
+          result.push(null);
+          avgGain += gain / period;
+          avgLoss += loss / period;
+        } else if (i === period) {
+          avgGain += gain / period;
+          avgLoss += loss / period;
+          result.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
+        } else {
+          avgGain = (avgGain * (period - 1) + gain) / period;
+          avgLoss = (avgLoss * (period - 1) + loss) / period;
+          result.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
+        }
+      }
+      return result;
+    }
+
+    function calculateBOLL(bars, period = 20, multiplier = 2) {
+      const result = { mid: [], upper: [], lower: [] };
+      for (let i = 0; i < bars.length; i++) {
+        if (i < period - 1) {
+          result.mid.push(null);
+          result.upper.push(null);
+          result.lower.push(null);
+          continue;
+        }
+        const window = bars.slice(i - period + 1, i + 1);
+        const closes = window.map(b => Number(b.close));
+        const mid = closes.reduce((a, b) => a + b, 0) / period;
+        const variance = closes.reduce((sum, val) => sum + Math.pow(val - mid, 2), 0) / period;
+        const std = Math.sqrt(variance);
+        result.mid.push(mid);
+        result.upper.push(mid + multiplier * std);
+        result.lower.push(mid - multiplier * std);
+      }
+      return result;
+    }
+
+    function calculateWR(bars, period = 14) {
+      const result = [];
+      for (let i = 0; i < bars.length; i++) {
+        if (i < period - 1) {
+          result.push(null);
+          continue;
+        }
+        const window = bars.slice(i - period + 1, i + 1);
+        const highest = Math.max(...window.map(b => Number(b.high)));
+        const lowest = Math.min(...window.map(b => Number(b.low)));
+        const close = Number(bars[i].close);
+        const wr = highest === lowest ? 50 : ((highest - close) / (highest - lowest)) * -100;
+        result.push(wr);
+      }
+      return result;
+    }
+
+    const MACD_BAR_WIDTH = 0.24;
+    const VOLUME_BAR_WIDTH = 0.45;
+
+    const DEFAULT_INDICATOR_STACK = ["macd"];
+    const BUILTIN_INDICATOR_DEFS = [
+      { id: 'volume', name: '成交量', kind: 'builtin', lines: [
+        { key: 'volume', label: 'VOL', compact: true },
+        { key: 'ma5', label: 'MA5' },
+        { key: 'ma10', label: 'MA10' },
+      ]},
+      { id: 'macd', name: 'MACD', kind: 'builtin', lines: [
+        { key: 'dif', label: 'DIF' },
+        { key: 'dea', label: 'DEA' },
+        { key: 'macd', label: 'MACD' },
+      ]},
+      { id: 'kdj', name: 'KDJ', kind: 'builtin', lines: [
+        { key: 'k', label: 'K' },
+        { key: 'd', label: 'D' },
+        { key: 'j', label: 'J' },
+      ]},
+      { id: 'rsi', name: 'RSI', kind: 'builtin', lines: [
+        { key: 'rsi', label: 'RSI' },
+      ]},
+      { id: 'boll', name: 'BOLL', kind: 'builtin', lines: [
+        { key: 'mid', label: 'MID' },
+        { key: 'upper', label: 'UPPER' },
+        { key: 'lower', label: 'LOWER' },
+      ]},
+      { id: 'wr', name: 'WR', kind: 'builtin', lines: [
+        { key: 'wr', label: 'WR' },
+      ]},
+    ];
+
+    const indicatorState = {
+      panels: DEFAULT_INDICATOR_STACK.slice(),
+      visibleLines: defaultVisibleLines(BUILTIN_INDICATOR_DEFS),
+      currentValues: {},
+      seriesMap: {},
+      customDefs: loadCustomIndicatorDefs(),
+    };
+
+    function subplotLabelBand() {
+      const chartPixelHeight = chart.clientHeight || 580;
+      const plotHeightEst = Math.max(chartPixelHeight - 60, 420);
+      return Math.min(0.058, Math.max(0.042, 28 / plotHeightEst));
+    }
+
+    function defaultVisibleLines(defs) {
+      return defs.reduce((acc, def) => {
+        acc[def.id] = Object.fromEntries((def.lines || []).map((line) => [line.key, true]));
+        return acc;
+      }, {});
+    }
+
+    function getAllIndicatorDefs() {
+      return [...BUILTIN_INDICATOR_DEFS, ...indicatorState.customDefs];
+    }
+
+    function subplotIndicatorIds() {
+      return getAllIndicatorDefs()
+        .filter((entry) => entry.id !== "volume")
+        .map((entry) => entry.id);
+    }
+
+    function indicatorDef(id) {
+      return getAllIndicatorDefs().find((entry) => entry.id === id) || BUILTIN_INDICATOR_DEFS[0];
+    }
+
+    function ensureIndicatorVisibility(def) {
+      if (indicatorState.visibleLines[def.id]) {
+        return;
+      }
+      indicatorState.visibleLines[def.id] = Object.fromEntries(
+        (def.lines || []).map((line) => [line.key, true])
+      );
+    }
+
+    function safeStorage() {
+      try {
+        return window.localStorage;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function loadCustomIndicatorDefs() {
+      const storage = safeStorage();
+      if (!storage) {
+        return [];
+      }
+      try {
+        const raw = storage.getItem(CUSTOM_INDICATOR_STORAGE_KEY);
+        if (!raw) {
+          return [];
+        }
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          return [];
+        }
+        return parsed
+          .map((entry, index) => normalizeCustomIndicatorDef(entry, index))
+          .filter(Boolean);
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveCustomIndicatorDefs() {
+      const storage = safeStorage();
+      if (!storage) {
+        return;
+      }
+      storage.setItem(CUSTOM_INDICATOR_STORAGE_KEY, JSON.stringify(indicatorState.customDefs));
+    }
+
+    function slugifyIndicatorName(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 24) || "custom";
+    }
+
+    function colorForCustomLine(definitionIndex, lineIndex) {
+      const base = CUSTOM_INDICATOR_COLORS[(definitionIndex + lineIndex) % CUSTOM_INDICATOR_COLORS.length];
+      return base;
+    }
+
+    function normalizeCustomFormulaLines(formula) {
+      return String(formula || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+    }
+
+    function normalizeCustomIndicatorDef(entry, index = 0) {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+      const name = String(entry.name || "").trim();
+      const formula = String(entry.formula || "").trim();
+      const sourceLines = Array.isArray(entry.lines) ? entry.lines : [];
+      if (!name || !formula) {
+        return null;
+      }
+      const id = String(entry.id || `${CUSTOM_INDICATOR_ID_PREFIX}${slugifyIndicatorName(name)}-${index + 1}`);
+      const lines = sourceLines.length
+        ? sourceLines
+        : parseCustomIndicatorLines(name, formula, index);
+      if (!lines.length) {
+        return null;
+      }
+      return {
+        id: id.startsWith(CUSTOM_INDICATOR_ID_PREFIX) ? id : `${CUSTOM_INDICATOR_ID_PREFIX}${id}`,
+        name,
+        formula,
+        kind: "custom",
+        lines,
+      };
+    }
+
+    function parseCustomIndicatorLines(name, formula, index = 0) {
+      const rows = normalizeCustomFormulaLines(formula);
+      if (!rows.length) {
+        return [];
+      }
+      if (rows.length === 1 && !rows[0].includes("=")) {
+        return [{
+          key: "value",
+          label: "VALUE",
+          expression: rows[0],
+          color: colorForCustomLine(index, 0),
+        }];
+      }
+      return rows.map((row, lineIndex) => {
+        const match = row.match(/^([a-zA-Z_][\w]*)\s*=\s*(.+)$/);
+        if (!match) {
+          throw new Error(`第 ${lineIndex + 1} 行需要使用 alias = formula`);
+        }
+        return {
+          key: match[1],
+          label: match[1].toUpperCase(),
+          expression: match[2].trim(),
+          color: colorForCustomLine(index, lineIndex),
+        };
+      });
+    }
+
+    function setCustomIndicatorFeedback(message, kind = "info") {
+      if (!message) {
+        customIndicatorFeedback.hidden = true;
+        customIndicatorFeedback.textContent = "";
+        customIndicatorFeedback.className = "custom-indicator-feedback";
+        return;
+      }
+      customIndicatorFeedback.hidden = false;
+      customIndicatorFeedback.textContent = message;
+      customIndicatorFeedback.className = `custom-indicator-feedback${kind === "error" ? " error" : ""}`;
+    }
+
+    function toggleCustomIndicatorForm(open) {
+      const shouldOpen = Boolean(open);
+      customIndicatorForm.classList.toggle("open", shouldOpen);
+      if (!shouldOpen) {
+        customIndicatorNameInput.value = "";
+        customIndicatorFormulaInput.value = "";
+        setCustomIndicatorFeedback("");
+      } else {
+        customIndicatorNameInput.focus();
+      }
+    }
+
+    function customDefByTemplate(template) {
+      return indicatorState.customDefs.find((def) =>
+        def.name.trim().toLowerCase() === template.name.trim().toLowerCase()
+        && def.formula.trim() === template.formula.trim()
+      ) || null;
+    }
+
+    function renderCustomIndicatorTemplates() {
+      customIndicatorTemplates.innerHTML = CUSTOM_INDICATOR_TEMPLATES.map((template) => {
+        const active = customDefByTemplate(template) ? " active" : "";
+        return `<button type="button" class="template-chip${active}" data-indicator-template="${escapeHtml(template.id)}" title="${escapeHtml(template.formula)}">${escapeHtml(template.name)}</button>`;
+      }).join("");
+    }
+
+    function sourceSeriesField(bars, field) {
+      return bars.map((bar) => {
+        const value = Number(bar?.[field]);
+        return Number.isFinite(value) ? value : null;
+      });
+    }
+
+    function movingAverageSeries(values, period) {
+      const result = [];
+      for (let i = 0; i < values.length; i += 1) {
+        if (i + 1 < period) {
+          result.push(null);
+          continue;
+        }
+        let sum = 0;
+        let valid = true;
+        for (let cursor = i + 1 - period; cursor <= i; cursor += 1) {
+          const value = values[cursor];
+          if (!Number.isFinite(value)) {
+            valid = false;
+            break;
+          }
+          sum += value;
+        }
+        result.push(valid ? sum / period : null);
+      }
+      return result;
+    }
+
+    function highestSeries(values, period) {
+      return values.map((_, index) => {
+        if (index + 1 < period) {
+          return null;
+        }
+        const window = values.slice(index + 1 - period, index + 1).filter(Number.isFinite);
+        return window.length === period ? Math.max(...window) : null;
+      });
+    }
+
+    function lowestSeries(values, period) {
+      return values.map((_, index) => {
+        if (index + 1 < period) {
+          return null;
+        }
+        const window = values.slice(index + 1 - period, index + 1).filter(Number.isFinite);
+        return window.length === period ? Math.min(...window) : null;
+      });
+    }
+
+    function normalizeSeriesToken(token) {
+      return String(token || "").trim();
+    }
+
+    function computeBuiltinIndicatorSeries(bars) {
+      const macdData = calculateMACD(bars);
+      const kdjData = calculateKDJ(bars);
+      const rsiData = calculateRSI(bars);
+      const bollData = calculateBOLL(bars);
+      const wrData = calculateWR(bars);
+      const volumes = sourceSeriesField(bars, "volume");
+      return {
+        volume: { volume: volumes, ma5: movingAverageSeries(volumes, 5), ma10: movingAverageSeries(volumes, 10) },
+        macd: macdData,
+        kdj: kdjData,
+        rsi: { rsi: rsiData },
+        boll: bollData,
+        wr: { wr: wrData },
+      };
+    }
+
+    function resolveSeriesToken(token, baseSeries, aliases) {
+      const normalized = normalizeSeriesToken(token);
+      if (!normalized) {
+        return [];
+      }
+      if (aliases[normalized]) {
+        return aliases[normalized];
+      }
+      if (baseSeries[normalized]) {
+        return baseSeries[normalized];
+      }
+      if (normalized.includes(".")) {
+        const [group, key] = normalized.split(".", 2);
+        if (baseSeries[group]?.[key]) {
+          return baseSeries[group][key];
+        }
+      }
+      return [];
+    }
+
+    function compileCustomFormula(expression) {
+      try {
+        return new Function(
+          "ctx",
+          `with (ctx) { return (${expression}); }`
+        );
+      } catch (error) {
+        throw new Error(`无法解析公式: ${expression}`);
+      }
+    }
+
+    function buildCustomIndicatorSeries(def, bars, baseSeries) {
+      const aliases = {};
+      const functionCache = {};
+      const compiledLines = def.lines.map((line) => ({
+        ...line,
+        execute: compileCustomFormula(line.expression),
+      }));
+
+      function ensureDerivedSeries(kind, token, period) {
+        const key = `${kind}:${token}:${period}`;
+        if (!functionCache[key]) {
+          const series = resolveSeriesToken(token, baseSeries, aliases);
+          const safePeriod = Math.max(1, Number(period) || 1);
+          if (kind === "sma") {
+            functionCache[key] = movingAverageSeries(series, safePeriod);
+          } else if (kind === "ema") {
+            functionCache[key] = ema(series, safePeriod);
+          } else if (kind === "highest") {
+            functionCache[key] = highestSeries(series, safePeriod);
+          } else if (kind === "lowest") {
+            functionCache[key] = lowestSeries(series, safePeriod);
+          }
+        }
+        return functionCache[key] || [];
+      }
+
+      compiledLines.forEach((line) => {
+        aliases[line.key] = new Array(bars.length).fill(null);
+      });
+
+      for (let index = 0; index < bars.length; index += 1) {
+        const scalarBase = {
+          open: Number(bars[index]?.open),
+          high: Number(bars[index]?.high),
+          low: Number(bars[index]?.low),
+          close: Number(bars[index]?.close),
+          volume: Number(bars[index]?.volume),
+          amount: Number(bars[index]?.amount),
+        };
+        const indicatorBase = Object.fromEntries(
+          Object.entries(baseSeries).map(([key, value]) => {
+            if (Array.isArray(value)) {
+              return [key, value[index]];
+            }
+            return [
+              key,
+              Object.fromEntries(
+                Object.entries(value || {}).map(([childKey, childValue]) => [childKey, childValue[index]])
+              ),
+            ];
+          })
+        );
+        const aliasScalar = Object.fromEntries(
+          Object.entries(aliases).map(([key, value]) => [key, value[index]])
+        );
+        const helpers = {
+          ref: (token, offset = 1) => {
+            const series = resolveSeriesToken(token, baseSeries, aliases);
+            const target = index - Math.max(0, Number(offset) || 0);
+            return target >= 0 ? series[target] : null;
+          },
+          sma: (token, period) => ensureDerivedSeries("sma", token, period)[index],
+          ema: (token, period) => ensureDerivedSeries("ema", token, period)[index],
+          highest: (token, period) => ensureDerivedSeries("highest", token, period)[index],
+          lowest: (token, period) => ensureDerivedSeries("lowest", token, period)[index],
+          abs: Math.abs,
+          max: Math.max,
+          min: Math.min,
+        };
+        compiledLines.forEach((line) => {
+          try {
+            const value = line.execute({ ...scalarBase, ...indicatorBase, ...aliasScalar, ...helpers });
+            aliases[line.key][index] = Number.isFinite(Number(value)) ? Number(value) : null;
+          } catch (error) {
+            throw new Error(`${def.name}: ${error.message}`);
+          }
+        });
+      }
+      return aliases;
+    }
+
+    function computeIndicatorSeriesMap(bars) {
+      const builtins = computeBuiltinIndicatorSeries(bars);
+      const seriesMap = { ...builtins };
+      indicatorState.customError = "";
+      indicatorState.customDefs.forEach((def) => {
+        try {
+          seriesMap[def.id] = buildCustomIndicatorSeries(def, bars, seriesMap);
+        } catch (error) {
+          indicatorState.customError = error instanceof Error ? error.message : String(error);
+        }
+      });
+      indicatorState.seriesMap = seriesMap;
+      return seriesMap;
+    }
+
+    function normalizeIndicatorPanels() {
+      const indicatorIds = subplotIndicatorIds();
+      indicatorState.panels = indicatorState.panels.filter((id) => indicatorIds.includes(id));
+      if (!indicatorState.panels.length) {
+        indicatorState.panels = DEFAULT_INDICATOR_STACK.filter((id) => indicatorIds.includes(id));
+      }
+      if (!indicatorState.panels.length && indicatorIds.length) {
+        indicatorState.panels = [indicatorIds[0]];
+      }
+    }
+
+    function getIndicatorColor(indicator, line) {
+      const colors = {
+        macd: { dif: '#f9a825', dea: '#1565c0', macd: '#9c27b0' },
+        kdj: { k: '#f9a825', d: '#1565c0', j: '#9c27b0' },
+        rsi: { rsi: '#1565c0' },
+        boll: { mid: '#f9a825', upper: '#d32f2f', lower: '#00897b' },
+        wr: { wr: '#1565c0' },
+        volume: { volume: '#888', ma5: '#f9a825', ma10: '#1565c0' },
+      };
+      const custom = indicatorDef(indicator);
+      const customLine = custom?.lines?.find((entry) => entry.key === line);
+      return colors[indicator]?.[line] || customLine?.color || '#888';
+    }
+
+    function isIndicatorLineVisible(indicator, line) {
+      return indicatorState.visibleLines[indicator]?.[line] !== false;
+    }
+
+    function formatIndicatorValue(value) {
+      if (value === null || value === undefined || !Number.isFinite(value)) return '--';
+      return Number(value).toFixed(2);
+    }
+
+    function formatIndicatorLineValue(indicatorId, line, value) {
+      if (line.compact) {
+        return compact(value);
+      }
+      return formatIndicatorValue(value);
+    }
+
+    function computeIndicatorValues(bars) {
+      if (!bars.length) {
+        indicatorState.currentValues = {};
+        return { prevValues: {} };
+      }
+      const lastIndex = bars.length - 1;
+      const prevIndex = Math.max(0, lastIndex - 1);
+      const macdData = calculateMACD(bars);
+      const kdjData = calculateKDJ(bars);
+      const rsiData = calculateRSI(bars);
+      const bollData = calculateBOLL(bars);
+      const wrData = calculateWR(bars);
+      const volMA5 = movingAverage(bars.map(b => ({ close: b.volume })), 5);
+      const volMA10 = movingAverage(bars.map(b => ({ close: b.volume })), 10);
+      const seriesMap = computeIndicatorSeriesMap(bars);
+
+      indicatorState.currentValues = {
+        macd: { dif: macdData.dif[lastIndex], dea: macdData.dea[lastIndex], macd: macdData.macd[lastIndex] },
+        kdj: { k: kdjData.k[lastIndex], d: kdjData.d[lastIndex], j: kdjData.j[lastIndex] },
+        rsi: { rsi: rsiData[lastIndex] },
+        boll: { mid: bollData.mid[lastIndex], upper: bollData.upper[lastIndex], lower: bollData.lower[lastIndex] },
+        wr: { wr: wrData[lastIndex] },
+        volume: { volume: bars[lastIndex].volume, ma5: volMA5[lastIndex], ma10: volMA10[lastIndex] },
+      };
+      indicatorState.customDefs.forEach((def) => {
+        const customSeries = seriesMap[def.id] || {};
+        indicatorState.currentValues[def.id] = Object.fromEntries(
+          def.lines.map((line) => [line.key, customSeries[line.key]?.[lastIndex] ?? null])
+        );
+      });
+
+      const prevValues = {
+        macd: { dif: macdData.dif[prevIndex], dea: macdData.dea[prevIndex], macd: macdData.macd[prevIndex] },
+        kdj: { k: kdjData.k[prevIndex], d: kdjData.d[prevIndex], j: kdjData.j[prevIndex] },
+        rsi: { rsi: rsiData[prevIndex] },
+        boll: { mid: bollData.mid[prevIndex], upper: bollData.upper[prevIndex], lower: bollData.lower[prevIndex] },
+        wr: { wr: wrData[prevIndex] },
+        volume: { volume: bars[prevIndex]?.volume, ma5: volMA5[prevIndex], ma10: volMA10[prevIndex] },
+      };
+      indicatorState.customDefs.forEach((def) => {
+        const customSeries = seriesMap[def.id] || {};
+        prevValues[def.id] = Object.fromEntries(
+          def.lines.map((line) => [line.key, customSeries[line.key]?.[prevIndex] ?? null])
+        );
+      });
+      return { prevValues };
+    }
+
+    function renderIndicatorPanelValues(indicatorId) {
+      const ind = indicatorDef(indicatorId);
+      ensureIndicatorVisibility(ind);
+      const values = indicatorState.currentValues[indicatorId] || {};
+      const prev = (indicatorState._prevValues || {})[indicatorId] || {};
+      return ind.lines.map((line) => {
+        const val = values[line.key];
+        const prevVal = prev[line.key];
+        const color = getIndicatorColor(ind.id, line.key);
+        const hidden = !isIndicatorLineVisible(ind.id, line.key);
+        const displayVal = formatIndicatorLineValue(ind.id, line, val);
+        return `<span class="indicator-value${hidden ? " hidden" : ""}" data-indicator="${ind.id}" data-line="${line.key}">
+          <span class="label" style="color: ${color}">${line.label}:</span>
+          <span class="number">${displayVal}</span>
+          ${getArrow(val, prevVal)}
+        </span>`;
+      }).join("");
+    }
+
+    function getArrow(current, previous) {
+      if (current === null || previous === null) return '';
+      if (current > previous) return '<span class="arrow arrow-up">↑</span>';
+      if (current < previous) return '<span class="arrow arrow-down">↓</span>';
+      return '';
+    }
+
     function renderSummary(item, series, bars) {
       if (!item || !bars.length) {
         summary.innerHTML = `<div class="metric"><span>Status</span><strong>No data</strong></div>`;
@@ -1145,44 +2209,24 @@
       return `<div class="metric"><span>${escapeHtml(label)}</span><strong title="${escapeHtml(value)}">${escapeHtml(value)}</strong></div>`;
     }
 
-    function render() {
-      updateDatasetMeta();
-      const item = selectedItem();
-      if (!item) {
-        chart.className = "empty";
-        chart.textContent = "No matching symbol";
-        renderSummary(null, null, []);
-        return;
+    function numericSeriesRange(values, fallback = [0, 1]) {
+      const filtered = (values || []).filter((value) => value !== null && Number.isFinite(value));
+      if (!filtered.length) {
+        return fallback;
       }
-      const series = activeSeries(item);
-      if (!series) {
-        chart.className = "empty";
-        chart.textContent = "No data for selected frequency";
-        renderSummary(item, null, []);
-        return;
-      }
-      if (dynamicMode && !isSeriesDataCurrent()) {
-        const bars = [];
-        chart.className = "empty";
-        chart.textContent = state.error || (state.loading ? "Loading data..." : "No window loaded");
-        updateWindowControls(series, bars);
-        renderSummary(item, series, bars);
-        return;
-      }
-      chart.className = "";
-      chart.textContent = "";
-      if (!window.Plotly) {
-        chart.className = "empty";
-        chart.textContent = "Chart library failed to load";
-        return;
-      }
-      const bars = visibleBars(series);
-      updateWindowControls(series, bars);
-      renderSummary(item, series, bars);
+      const min = Math.min(...filtered);
+      const max = Math.max(...filtered);
+      const pad = min === max ? Math.max(Math.abs(min) * 0.08, 1) : Math.max((max - min) * 0.08, 0.5);
+      return [min - pad, max + pad];
+    }
+
+    function renderTopChart(bars, series) {
       const x = bars.map((bar) => formatBarDateTime(bar.date, series?.frequency || state.frequency));
       const upColor = "#d32f2f";
       const downColor = "#00897b";
       const volumeColors = bars.map((bar) => Number(bar.close) >= Number(bar.open) ? upColor : downColor);
+      const volMA5 = movingAverage(bars.map(b => ({ close: b.volume })), 5);
+      const volMA10 = movingAverage(bars.map(b => ({ close: b.volume })), 10);
       const traces = [
         {
           type: "candlestick",
@@ -1195,6 +2239,7 @@
           increasing: { line: { color: upColor }, fillcolor: upColor },
           decreasing: { line: { color: downColor }, fillcolor: downColor },
           yaxis: "y",
+          showlegend: false,
         },
         {
           type: "scatter",
@@ -1202,8 +2247,9 @@
           x,
           y: movingAverage(bars, 5),
           name: "MA5",
-          line: { color: "#f9a825", width: 1.4 },
+          line: { color: "#f9a825", width: 1.2 },
           yaxis: "y",
+          hoverinfo: "skip",
         },
         {
           type: "scatter",
@@ -1211,27 +2257,57 @@
           x,
           y: movingAverage(bars, 20),
           name: "MA20",
-          line: { color: "#1565c0", width: 1.4 },
+          line: { color: "#1565c0", width: 1.2 },
           yaxis: "y",
+          hoverinfo: "skip",
         },
         {
           type: "bar",
           x,
           y: bars.map((bar) => bar.volume),
-          name: "Volume",
-          marker: { color: volumeColors, opacity: 0.55 },
+          name: "VOL",
+          width: VOLUME_BAR_WIDTH,
+          marker: {
+            color: volumeColors,
+            opacity: 0.6,
+            line: { width: 0 },
+          },
           yaxis: "y2",
+          showlegend: false,
+        },
+        {
+          type: "scatter",
+          mode: "lines",
+          x,
+          y: volMA5,
+          name: "VOL MA5",
+          line: { color: getIndicatorColor("volume", "ma5"), width: 1 },
+          yaxis: "y2",
+          showlegend: false,
+          hoverinfo: "skip",
+        },
+        {
+          type: "scatter",
+          mode: "lines",
+          x,
+          y: volMA10,
+          name: "VOL MA10",
+          line: { color: getIndicatorColor("volume", "ma10"), width: 1 },
+          yaxis: "y2",
+          showlegend: false,
+          hoverinfo: "skip",
         },
       ];
       const layout = {
-        margin: { l: 64, r: 24, t: 44, b: 38 },
+        margin: { l: 56, r: 24, t: 32, b: 28 },
         showlegend: true,
         legend: {
           orientation: "h",
           x: 0,
-          y: 1.12,
+          y: 1.08,
           xanchor: "left",
           yanchor: "bottom",
+          font: { size: 10 },
         },
         hovermode: "x unified",
         plot_bgcolor: "#ffffff",
@@ -1242,25 +2318,204 @@
           gridcolor: "#edf1f5",
           type: "category",
           nticks: 9,
+          showticklabels: true,
         },
         yaxis: {
-          domain: [0.28, 1],
-          title: "Price",
+          domain: [0.34, 1],
           showgrid: true,
           gridcolor: "#edf1f5",
           tickformat: ".2f",
-          fixedrange: false,
+          side: "right",
         },
         yaxis2: {
-          domain: [0, 0.2],
-          title: "Volume",
+          domain: [0, 0.22],
           showgrid: true,
           gridcolor: "#edf1f5",
-          fixedrange: false,
+          side: "right",
+          tickfont: { size: 9 },
         },
         bargap: 0,
       };
-      Plotly.newPlot(chart, traces, layout, { responsive: true, displaylogo: false });
+      return Plotly.newPlot(chart, traces, layout, { responsive: true, displaylogo: false });
+    }
+
+    function addIndicatorTraces(indicator, indicatorInfo, indicatorSeries, vis, x, yRef, traces, layout, yAxisKey, bars) {
+      if (indicator === 'macd') {
+        const macdData = calculateMACD(bars);
+        const upColor = "#d32f2f";
+        const downColor = "#00897b";
+        const macdColors = macdData.macd.map(v => v === null ? '#888' : (v >= 0 ? upColor : downColor));
+        if (vis.macd !== false) {
+          traces.push({
+            type: "bar",
+            x,
+            y: macdData.macd,
+            name: "MACD",
+            width: MACD_BAR_WIDTH,
+            marker: { color: macdColors, opacity: 0.85, line: { width: 0 } },
+            yaxis: yRef,
+            showlegend: false,
+          });
+        }
+        if (vis.dif !== false) {
+          traces.push({ type: "scatter", mode: "lines", x, y: macdData.dif, name: "DIF", line: { color: getIndicatorColor('macd', 'dif'), width: 1.2 }, yaxis: yRef, showlegend: false });
+        }
+        if (vis.dea !== false) {
+          traces.push({ type: "scatter", mode: "lines", x, y: macdData.dea, name: "DEA", line: { color: getIndicatorColor('macd', 'dea'), width: 1.2 }, yaxis: yRef, showlegend: false });
+        }
+        return;
+      }
+      if (indicator === 'kdj') {
+        const kdjData = calculateKDJ(bars);
+        layout[yAxisKey].range = kdjPlotYRange(kdjData.j);
+        layout[yAxisKey].autorange = false;
+        if (vis.k !== false) traces.push({ type: "scatter", mode: "lines", x, y: kdjData.k, name: "K", line: { color: getIndicatorColor('kdj', 'k'), width: 1.2 }, yaxis: yRef, showlegend: false, cliponaxis: true });
+        if (vis.d !== false) traces.push({ type: "scatter", mode: "lines", x, y: kdjData.d, name: "D", line: { color: getIndicatorColor('kdj', 'd'), width: 1.2 }, yaxis: yRef, showlegend: false, cliponaxis: true });
+        if (vis.j !== false) traces.push({ type: "scatter", mode: "lines", x, y: kdjData.j, name: "J", line: { color: getIndicatorColor('kdj', 'j'), width: 1.2 }, yaxis: yRef, showlegend: false, cliponaxis: true });
+        return;
+      }
+      if (indicator === 'rsi') {
+        const rsiData = calculateRSI(bars);
+        if (vis.rsi !== false) traces.push({ type: "scatter", mode: "lines", x, y: rsiData, name: "RSI", line: { color: getIndicatorColor('rsi', 'rsi'), width: 1.2 }, yaxis: yRef, showlegend: false });
+        layout[yAxisKey].range = [0, 100];
+        return;
+      }
+      if (indicator === 'wr') {
+        const wrData = calculateWR(bars);
+        if (vis.wr !== false) traces.push({ type: "scatter", mode: "lines", x, y: wrData, name: "WR", line: { color: getIndicatorColor('wr', 'wr'), width: 1.2 }, yaxis: yRef, showlegend: false });
+        layout[yAxisKey].range = [-100, 0];
+        return;
+      }
+      if (indicator === 'boll') {
+        if (vis.mid !== false) traces.push({ type: "scatter", mode: "lines", x, y: indicatorSeries.mid || [], name: "MID", line: { color: getIndicatorColor('boll', 'mid'), width: 1.2 }, yaxis: yRef, showlegend: false });
+        if (vis.upper !== false) traces.push({ type: "scatter", mode: "lines", x, y: indicatorSeries.upper || [], name: "UPPER", line: { color: getIndicatorColor('boll', 'upper'), width: 1.2 }, yaxis: yRef, showlegend: false });
+        if (vis.lower !== false) traces.push({ type: "scatter", mode: "lines", x, y: indicatorSeries.lower || [], name: "LOWER", line: { color: getIndicatorColor('boll', 'lower'), width: 1.2 }, yaxis: yRef, showlegend: false });
+        return;
+      }
+      const visibleSeries = indicatorInfo.lines
+        .filter((line) => vis[line.key] !== false)
+        .map((line) => indicatorSeries[line.key] || []);
+      layout[yAxisKey].range = numericSeriesRange(visibleSeries.flat(), [-1, 1]);
+      layout[yAxisKey].autorange = false;
+      indicatorInfo.lines.forEach((line) => {
+        if (vis[line.key] === false) return;
+        traces.push({
+          type: "scatter",
+          mode: "lines",
+          x,
+          y: indicatorSeries[line.key] || [],
+          name: `${indicatorInfo.name} ${line.label}`,
+          line: { color: getIndicatorColor(indicatorInfo.id, line.key), width: 1.2 },
+          yaxis: yRef,
+          showlegend: false,
+        });
+      });
+    }
+
+    function renderIndicatorPanels(bars, series) {
+      normalizeIndicatorPanels();
+      if (!indicatorState.panels.length) {
+        indicatorPanelList.innerHTML = '<div class="indicator-empty">还没有选择指标面板。</div>';
+        return;
+      }
+      indicatorPanelList.innerHTML = indicatorState.panels.map((indicatorId, index) => {
+        const def = indicatorDef(indicatorId);
+        const options = subplotIndicatorIds().map((id) => {
+          const item = indicatorDef(id);
+          return `<option value="${escapeHtml(id)}"${id === indicatorId ? " selected" : ""}>${escapeHtml(item.name)}</option>`;
+        }).join("");
+        return `<section class="indicator-panel" data-panel-index="${index}">
+          <div class="indicator-panel-header">
+            <div class="indicator-panel-controls">
+              <select class="indicator-panel-select" data-panel-select="${index}" aria-label="指标面板">${options}</select>
+              <button type="button" class="toolbar-button" data-remove-panel="${index}">Remove</button>
+            </div>
+            <div class="indicator-panel-values">${renderIndicatorPanelValues(def.id)}</div>
+          </div>
+          <div class="indicator-chart" id="indicatorChart${index}"></div>
+        </section>`;
+      }).join("");
+
+      const x = bars.map((bar) => formatBarDateTime(bar.date, series?.frequency || state.frequency));
+      indicatorState.panels.forEach((indicatorId, index) => {
+        const indicatorInfo = indicatorDef(indicatorId);
+        ensureIndicatorVisibility(indicatorInfo);
+        const indicatorSeries = indicatorState.seriesMap[indicatorId] || {};
+        const vis = indicatorState.visibleLines[indicatorId] || {};
+        const traces = [];
+        const layout = {
+          margin: { l: 56, r: 24, t: 18, b: 28 },
+          hovermode: "x unified",
+          plot_bgcolor: "#ffffff",
+          paper_bgcolor: "#ffffff",
+          xaxis: {
+            showgrid: true,
+            gridcolor: "#edf1f5",
+            type: "category",
+            nticks: 8,
+          },
+          yaxis: {
+            showgrid: true,
+            gridcolor: "#edf1f5",
+            side: "right",
+            tickfont: { size: 9 },
+          },
+          showlegend: false,
+          bargap: 0,
+        };
+        addIndicatorTraces(indicatorId, indicatorInfo, indicatorSeries, vis, x, "y", traces, layout, "yaxis", bars);
+        Plotly.newPlot(document.getElementById(`indicatorChart${index}`), traces, layout, { responsive: true, displaylogo: false });
+      });
+    }
+
+    function render() {
+      updateDatasetMeta();
+      const item = selectedItem();
+      if (!item) {
+        chart.className = "empty";
+        chart.textContent = "No matching symbol";
+        renderSummary(null, null, []);
+        indicatorPanelList.innerHTML = '<div class="indicator-empty">没有可展示的指标。</div>';
+        return;
+      }
+      const series = activeSeries(item);
+      if (!series) {
+        chart.className = "empty";
+        chart.textContent = "No data for selected frequency";
+        renderSummary(item, null, []);
+        indicatorPanelList.innerHTML = '<div class="indicator-empty">没有可展示的指标。</div>';
+        return;
+      }
+      if (dynamicMode && !isSeriesDataCurrent()) {
+        const bars = [];
+        chart.className = "empty";
+        chart.textContent = state.error || (state.loading ? "Loading data..." : "No window loaded");
+        updateWindowControls(series, bars);
+        renderSummary(item, series, bars);
+        indicatorPanelList.innerHTML = '<div class="indicator-empty">等待指标数据加载。</div>';
+        return;
+      }
+      chart.className = "";
+      chart.textContent = "";
+      if (!window.Plotly) {
+        chart.className = "empty";
+        chart.textContent = "Chart library failed to load";
+        indicatorPanelList.innerHTML = '<div class="indicator-empty">Chart library failed to load</div>';
+        return;
+      }
+      const bars = visibleBars(series);
+      updateWindowControls(series, bars);
+      renderSummary(item, series, bars);
+      const { prevValues } = computeIndicatorValues(bars);
+      indicatorState._prevValues = prevValues;
+      if (indicatorState.customError) {
+        setCustomIndicatorFeedback(indicatorState.customError, "error");
+      } else if (indicatorState.customDefs.length) {
+        setCustomIndicatorFeedback("");
+      }
+      renderTopChart(bars, series).then(() => {
+        renderIndicatorPanels(bars, series);
+      });
     }
 
     function renderSourceButtons() {
@@ -1316,6 +2571,90 @@
           </section>
         `;
       }).join("");
+    }
+
+    function createCustomIndicator({ name, formula, appendPanel = true }) {
+      if (!name || !formula) {
+        setCustomIndicatorFeedback("请先填写名称和公式。", "error");
+        return false;
+      }
+      const duplicate = indicatorState.customDefs.find((def) => def.name.toLowerCase() === name.toLowerCase());
+      if (duplicate) {
+        setCustomIndicatorFeedback(`已存在同名指标：${name}`, "error");
+        return false;
+      }
+      try {
+        const parsedLines = parseCustomIndicatorLines(name, formula, indicatorState.customDefs.length);
+        parsedLines.forEach((line) => {
+          compileCustomFormula(line.expression);
+        });
+        const def = normalizeCustomIndicatorDef({
+          id: `${CUSTOM_INDICATOR_ID_PREFIX}${slugifyIndicatorName(name)}-${Date.now()}`,
+          name,
+          formula,
+          lines: parsedLines,
+        }, indicatorState.customDefs.length);
+        if (!def) {
+          throw new Error("指标定义为空");
+        }
+        ensureIndicatorVisibility(def);
+        indicatorState.customDefs.push(def);
+        if (appendPanel) {
+          indicatorState.panels.push(def.id);
+        }
+        saveCustomIndicatorDefs();
+        renderCustomIndicatorTemplates();
+        setCustomIndicatorFeedback("");
+        render();
+        return true;
+      } catch (error) {
+        setCustomIndicatorFeedback(error instanceof Error ? error.message : String(error), "error");
+        return false;
+      }
+    }
+
+    function saveCustomIndicator() {
+      const name = customIndicatorNameInput.value.trim();
+      const formula = customIndicatorFormulaInput.value.trim();
+      const created = createCustomIndicator({ name, formula, appendPanel: true });
+      if (created) {
+        toggleCustomIndicatorForm(false);
+      }
+    }
+
+    function deleteCustomIndicator(id) {
+      const index = indicatorState.customDefs.findIndex((def) => def.id === id);
+      if (index < 0) {
+        return;
+      }
+      indicatorState.customDefs.splice(index, 1);
+      delete indicatorState.visibleLines[id];
+      indicatorState.panels = indicatorState.panels.filter((panelId) => panelId !== id);
+      normalizeIndicatorPanels();
+      saveCustomIndicatorDefs();
+      renderCustomIndicatorTemplates();
+      setCustomIndicatorFeedback("");
+      render();
+    }
+
+    function applyCustomIndicatorTemplate(templateId) {
+      const template = CUSTOM_INDICATOR_TEMPLATES.find((entry) => entry.id === templateId);
+      if (!template) {
+        return;
+      }
+      const existing = customDefByTemplate(template);
+      if (existing) {
+        deleteCustomIndicator(existing.id);
+      } else {
+        const created = createCustomIndicator({
+          name: template.name,
+          formula: template.formula,
+          appendPanel: true,
+        });
+        if (created) {
+          toggleCustomIndicatorForm(false);
+        }
+      }
     }
 
     function switchSource(sourceId) {
@@ -1613,6 +2952,67 @@
         jumpToTime();
       }
     });
+    toggleCustomIndicatorFormButton.addEventListener("click", () => {
+      toggleCustomIndicatorForm(!customIndicatorForm.classList.contains("open"));
+    });
+    cancelCustomIndicatorButton.addEventListener("click", () => toggleCustomIndicatorForm(false));
+    saveCustomIndicatorButton.addEventListener("click", saveCustomIndicator);
+    customIndicatorFormulaInput.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        saveCustomIndicator();
+      }
+    });
+    customIndicatorTemplates.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-indicator-template]");
+      if (!button) {
+        return;
+      }
+      applyCustomIndicatorTemplate(button.dataset.indicatorTemplate);
+    });
+    addIndicatorPanelButton.addEventListener("click", () => {
+      const options = subplotIndicatorIds();
+      if (!options.length) {
+        return;
+      }
+      indicatorState.panels.push(options[0]);
+      render();
+    });
+    indicatorPanelList.addEventListener("change", (event) => {
+      const select = event.target.closest("[data-panel-select]");
+      if (!select) {
+        return;
+      }
+      const index = Number(select.dataset.panelSelect);
+      const value = select.value;
+      if (!Number.isInteger(index) || !subplotIndicatorIds().includes(value)) {
+        return;
+      }
+      indicatorState.panels[index] = value;
+      render();
+    });
+    indicatorPanelList.addEventListener("click", (event) => {
+      const value = event.target.closest(".indicator-value");
+      if (value) {
+        const indicator = value.dataset.indicator;
+        const line = value.dataset.line;
+        if (indicatorState.visibleLines[indicator]) {
+          indicatorState.visibleLines[indicator][line] = indicatorState.visibleLines[indicator][line] === false;
+          render();
+        }
+        return;
+      }
+      const removeButton = event.target.closest("[data-remove-panel]");
+      if (!removeButton) {
+        return;
+      }
+      const index = Number(removeButton.dataset.removePanel);
+      if (!Number.isInteger(index)) {
+        return;
+      }
+      indicatorState.panels.splice(index, 1);
+      normalizeIndicatorPanels();
+      render();
+    });
     dataStatusButton.addEventListener("click", () => toggleDataStatus());
     closeDrawerButton.addEventListener("click", () => toggleDataStatus(false));
     drawerBackdrop.addEventListener("click", () => toggleDataStatus(false));
@@ -1645,6 +3045,11 @@
       if (chart.data) {
         Plotly.Plots.resize(chart);
       }
+      indicatorPanelList.querySelectorAll(".indicator-chart").forEach((node) => {
+        if (node.data) {
+          Plotly.Plots.resize(node);
+        }
+      });
     });
 
     function updateDatasetMeta() {
@@ -1652,11 +3057,13 @@
       const symbols = currentSymbols();
       const frequencies = source.frequencies || payload.frequencies || [payload.frequency];
       const mode = dynamicMode ? "dynamic" : "static";
-      datasetMeta.textContent = `Source: ${source.source_label || source.source_id} | ${symbols.length} symbols | ${frequencies.join(", ")} | ${payload.adjust} | ${mode}`;
+      const panelCount = indicatorState.panels?.length || 0;
+      datasetMeta.textContent = `Source: ${source.source_label || source.source_id} | ${symbols.length} symbols | ${frequencies.join(", ")} | ${payload.adjust} | ${mode} | ${panelCount} indicator panels`;
     }
 
     ensureWindowOption();
     ensureWindowOverlapOption();
+    renderCustomIndicatorTemplates();
     updateDatasetMeta();
     renderSourceButtons();
     populateBoards();

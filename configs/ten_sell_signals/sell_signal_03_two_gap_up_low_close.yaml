@@ -1,0 +1,36 @@
+project:
+  name: ten-sell-signal-03-two-gap-up-low-close
+data:
+  source: akshare
+  frequency: 1d
+  adjust: qfq
+  start_date: 2020-01-01
+  end_date: 2026-05-04
+  stock_pool:
+    symbols:
+      - 000001.SZ
+      - 600519.SH
+signals:
+  type: python
+  path: ../../strategies/ten_sell_signals.py
+  function: generate_sell_signal_03
+execution:
+  timing: next_open
+  initial_cash: 1000000
+  commission_rate: 0.0003
+  min_commission: 5
+  stamp_tax_rate: 0.0005
+  transfer_fee_rate: 0.00001
+  slippage_rate: 0.0005
+  board_lot_size: 100
+metrics:
+  builtin:
+    - total_return
+    - annualized_return
+    - max_drawdown
+    - sharpe_ratio
+    - trade_count
+report:
+  output_dir: ../../runs/ten_sell_signals/sell_signal_03
+  html: true
+  charts: true

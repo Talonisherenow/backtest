@@ -1,0 +1,16 @@
+{
+  "run_id": "ten-buy-any-or-sell-exit-000066_20260524T160639193205Z",
+  "project_name": "ten-buy-any-or-sell-exit-000066",
+  "created_at": "2026-05-24T16:06:39.193434+00:00",
+  "config_path": "configs/ten_buy_sell_signals/buy_any_or_sell_exit_000066.yaml",
+  "config_hash": "db7331a5bf767995d1bbede8b7454473e3f820c2f330b642ccf25ca1507a5f5f",
+  "signal_source": "python",
+  "data_source": "akshare",
+  "symbols": [
+    "000066.SZ"
+  ],
+  "start_date": "2025-01-02",
+  "end_date": "2026-05-22",
+  "benchmark": null,
+  "engine_version": "0.1.0"
+}
