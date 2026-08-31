@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from backtest.core.enums import AdjustMode, Frequency
 from backtest.core.symbols import normalize_symbol
 from backtest.data.jobs import RetryConfig
+from backtest.data.sqlite_util import open_sqlite_connection
 from backtest.data_source.config import DataSourceServerConfig
 
 
@@ -418,12 +419,8 @@ class DataSourceScheduleStore:
         self._lock = threading.Lock()
         self._init_schema()
 
-    def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        return conn
+    def connect(self):
+        return open_sqlite_connection(self.path)
 
     def create(
         self,

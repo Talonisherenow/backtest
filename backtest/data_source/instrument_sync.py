@@ -17,6 +17,7 @@ import pandas as pd
 from pydantic import BaseModel, Field, field_validator
 
 from backtest.data.instruments import InstrumentStore
+from backtest.data.sqlite_util import open_sqlite_connection
 from backtest.data_source.config import DataSourceServerConfig, DataSourceSpec
 from backtest.data_source.schedules import (
     DEFAULT_TIMEZONE,
@@ -465,12 +466,8 @@ class InstrumentSyncScheduleStore:
         self._lock = threading.Lock()
         self._init_schema()
 
-    def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        return conn
+    def connect(self):
+        return open_sqlite_connection(self.path)
 
     def create(
         self,

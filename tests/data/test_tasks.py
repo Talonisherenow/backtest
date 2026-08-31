@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from backtest.core.enums import AdjustMode, Frequency
@@ -127,3 +127,44 @@ def test_task_manager_lists_paginated_tasks_with_symbol_frequency_and_status_fil
         ("BTC/USDT", "1d", "success"),
     ]
     assert capped.page_size == 100
+
+
+def test_task_manager_purges_tasks_older_than_retention_window(tmp_path: Path):
+    metadata = MetadataStore(tmp_path / "metadata.sqlite")
+    tasks = CrawlTaskManager(metadata)
+    old_id = tasks.create_task(
+        symbol="BTC/USDT",
+        frequency=Frequency.DAILY,
+        adjust=AdjustMode.NONE,
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 2),
+        source="ccxt:bitget",
+    )
+    new_id = tasks.create_task(
+        symbol="ETH/USDT",
+        frequency=Frequency.DAILY,
+        adjust=AdjustMode.NONE,
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 2),
+        source="ccxt:bitget",
+    )
+    with metadata.connect() as conn:
+        conn.execute(
+            "UPDATE crawl_tasks SET created_at = ? WHERE task_id = ?",
+            ("2026-01-01T00:00:00+00:00", old_id),
+        )
+        conn.execute(
+            "UPDATE crawl_tasks SET created_at = ? WHERE task_id = ?",
+            ("2026-08-30T12:00:00+00:00", new_id),
+        )
+
+    result = tasks.purge_older_than(
+        retain_days=3,
+        now=datetime(2026, 8, 31, 12, 0, tzinfo=timezone.utc),
+    )
+
+    remaining = {task.task_id for task in tasks.list_tasks()}
+    assert result.deleted == 1
+    assert result.retained == 1
+    assert remaining == {new_id}
+    assert result.cutoff.isoformat() == "2026-08-28T12:00:00+00:00"
