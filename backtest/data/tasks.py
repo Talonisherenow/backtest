@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 from backtest.core.contracts import CrawlTaskRecord
 from backtest.core.enums import AdjustMode, Frequency
@@ -21,6 +21,14 @@ class CrawlTaskPage:
     page_size: int
     total: int
     total_pages: int
+
+
+@dataclass(frozen=True)
+class CrawlTaskPurgeResult:
+    deleted: int
+    retained: int
+    cutoff: datetime
+    vacuumed: bool
 
 
 class CrawlTaskManager:
@@ -133,6 +141,50 @@ class CrawlTaskManager:
             status_counts={row["status"]: int(row["count"]) for row in status_rows},
             frequency_counts={row["frequency"]: int(row["count"]) for row in frequency_rows},
             latest_updated_at=self._parse_dt(latest_updated_at),
+        )
+
+    def purge_older_than(
+        self,
+        *,
+        retain_days: int,
+        vacuum: bool = False,
+        now: datetime | None = None,
+    ) -> CrawlTaskPurgeResult:
+        if retain_days < 1:
+            raise ValueError("retain_days must be greater than or equal to 1")
+        anchor = now or self.metadata.now()
+        if anchor.tzinfo is None:
+            anchor = anchor.replace(tzinfo=timezone.utc)
+        else:
+            anchor = anchor.astimezone(timezone.utc)
+        cutoff = anchor - timedelta(days=retain_days)
+        cutoff_text = cutoff.isoformat()
+
+        with self.metadata.connect() as conn:
+            deleted = conn.execute(
+                "DELETE FROM crawl_tasks WHERE created_at < ?",
+                (cutoff_text,),
+            ).rowcount
+            retained = int(
+                conn.execute("SELECT COUNT(*) AS total FROM crawl_tasks").fetchone()["total"]
+            )
+
+        vacuumed = False
+        if vacuum:
+            import sqlite3
+
+            vacuum_conn = sqlite3.connect(self.metadata.path, timeout=60.0)
+            try:
+                vacuum_conn.execute("VACUUM")
+            finally:
+                vacuum_conn.close()
+            vacuumed = True
+
+        return CrawlTaskPurgeResult(
+            deleted=max(int(deleted), 0),
+            retained=retained,
+            cutoff=cutoff,
+            vacuumed=vacuumed,
         )
 
     def list_tasks_page(

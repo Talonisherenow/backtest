@@ -91,6 +91,19 @@ tail -f /usr/local/var/log/backtest-data-source.err.log
 tail -f /usr/local/var/log/frpc.log
 ```
 
+Crawl-task retention: keep about 3 days of `crawl_tasks` rows. Manual cleanup:
+
+```bash
+# Prefer stopping data-source first if using --vacuum
+launchctl unload ~/Library/LaunchAgents/com.backtest.data-source.plist
+VACUUM_FLAG=--vacuum bash scripts/cleanup-crawl-tasks.sh
+launchctl load -w ~/Library/LaunchAgents/com.backtest.data-source.plist
+```
+
+Daily LaunchAgent `com.backtest.cleanup-tasks` runs `scripts/cleanup-crawl-tasks.sh`
+at 04:15 local time with `--retain-days 3` and `--no-vacuum` (safe while the
+API is up). Logs: `/usr/local/var/log/backtest-cleanup-tasks.{out,err}.log`.
+
 ## VPS
 
 Important invariants:

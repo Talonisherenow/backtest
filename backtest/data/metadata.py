@@ -2,20 +2,22 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from backtest.data.sqlite_util import open_sqlite_connection
+
+_SCHEMA_INITIALIZED: set[str] = set()
+
 
 class MetadataStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_schema()
+        key = str(self.path.resolve())
+        if key not in _SCHEMA_INITIALIZED:
+            self._init_schema()
+            _SCHEMA_INITIALIZED.add(key)
 
-    def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, timeout=30.0)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        conn.execute("PRAGMA foreign_keys = ON")
-        return conn
+    def connect(self):
+        return open_sqlite_connection(self.path, enable_foreign_keys=True)
 
     def now(self) -> datetime:
         return datetime.now(timezone.utc)
