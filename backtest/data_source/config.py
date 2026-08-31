@@ -69,6 +69,7 @@ def build_default_source_specs(
     include_bitget: bool = True,
     include_a_share: bool = True,
     a_share_universe: str | Path | None = None,
+    a_share_catalog_source: str = "akshare",
 ) -> list[DataSourceSpec]:
     if not include_bitget and not include_a_share:
         raise ValueError("At least one data source must be enabled")
@@ -87,7 +88,18 @@ def build_default_source_specs(
             )
         )
     if include_a_share:
+        catalog_source = a_share_catalog_source.strip()
+        if catalog_source not in {"akshare", "universe_csv"}:
+            raise ValueError(
+                "a_share_catalog_source must be one of: akshare, universe_csv"
+            )
         universe_path = Path(a_share_universe) if a_share_universe is not None else None
+        if universe_path is not None and not universe_path.exists():
+            universe_path = None
+        if catalog_source == "universe_csv" and universe_path is None:
+            raise ValueError(
+                "a_share_universe is required when a_share_catalog_source=universe_csv"
+            )
         specs.append(
             DataSourceSpec(
                 source_id="a_share",
@@ -96,8 +108,8 @@ def build_default_source_specs(
                 bars_root=Path(a_share_bars_root),
                 metadata_path=Path(a_share_metadata_path),
                 adjust="qfq",
-                catalog_source="akshare",
-                universe_path=universe_path if universe_path and universe_path.exists() else None,
+                catalog_source=catalog_source,
+                universe_path=universe_path,
             )
         )
     return specs

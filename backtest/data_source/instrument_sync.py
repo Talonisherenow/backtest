@@ -91,6 +91,9 @@ def source_definition_from_spec(spec: DataSourceSpec) -> InstrumentSourceDefinit
         provider_type = "ccxt"
         provider_config: dict[str, Any] = {"exchange": exchange}
     elif catalog_source == "akshare":
+        provider_type = "akshare"
+        provider_config = {}
+    elif catalog_source == "universe_csv":
         if spec.universe_path is None:
             raise ValueError(f"Universe path is required for source: {spec.source_id}")
         provider_type = "universe_csv"
@@ -231,30 +234,40 @@ class UniverseCsvInstrumentCatalogProvider:
         frame = pd.read_csv(self.universe_path)
         if "symbol" not in frame.columns:
             raise ValueError(f"Universe CSV must include symbol column: {self.universe_path}")
+        return _instruments_from_universe_frame(
+            source_id=self.source_id,
+            asset_class=self.asset_class,
+            frame=frame,
+        )
 
-        items: list[InstrumentCatalogItem] = []
-        for row in frame.to_dict(orient="records"):
-            raw_symbol = row.get("symbol")
-            if pd.isna(raw_symbol):
-                continue
-            symbol = str(raw_symbol).strip().upper()
-            if not symbol:
-                continue
-            exchange = _clean_optional_text(row.get("exchange"), upper=True)
-            items.append(
-                InstrumentCatalogItem(
-                    instrument_id=_scoped_instrument_id(self.source_id, symbol),
-                    symbol=symbol,
-                    name=_clean_optional_text(row.get("name")),
-                    market=self.source_id,
-                    exchange=exchange,
-                    asset_class=self.asset_class,
-                    quote_currency=None,
-                    source_id=self.source_id,
-                    metadata=_row_metadata(row),
-                )
-            )
-        return items
+
+class AkShareInstrumentCatalogProvider:
+    def __init__(
+        self,
+        *,
+        source_id: str,
+        asset_class: str,
+        frame_factory: Callable[[], pd.DataFrame] | None = None,
+    ) -> None:
+        self.source_id = source_id
+        self.asset_class = asset_class
+        self.frame_factory = frame_factory or self._default_frame_factory
+
+    def list_instruments(self) -> list[InstrumentCatalogItem]:
+        frame = self.frame_factory()
+        if "symbol" not in frame.columns:
+            raise ValueError("AkShare universe frame must include symbol column")
+        return _instruments_from_universe_frame(
+            source_id=self.source_id,
+            asset_class=self.asset_class,
+            frame=frame,
+        )
+
+    @staticmethod
+    def _default_frame_factory() -> pd.DataFrame:
+        from backtest.data.universe import AkShareUniverseProvider
+
+        return AkShareUniverseProvider().fetch_a_share_universe()
 
 
 def build_instrument_catalog_provider(
@@ -267,6 +280,11 @@ def build_instrument_catalog_provider(
             asset_class=definition.asset_class,
             exchange_id=exchange,
         )
+    if definition.provider_type == "akshare":
+        return AkShareInstrumentCatalogProvider(
+            source_id=definition.source_id,
+            asset_class=definition.asset_class,
+        )
     if definition.provider_type == "universe_csv":
         return UniverseCsvInstrumentCatalogProvider(
             source_id=definition.source_id,
@@ -274,6 +292,37 @@ def build_instrument_catalog_provider(
             universe_path=str(definition.provider_config["path"]),
         )
     raise ValueError(f"Unsupported provider type: {definition.provider_type}")
+
+
+def _instruments_from_universe_frame(
+    *,
+    source_id: str,
+    asset_class: str,
+    frame: pd.DataFrame,
+) -> list[InstrumentCatalogItem]:
+    items: list[InstrumentCatalogItem] = []
+    for row in frame.to_dict(orient="records"):
+        raw_symbol = row.get("symbol")
+        if pd.isna(raw_symbol):
+            continue
+        symbol = str(raw_symbol).strip().upper()
+        if not symbol:
+            continue
+        exchange = _clean_optional_text(row.get("exchange"), upper=True)
+        items.append(
+            InstrumentCatalogItem(
+                instrument_id=_scoped_instrument_id(source_id, symbol),
+                symbol=symbol,
+                name=_clean_optional_text(row.get("name")),
+                market=source_id,
+                exchange=exchange,
+                asset_class=asset_class,
+                quote_currency=None,
+                source_id=source_id,
+                metadata=_row_metadata(row),
+            )
+        )
+    return items
 
 
 class InstrumentSyncService:

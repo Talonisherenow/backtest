@@ -485,6 +485,7 @@ def test_instrument_source_sync_http_routes(tmp_path: Path):
     pd.DataFrame(
         [{"symbol": "000001.SZ", "name": "平安银行", "exchange": "SZ", "industry": "bank"}]
     ).to_csv(universe, index=False)
+    object.__setattr__(spec, "catalog_source", "universe_csv")
     object.__setattr__(spec, "universe_path", universe)
 
     server = _server_for_api(api)

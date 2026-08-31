@@ -248,6 +248,7 @@ def test_api_exposes_instrument_source_sync_methods(tmp_path: Path):
     pd.DataFrame(
         [{"symbol": "000001.SZ", "name": "平安银行", "exchange": "SZ", "industry": "bank"}]
     ).to_csv(universe, index=False)
+    object.__setattr__(spec, "catalog_source", "universe_csv")
     object.__setattr__(spec, "universe_path", universe)
     api.instrument_sync_service = None
 

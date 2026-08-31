@@ -6,7 +6,7 @@ Use this for instrument catalogs, tags/lists, source sync, and catalog-sync sche
 
 - Instrument records are persisted market symbols with optional `source_id`, `symbol`, `name`, `market`, `exchange`, `asset_class`, `quote_currency`, and provider metadata.
 - Tags/lists group instruments. The workbench uses them as watchlists and schedule targets.
-- Source sync imports instruments from configured catalog sources such as `ccxt:<exchange>` and `akshare` universe CSV.
+- Source sync imports instruments from configured catalog sources such as `ccxt:<exchange>`, live `akshare`, and local `universe_csv`.
 - Synced instrument ids are source-scoped, for example `BITGET:BTC/USDT` or `A_SHARE:000001.SZ`. The provider symbol remains in `symbol`.
 
 ## Instrument APIs
@@ -51,7 +51,9 @@ Provider notes:
 
 - `ccxt` sources load exchange markets and skip inactive markets.
 - CCXT proxy env vars can be `CCXT_PROXY`, `CCXT_HTTP_PROXY`, `CCXT_HTTPS_PROXY`, `ALL_PROXY`, `HTTP_PROXY`, or `HTTPS_PROXY`.
-- `akshare`/`universe_csv` sources require a configured universe CSV path with a `symbol` column.
+- `akshare` sources fetch the live A-share universe online (same shape as `backtest data universe`).
+- `universe_csv` sources require a configured universe CSV path with a `symbol` column; use this for local import without network.
+- CLI: `backtest data-source serve --a-share-catalog-source akshare|universe_csv` (default `akshare`). For CSV mode also pass `--a-share-universe`.
 - Sync ensures the source tag/list exists and adds successfully synced instruments to it.
 
 ## Safety

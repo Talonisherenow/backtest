@@ -56,7 +56,12 @@ def serve(
         Path("data/universe/a_share_all_20260504.csv"),
         "--a-share-universe",
         dir_okay=False,
-        help="Optional A-share universe CSV used for symbol names and board labels",
+        help="Optional A-share universe CSV for symbol names and universe_csv catalog sync",
+    ),
+    a_share_catalog_source: str = typer.Option(
+        "akshare",
+        "--a-share-catalog-source",
+        help="A-share instrument catalog: akshare (live) or universe_csv (local CSV)",
     ),
     include_bitget: bool = typer.Option(True, "--include-bitget/--no-bitget", help="Include Bitget source"),
     include_a_share: bool = typer.Option(True, "--include-a-share/--no-a-share", help="Include A-share source"),
@@ -94,6 +99,7 @@ def serve(
             a_share_bars_root=a_share_bars_root,
             a_share_metadata_path=a_share_metadata,
             a_share_universe=a_share_universe,
+            a_share_catalog_source=a_share_catalog_source,
             include_bitget=include_bitget,
             include_a_share=include_a_share,
         )
