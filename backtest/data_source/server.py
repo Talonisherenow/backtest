@@ -63,7 +63,12 @@ def make_data_source_handler(api: DataSourceApi):
                 elif parsed.path == "/api/kline/bars":
                     self._send_json(200, api.kline_bars(**self._bars_args(query)))
                 elif parsed.path == "/api/data/tasks/summary":
-                    self._send_json(200, api.task_summary(self._required(query, "source_id")))
+                    fresh_raw = (self._optional(query, "fresh") or "").strip().lower()
+                    fresh = fresh_raw in {"1", "true", "yes"}
+                    self._send_json(
+                        200,
+                        api.task_summary(self._required(query, "source_id"), fresh=fresh),
+                    )
                 elif parsed.path == "/api/data/tasks":
                     self._send_json(200, api.tasks(**self._task_args(query)))
                 elif parsed.path == "/api/data/inventory":

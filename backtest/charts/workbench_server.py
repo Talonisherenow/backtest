@@ -3257,6 +3257,9 @@ def render_workbench_index_html(
       if (activeDrawerTab() === "tasks" && source && !dataMonitorState.taskPagesBySource[source.source_id]) {
         loadSelectedTaskPage();
       }
+      if (activeDrawerTab() === "runs") {
+        loadScheduleRuns();
+      }
     }
 
     function sortedKeys(value) {
@@ -4899,6 +4902,45 @@ def render_workbench_index_html(
       renderDataMonitor();
     }
 
+    async function loadScheduleRuns() {
+      if (!dataMonitorEnabled()) {
+        return;
+      }
+      const schedules = scheduleList();
+      try {
+        const runEntries = await Promise.all(schedules.map(async (schedule) => {
+          const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs?limit=50`), dataApiRequestOptions());
+          if (!response.ok) {
+            return [schedule.schedule_id, []];
+          }
+          const runsPayload = await response.json();
+          return [schedule.schedule_id, Array.isArray(runsPayload.runs) ? runsPayload.runs : []];
+        }));
+        dataMonitorState = {
+          ...dataMonitorState,
+          scheduleRunsById: Object.fromEntries(runEntries),
+        };
+      } catch (error) {
+        dataMonitorState = {
+          ...dataMonitorState,
+          lastUpdated: new Date(),
+          error: error.message,
+        };
+      }
+      renderDataMonitor();
+    }
+
+    function maybeRefreshOpenDrawerData() {
+      if (document.getElementById("dataSourceDrawer").hidden) {
+        return;
+      }
+      if (activeDrawerTab() === "tasks") {
+        loadSelectedTaskPage();
+      } else if (activeDrawerTab() === "runs") {
+        loadScheduleRuns();
+      }
+    }
+
     function selectTaskSource(sourceId) {
       if (!sourceId || dataMonitorState.selectedSourceId === sourceId) {
         return;
@@ -4941,16 +4983,6 @@ def render_workbench_index_html(
           const schedulesPayload = await schedulesResponse.json();
           schedules = Array.isArray(schedulesPayload.schedules) ? schedulesPayload.schedules : [];
         }
-        let scheduleRunsById = {};
-        const runEntries = await Promise.all(schedules.map(async (schedule) => {
-          const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs?limit=50`), dataApiRequestOptions());
-          if (!response.ok) {
-            return [schedule.schedule_id, []];
-          }
-          const runsPayload = await response.json();
-          return [schedule.schedule_id, Array.isArray(runsPayload.runs) ? runsPayload.runs : []];
-        }));
-        scheduleRunsById = Object.fromEntries(runEntries);
         const selectedSourceId = sources.some((source) => source.source_id === dataMonitorState.selectedSourceId)
           ? dataMonitorState.selectedSourceId
           : sources[0]?.source_id || "";
@@ -4960,7 +4992,6 @@ def render_workbench_index_html(
           summariesBySource: Object.fromEntries(summaryEntries),
           jobs,
           schedules,
-          scheduleRunsById,
           selectedSourceId,
           lastUpdated: new Date(),
           error: "",
@@ -4973,9 +5004,7 @@ def render_workbench_index_html(
         };
       }
       renderDataMonitor();
-      if (!document.getElementById("dataSourceDrawer").hidden && activeDrawerTab() === "tasks") {
-        await loadSelectedTaskPage();
-      }
+      maybeRefreshOpenDrawerData();
     }
 
     function refreshDataMonitorWhenVisible() {
@@ -5003,6 +5032,8 @@ def render_workbench_index_html(
       const source = selectedSource();
       if (activeDrawerTab() === "tasks" && source && !dataMonitorState.taskPagesBySource[source.source_id]) {
         loadSelectedTaskPage();
+      } else if (activeDrawerTab() === "runs") {
+        loadScheduleRuns();
       } else {
         renderTaskDrawer();
       }

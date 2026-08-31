@@ -90,6 +90,12 @@ def serve(
         "--scheduler/--no-scheduler",
         help="Start the in-process scheduler loop",
     ),
+    task_summary_refresh_seconds: float = typer.Option(
+        30.0,
+        "--task-summary-refresh-seconds",
+        min=1.0,
+        help="How often crawl-task summary cache is refreshed from SQLite",
+    ),
 ) -> None:
     """Serve cached bars, crawl tasks, inventory, and crawl job APIs."""
     try:
@@ -111,6 +117,7 @@ def serve(
             api_token=api_token,
             schedule_db_path=schedule_db,
             scheduler_poll_seconds=scheduler_poll_seconds,
+            task_summary_refresh_seconds=task_summary_refresh_seconds,
         )
         api = DataSourceApi(
             config=config,
@@ -145,6 +152,7 @@ def serve(
         if scheduler_enabled:
             scheduler.start()
             instrument_sync_scheduler.start()
+        api.task_summary_refresher.start(refresh_immediately=True)
     except Exception as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
