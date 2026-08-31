@@ -68,6 +68,12 @@ def test_server_config_defaults_scheduler_poll_to_one_second(tmp_path: Path):
     config = DataSourceServerConfig(sources=[_spec(tmp_path)])
 
     assert config.scheduler_poll_seconds == 1.0
+    assert config.task_summary_refresh_seconds == 30.0
+
+
+def test_server_config_rejects_non_positive_task_summary_refresh(tmp_path: Path):
+    with pytest.raises(ValueError, match="task_summary_refresh_seconds"):
+        DataSourceServerConfig(sources=[_spec(tmp_path)], task_summary_refresh_seconds=0)
 
 
 def test_server_config_normalizes_api_token(tmp_path: Path):

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from backtest.core.enums import Frequency
+
 from backtest.charts.kline_service import KlineCacheService, KlineSource
 from backtest.data.catalog import DataCatalog
 from backtest.data.instruments import InstrumentStore
@@ -19,6 +21,14 @@ from backtest.data_source.instrument_sync import (
 )
 from backtest.data_source.jobs import DataSourceJobRegistry
 from backtest.data_source.schedules import DataSourceScheduleService
+from backtest.data_source.task_summary_cache import (
+    CachedTaskSummary,
+    CrawlTaskSummaryCache,
+    CrawlTaskSummaryRefresher,
+    utc_now,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DataSourceApi:
@@ -26,12 +36,19 @@ class DataSourceApi:
         self,
         config: DataSourceServerConfig,
         job_registry: DataSourceJobRegistry,
+        *,
+        task_summary_cache: CrawlTaskSummaryCache | None = None,
     ) -> None:
         self.config = config
         self.job_registry = job_registry
         self.schedule_service: DataSourceScheduleService | None = None
         self.instrument_sync_service: InstrumentSyncService | None = None
         self.instrument_sync_schedule_service: InstrumentSyncScheduleService | None = None
+        self.task_summary_cache = task_summary_cache or CrawlTaskSummaryCache()
+        self.task_summary_refresher = CrawlTaskSummaryRefresher(
+            refresh_all=self.refresh_task_summaries,
+            poll_seconds=config.task_summary_refresh_seconds,
+        )
         self.kline_service = KlineCacheService(
             sources=[
                 KlineSource(
@@ -106,7 +123,39 @@ class DataSourceApi:
             anchor=anchor,
         )
 
-    def task_summary(self, source_id: str) -> dict[str, Any]:
+    def task_summary(self, source_id: str, *, fresh: bool = False) -> dict[str, Any]:
+        self.config.source(source_id)
+        if not fresh:
+            cached = self.task_summary_cache.get(source_id)
+            if cached is not None:
+                return cached.to_response(from_cache=True)
+        return self._refresh_task_summary(source_id).to_response(from_cache=False)
+
+    def refresh_task_summaries(self) -> None:
+        for spec in self.config.sources:
+            try:
+                self._refresh_task_summary(spec.source_id)
+            except Exception as exc:
+                LOGGER.exception("Failed to refresh task summary for %s", spec.source_id)
+                existing = self.task_summary_cache.get(spec.source_id)
+                if existing is None:
+                    continue
+                self.task_summary_cache.put(
+                    spec.source_id,
+                    CachedTaskSummary(
+                        payload=existing.payload,
+                        cached_at=existing.cached_at,
+                        error=str(exc),
+                    ),
+                )
+
+    def _refresh_task_summary(self, source_id: str) -> CachedTaskSummary:
+        payload = self._compute_task_summary(source_id)
+        entry = CachedTaskSummary(payload=payload, cached_at=utc_now(), error=None)
+        self.task_summary_cache.put(source_id, entry)
+        return entry
+
+    def _compute_task_summary(self, source_id: str) -> dict[str, Any]:
         spec = self.config.source(source_id)
         summary = self._tasks(spec).task_summary()
         return {

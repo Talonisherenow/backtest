@@ -208,7 +208,11 @@ def test_render_workbench_index_html_hosts_data_source_monitor():
     assert 'fetch(taskPageUrl(source.source_id, filters), dataApiRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/data/jobs"), dataApiRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/data/schedules"), dataApiRequestOptions())' in html
+    assert "async function loadScheduleRuns()" in html
+    assert "function maybeRefreshOpenDrawerData()" in html
     assert 'fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs?limit=50`), dataApiRequestOptions())' in html
+    assert "schedules,\n          scheduleRunsById," not in html
+    assert "if (activeDrawerTab() === \"runs\") {\n        loadScheduleRuns();\n      }" in html
     assert "function renderScheduleRows()" in html
     assert "function renderScheduleRunRows()" in html
     assert "function formatTaskRange(task)" in html
