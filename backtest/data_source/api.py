@@ -400,8 +400,13 @@ class DataSourceApi:
     def run_schedule_now(self, schedule_id: str) -> dict[str, Any]:
         return self._schedules().run_now(schedule_id)
 
-    def schedule_runs(self, schedule_id: str) -> dict[str, list[dict[str, Any]]]:
-        return self._schedules().runs(schedule_id)
+    def schedule_runs(
+        self,
+        schedule_id: str,
+        *,
+        limit: int | None = 50,
+    ) -> dict[str, list[dict[str, Any]]]:
+        return self._schedules().runs(schedule_id, limit=limit)
 
     def resolve_schedule_symbols(
         self,

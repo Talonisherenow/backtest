@@ -61,8 +61,10 @@ When verifying the workbench home data-source monitor:
   not by a full task list fetch.
 - The schedule summary and drawer table are backed by `/api/data/schedules`.
 - The recent schedule run table is backed by
-  `/api/data/schedules/<schedule_id>/runs`; use it to verify the latest trigger
-  for an active schedule rather than relying on crawl task `updated_at`.
+  `/api/data/schedules/<schedule_id>/runs?limit=50` (newest first). Do not fetch
+  unbounded run history on the monitor refresh path.
+- Home monitor refresh defaults to 30 seconds. Prefer that over sub-10s polling
+  against large metadata SQLite databases.
 - The `Details` drawer should provide source tabs, one tab per configured data
   source.
 - The drawer should show schedules with status, trigger, repeat, next run, last

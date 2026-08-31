@@ -236,11 +236,23 @@ class DataScheduleSnapshot:
     created_at: datetime
     updated_at: datetime
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, compact: bool = False) -> dict[str, Any]:
+        config = self.config.model_dump(mode="json")
+        job = config.get("job")
+        if (
+            compact
+            and isinstance(job, dict)
+            and isinstance(job.get("target"), dict)
+            and job.get("target")
+        ):
+            job = dict(job)
+            job["symbols"] = []
+            config = dict(config)
+            config["job"] = job
         return {
             "schedule_id": self.schedule_id,
             "name": self.name,
-            "config": self.config.model_dump(mode="json"),
+            "config": config,
             "enabled": self.enabled,
             "status": self.status,
             "run_count": self.run_count,
@@ -407,8 +419,10 @@ class DataSourceScheduleStore:
         self._init_schema()
 
     def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
+        conn = sqlite3.connect(self.path, timeout=30.0)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         return conn
 
     def create(
@@ -604,16 +618,35 @@ class DataSourceScheduleStore:
             raise ValueError(f"Unknown schedule run: {run_id}")
         return self._run_snapshot(row)
 
-    def runs(self, schedule_id: str) -> list[DataScheduleRunSnapshot]:
+    def runs(
+        self,
+        schedule_id: str,
+        *,
+        limit: int | None = None,
+    ) -> list[DataScheduleRunSnapshot]:
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be greater than or equal to 1")
         with self.connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT * FROM data_schedule_runs
-                WHERE schedule_id = ?
-                ORDER BY triggered_at, run_id
-                """,
-                (schedule_id,),
-            ).fetchall()
+            if limit is None:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM data_schedule_runs
+                    WHERE schedule_id = ?
+                    ORDER BY triggered_at, run_id
+                    """,
+                    (schedule_id,),
+                ).fetchall()
+            else:
+                capped = min(limit, 200)
+                rows = conn.execute(
+                    """
+                    SELECT * FROM data_schedule_runs
+                    WHERE schedule_id = ?
+                    ORDER BY triggered_at DESC, run_id DESC
+                    LIMIT ?
+                    """,
+                    (schedule_id, capped),
+                ).fetchall()
         return [self._run_snapshot(row) for row in rows]
 
     def _init_schema(self) -> None:
@@ -750,7 +783,11 @@ class DataSourceScheduleService:
         }
 
     def list(self) -> dict[str, list[dict[str, Any]]]:
-        return {"schedules": [snapshot.to_dict() for snapshot in self.store.list()]}
+        return {
+            "schedules": [
+                snapshot.to_dict(compact=True) for snapshot in self.store.list()
+            ]
+        }
 
     def get(self, schedule_id: str) -> DataScheduleSnapshot:
         return self.store.get(schedule_id)
@@ -795,9 +832,18 @@ class DataSourceScheduleService:
         snapshot = self.store.get(schedule_id)
         return self._submit(snapshot, due_at=self.now(), manual=True)
 
-    def runs(self, schedule_id: str) -> dict[str, list[dict[str, Any]]]:
+    def runs(
+        self,
+        schedule_id: str,
+        *,
+        limit: int | None = 50,
+    ) -> dict[str, list[dict[str, Any]]]:
         self.store.get(schedule_id)
-        return {"runs": [run.to_dict() for run in self.store.runs(schedule_id)]}
+        return {
+            "runs": [
+                run.to_dict() for run in self.store.runs(schedule_id, limit=limit)
+            ]
+        }
 
     def tick(self) -> None:
         now = self.now()

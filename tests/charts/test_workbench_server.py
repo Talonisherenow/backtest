@@ -208,7 +208,7 @@ def test_render_workbench_index_html_hosts_data_source_monitor():
     assert 'fetch(taskPageUrl(source.source_id, filters), dataApiRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/data/jobs"), dataApiRequestOptions())' in html
     assert 'fetch(dataApiUrl("/api/data/schedules"), dataApiRequestOptions())' in html
-    assert 'fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs`), dataApiRequestOptions())' in html
+    assert 'fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs?limit=50`), dataApiRequestOptions())' in html
     assert "function renderScheduleRows()" in html
     assert "function renderScheduleRunRows()" in html
     assert "function formatTaskRange(task)" in html
@@ -218,7 +218,7 @@ def test_render_workbench_index_html_hosts_data_source_monitor():
     assert "function datePartsInDisplayZone(value)" in html
     assert "task.start_date" in html
     assert "task.end_date" in html
-    assert "DATA_MONITOR_REFRESH_MS = 10000" in html
+    assert "DATA_MONITOR_REFRESH_MS = 30000" in html
     assert 'document.addEventListener("visibilitychange", refreshDataMonitorWhenVisible)' in html
     assert "Submit" not in html
     assert "Retry" not in html

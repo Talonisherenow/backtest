@@ -10,7 +10,7 @@ Read:
 GET /api/data/schedule-options
 GET /api/data/schedules
 GET /api/data/schedules/<schedule_id>
-GET /api/data/schedules/<schedule_id>/runs
+GET /api/data/schedules/<schedule_id>/runs?limit=<n>
 ```
 
 Write:
@@ -25,6 +25,12 @@ POST   /api/data/schedules/<schedule_id>/run-now
 ```
 
 Call `GET /api/data/schedule-options` before creating or updating schedules when supported sources, frequencies, trigger units, repeat modes, or range units are unknown.
+
+`GET /api/data/schedules` is compact: when a job uses an instrument `target`,
+legacy `job.symbols` is omitted from the list payload. Fetch a single schedule
+for the full stored config.
+
+`GET .../runs` defaults to `limit=50` (newest first, max 200).
 
 ## Schedule Targets
 
