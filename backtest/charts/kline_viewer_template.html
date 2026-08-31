@@ -1258,11 +1258,13 @@
       return currentSymbols().filter(matchesCurrentFilters);
     }
 
-    function populateSymbols({ preserveSymbolMenuScroll = false } = {}) {
+    function populateSymbols({ preserveSymbolMenuScroll = false, allowMissingSelection = false } = {}) {
       const visible = filteredSymbols();
       const previousSymbol = state.symbol;
       if (!visible.some((item) => item.symbol === state.symbol)) {
-        state.symbol = visible[0]?.symbol || "";
+        if (!(allowMissingSelection && state.symbol)) {
+          state.symbol = visible[0]?.symbol || "";
+        }
       }
       symbolSelect.innerHTML = visible.map((item) => {
         const selected = item.symbol === state.symbol ? " selected" : "";
@@ -1871,7 +1873,7 @@
         if (dynamicMode) {
           try {
             await loadRemoteDataSources();
-            await loadDynamicSymbolsPage({ offset: 0, preserveSymbol: false, loadBars: true });
+            await bootstrapDynamicSelection();
             return;
           } catch (error) {
             if (payload.data_api_base_url) {
@@ -1949,6 +1951,76 @@
       populateBoards();
       populateSymbols();
       renderDataStatus();
+    }
+
+    async function bootstrapDynamicSelection() {
+      const requestedSymbol = String(payload.default_symbol || state.symbol || "").trim();
+      if (requestedSymbol) {
+        state.symbol = requestedSymbol;
+      }
+      await loadDynamicSymbolsPage({
+        offset: 0,
+        preserveSymbol: Boolean(requestedSymbol),
+        loadBars: false,
+      });
+      if (requestedSymbol) {
+        await ensureExactSymbolAvailable(requestedSymbol);
+      }
+      const requestedFrequency = payload.default_frequency || state.frequency;
+      const selectedSeries = seriesList(selectedItem());
+      state.frequency = selectedSeries.some((entry) => entry.frequency === requestedFrequency)
+        ? requestedFrequency
+        : selectedSeries[0]?.frequency || requestedFrequency || "1d";
+      populateBoards();
+      populateSymbols();
+      renderDataStatus();
+      await loadLatestOrRender();
+    }
+
+    async function ensureExactSymbolAvailable(symbol) {
+      if (!symbol) {
+        return;
+      }
+      if (currentSymbols().some((item) => item.symbol === symbol)) {
+        state.symbol = symbol;
+        return;
+      }
+      const source = currentSource();
+      const params = new URLSearchParams();
+      params.set("source_id", source.source_id || state.sourceId);
+      params.set("q", symbol);
+      params.set("limit", "20");
+      params.set("offset", "0");
+      let incoming = [];
+      try {
+        const page = await requestJson(`/api/kline/symbols?${params.toString()}`, "Symbol");
+        incoming = (page.symbols || []).filter((item) => item.symbol === symbol);
+      } catch (error) {
+        incoming = [];
+      }
+      if (!incoming.length) {
+        incoming = [{
+          symbol,
+          code: String(symbol).split(".")[0] || symbol,
+          name: "",
+          exchange: "",
+          board: "",
+          industry: "",
+          series: [{
+            frequency: payload.default_frequency || state.frequency || "1d",
+            adjust: source.adjust || payload.adjust || "",
+            rows: 0,
+            first_bar: "",
+            last_bar: "",
+            years: [],
+          }],
+        }];
+      }
+      upsertSource({
+        ...source,
+        symbols: mergeSymbolLists(incoming, source.symbols || []),
+      });
+      state.symbol = symbol;
     }
 
     async function loadRemoteSourceTotals() {
@@ -2033,8 +2105,10 @@
         },
       });
       state.symbolOffset = nextSource.symbol_page.offset;
-      if (!preserveSymbol || !symbols.some((item) => item.symbol === state.symbol)) {
-        state.symbol = symbols[0]?.symbol || "";
+      if (!symbols.some((item) => item.symbol === state.symbol)) {
+        if (!(preserveSymbol && state.symbol)) {
+          state.symbol = symbols[0]?.symbol || "";
+        }
       }
       const selectedSeries = seriesList(selectedItem());
       if (!selectedSeries.some((entry) => entry.frequency === state.frequency)) {
@@ -2042,7 +2116,10 @@
       }
       state.seriesData = null;
       populateBoards();
-      populateSymbols({ preserveSymbolMenuScroll: append });
+      populateSymbols({
+        preserveSymbolMenuScroll: append,
+        allowMissingSelection: Boolean(preserveSymbol && state.symbol),
+      });
       renderDataStatus({ preserveScroll: append });
       if (loadBars) {
         await loadLatestOrRender();
@@ -2113,8 +2190,10 @@
         },
       });
       state.symbolOffset = nextSource.symbol_page.offset;
-      if (!preserveSymbol || !symbols.some((item) => item.symbol === state.symbol)) {
-        state.symbol = symbols[0]?.symbol || "";
+      if (!symbols.some((item) => item.symbol === state.symbol)) {
+        if (!(preserveSymbol && state.symbol)) {
+          state.symbol = symbols[0]?.symbol || "";
+        }
       }
       const selectedSeries = seriesList(selectedItem());
       if (!selectedSeries.some((entry) => entry.frequency === state.frequency)) {
@@ -2122,7 +2201,10 @@
       }
       state.seriesData = null;
       populateBoards();
-      populateSymbols({ preserveSymbolMenuScroll: append });
+      populateSymbols({
+        preserveSymbolMenuScroll: append,
+        allowMissingSelection: Boolean(preserveSymbol && state.symbol),
+      });
       if (state.drawerOpen) {
         renderDataStatus({ preserveScroll: append });
       }
@@ -2173,8 +2255,10 @@
         },
       });
       state.symbolOffset = nextSource.symbol_page.offset;
-      if (!preserveSymbol || !symbols.some((item) => item.symbol === state.symbol)) {
-        state.symbol = symbols[0]?.symbol || "";
+      if (!symbols.some((item) => item.symbol === state.symbol)) {
+        if (!(preserveSymbol && state.symbol)) {
+          state.symbol = symbols[0]?.symbol || "";
+        }
       }
       const selectedSeries = seriesList(selectedItem());
       if (!selectedSeries.some((entry) => entry.frequency === state.frequency)) {
@@ -2182,7 +2266,10 @@
       }
       state.seriesData = null;
       populateBoards();
-      populateSymbols({ preserveSymbolMenuScroll: append });
+      populateSymbols({
+        preserveSymbolMenuScroll: append,
+        allowMissingSelection: Boolean(preserveSymbol && state.symbol),
+      });
       renderDataStatus({ preserveScroll: append });
       if (loadBars) {
         await loadLatestOrRender();

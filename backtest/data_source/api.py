@@ -92,12 +92,19 @@ class DataSourceApi:
         limit: int = 50,
         offset: int = 0,
     ) -> dict[str, Any]:
+        effective_source_id = self._validate_source_id(source_id)
+        # Instrument inventory is the single source of truth for display names /
+        # Chinese-name search. Universe CSV metadata is not used here.
+        name_by_symbol = self._instrument_store(effective_source_id).symbol_names(
+            source_id=effective_source_id,
+        )
         return self.kline_service.symbols(
-            source_id=source_id,
+            source_id=effective_source_id,
             q=q,
             board=board,
             limit=limit,
             offset=offset,
+            name_by_symbol=name_by_symbol,
         )
 
     def kline_bars(

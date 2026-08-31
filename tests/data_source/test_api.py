@@ -72,6 +72,109 @@ def test_health_and_data_sources(tmp_path: Path):
     }
 
 
+def test_kline_symbols_search_uses_instrument_names_not_universe(tmp_path: Path):
+    bars_root = tmp_path / "bars"
+    ParquetBarStore(bars_root).write_bars(
+        pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-08-19", "2026-08-20", "2026-08-21"]),
+                "symbol": ["688836.SH", "688836.SH", "688836.SH"],
+                "open": [100.0, 101.0, 102.0],
+                "high": [101.0, 102.0, 103.0],
+                "low": [99.0, 100.0, 101.0],
+                "close": [100.5, 101.5, 102.5],
+                "volume": [1000, 1100, 1200],
+                "amount": [10000, 11000, 12000],
+                "frequency": ["1d", "1d", "1d"],
+                "adjust": ["qfq", "qfq", "qfq"],
+            }
+        )
+    )
+    universe = tmp_path / "universe.csv"
+    universe.write_text(
+        "symbol,code,name,exchange,board,industry\n"
+        "688836.SH,688836,,SH,科创板,\n",
+        encoding="utf-8",
+    )
+    metadata_path = tmp_path / "metadata.sqlite"
+    api = DataSourceApi(
+        DataSourceServerConfig(
+            sources=[
+                DataSourceSpec(
+                    source_id="a_share",
+                    source_label="A-share",
+                    asset_class="equity",
+                    bars_root=bars_root,
+                    metadata_path=metadata_path,
+                    adjust="qfq",
+                    catalog_source="universe_csv",
+                    universe_path=universe,
+                )
+            ],
+            default_window_size=2,
+        ),
+        DataSourceJobRegistry(lambda config: None, run_inline=True),
+    )
+    api.create_instrument(
+        {
+            "instrument_id": "A_SHARE:688836.SH",
+            "symbol": "688836.SH",
+            "name": "宇树科技",
+            "market": "a_share",
+            "exchange": "SH",
+            "asset_class": "equity",
+            "source_id": "a_share",
+        }
+    )
+
+    by_name = api.kline_symbols(source_id="a_share", q="宇树", limit=10)
+    by_code = api.kline_symbols(source_id="a_share", q="688836", limit=10)
+    listed = api.kline_symbols(source_id="a_share", limit=10)
+
+    assert [(item["symbol"], item["name"]) for item in by_name["symbols"]] == [
+        ("688836.SH", "宇树科技")
+    ]
+    assert by_name["total"] == 1
+    assert [(item["symbol"], item["name"]) for item in by_code["symbols"]] == [
+        ("688836.SH", "宇树科技")
+    ]
+    assert listed["symbols"][0]["name"] == "宇树科技"
+
+
+def test_kline_symbols_ignores_universe_only_names(tmp_path: Path):
+    bars_root = tmp_path / "bars"
+    _write_bars(bars_root)
+    universe = tmp_path / "universe.csv"
+    universe.write_text(
+        "symbol,code,name,exchange,board,industry\n"
+        "000001.SZ,000001,平安银行,SZ,主板,\n",
+        encoding="utf-8",
+    )
+    api = DataSourceApi(
+        DataSourceServerConfig(
+            sources=[
+                DataSourceSpec(
+                    source_id="a_share",
+                    source_label="A-share",
+                    asset_class="equity",
+                    bars_root=bars_root,
+                    metadata_path=tmp_path / "metadata.sqlite",
+                    adjust="qfq",
+                    catalog_source="universe_csv",
+                    universe_path=universe,
+                )
+            ]
+        ),
+        DataSourceJobRegistry(lambda config: None, run_inline=True),
+    )
+
+    # No instrument row: Chinese universe name must not make the symbol searchable by name.
+    assert api.kline_symbols(source_id="a_share", q="平安", limit=10)["symbols"] == []
+    listed = api.kline_symbols(source_id="a_share", limit=10)
+    assert listed["symbols"][0]["symbol"] == "000001.SZ"
+    assert listed["symbols"][0]["name"] == ""
+
+
 def test_kline_manifest_and_bars_delegate_to_cache_service(tmp_path: Path):
     api = _api(tmp_path)
 
