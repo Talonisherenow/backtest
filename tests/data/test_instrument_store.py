@@ -7,6 +7,30 @@ from backtest.data.instruments import InstrumentStore
 from backtest.data.metadata import MetadataStore
 
 
+def test_instrument_store_symbol_names_indexes_by_source(tmp_path: Path):
+    store = InstrumentStore(MetadataStore(tmp_path / "metadata.sqlite"))
+    store.create_instrument(
+        {
+            "instrument_id": "A_SHARE:688836.SH",
+            "symbol": "688836.SH",
+            "name": "宇树科技",
+            "source_id": "a_share",
+        }
+    )
+    store.create_instrument(
+        {
+            "instrument_id": "BTC/USDT",
+            "symbol": "BTC/USDT",
+            "name": "Bitcoin",
+            "source_id": "bitget",
+        }
+    )
+
+    assert store.symbol_names(source_id="a_share") == {"688836.SH": "宇树科技"}
+    assert store.symbol_names(source_id="bitget") == {"BTC/USDT": "Bitcoin"}
+    assert store.symbol_names() == {"688836.SH": "宇树科技", "BTC/USDT": "Bitcoin"}
+
+
 def test_instrument_store_creates_lists_updates_and_deletes_instruments(tmp_path: Path):
     store = InstrumentStore(MetadataStore(tmp_path / "metadata.sqlite"))
 

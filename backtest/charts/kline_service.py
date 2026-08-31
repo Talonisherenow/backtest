@@ -147,16 +147,27 @@ class KlineCacheService:
         board: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        name_by_symbol: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         source = self._source(source_id)
         frequencies = self._frequencies_for(source)
         limit = min(max(int(limit), 1), 500)
         offset = max(int(offset), 0)
         query = (q or "").strip().lower()
+        use_instrument_names = name_by_symbol is not None
+        names = name_by_symbol or {}
         selected: list[str] = []
         total = 0
         for symbol in self._iter_symbols(source, frequencies):
-            details = self._metadata.get(source.source_id, {}).get(symbol, {})
+            if use_instrument_names:
+                details = {
+                    "code": _symbol_code(symbol),
+                    "name": names.get(symbol, ""),
+                    "exchange": _symbol_exchange(symbol),
+                    "board": _symbol_board(symbol),
+                }
+            else:
+                details = self._metadata.get(source.source_id, {}).get(symbol, {})
             if not self._symbol_matches(symbol, details, query=query, board=board):
                 continue
             if total >= offset and len(selected) < limit:
@@ -169,7 +180,12 @@ class KlineCacheService:
             "frequency": frequencies[0] if len(frequencies) == 1 else "multi",
             "frequencies": frequencies,
             "adjust": source.adjust,
-            "symbols": self._manifest_symbols(source, selected, frequencies),
+            "symbols": self._manifest_symbols(
+                source,
+                selected,
+                frequencies,
+                name_by_symbol=name_by_symbol,
+            ),
             "offset": offset,
             "limit": limit,
             "total": total,
@@ -297,8 +313,12 @@ class KlineCacheService:
         source: KlineSource,
         requested_symbols: list[str],
         frequencies: list[str],
+        *,
+        name_by_symbol: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         items = []
+        use_instrument_names = name_by_symbol is not None
+        names = name_by_symbol or {}
         for symbol in requested_symbols:
             series = []
             for frequency in frequencies:
@@ -309,6 +329,19 @@ class KlineCacheService:
                 if metadata is not None:
                     series.append(metadata)
             if not series:
+                continue
+            if use_instrument_names:
+                items.append(
+                    {
+                        "symbol": symbol,
+                        "code": _symbol_code(symbol),
+                        "name": names.get(symbol, ""),
+                        "exchange": _symbol_exchange(symbol),
+                        "board": _symbol_board(symbol),
+                        "industry": "",
+                        "series": series,
+                    }
+                )
                 continue
             details = self._metadata.get(source.source_id, {}).get(symbol, {})
             items.append(

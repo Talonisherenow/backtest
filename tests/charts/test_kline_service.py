@@ -35,6 +35,53 @@ def _write_cached_bars(
     )
 
 
+def test_kline_cache_service_symbols_can_use_instrument_name_index(tmp_path: Path):
+    bars_root = tmp_path / "bars"
+    _write_cached_bars(bars_root, "688836.SH", frequency="1d", adjust="qfq")
+    universe = tmp_path / "universe.csv"
+    universe.write_text(
+        "symbol,code,name,exchange,board,industry\n"
+        "688836.SH,688836,FROM_UNIVERSE,SH,科创板,\n",
+        encoding="utf-8",
+    )
+    service = KlineCacheService(
+        sources=[
+            KlineSource(
+                source_id="a_share",
+                source_label="A-share",
+                bars_root=bars_root,
+                adjust="qfq",
+                universe_path=universe,
+            )
+        ]
+    )
+
+    universe_only = service.symbols(source_id="a_share", q="FROM_UNIVERSE", limit=10)
+    instrument_names = service.symbols(
+        source_id="a_share",
+        q="宇树",
+        limit=10,
+        name_by_symbol={"688836.SH": "宇树科技"},
+    )
+    listed = service.symbols(
+        source_id="a_share",
+        limit=10,
+        name_by_symbol={"688836.SH": "宇树科技"},
+    )
+
+    assert universe_only["symbols"][0]["name"] == "FROM_UNIVERSE"
+    assert [(item["symbol"], item["name"]) for item in instrument_names["symbols"]] == [
+        ("688836.SH", "宇树科技")
+    ]
+    assert service.symbols(
+        source_id="a_share",
+        q="FROM_UNIVERSE",
+        limit=10,
+        name_by_symbol={"688836.SH": "宇树科技"},
+    )["symbols"] == []
+    assert listed["symbols"][0]["name"] == "宇树科技"
+
+
 def test_kline_cache_service_manifest_indexes_cached_series_without_bars(tmp_path: Path):
     bars_root = tmp_path / "bars"
     _write_cached_bars(bars_root, "BTC/USDT", frequency="1d")

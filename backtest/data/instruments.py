@@ -331,6 +331,33 @@ class InstrumentStore:
         with self.metadata.connect() as conn:
             conn.execute("DELETE FROM instruments WHERE instrument_id = ?", (normalized,))
 
+    def symbol_names(self, *, source_id: str | None = None) -> dict[str, str]:
+        """Return symbol -> display name from the instrument inventory.
+
+        This is the canonical source for Chinese/English instrument names used by
+        K-line search. Names are not read from universe CSV metadata.
+        """
+        where = ""
+        params: list[Any] = []
+        if source_id is not None and source_id.strip():
+            where = "WHERE source_id = ?"
+            params.append(source_id.strip())
+        with self.metadata.connect() as conn:
+            rows = conn.execute(
+                f"SELECT symbol, name FROM instruments {where}",
+                params,
+            ).fetchall()
+        names: dict[str, str] = {}
+        for row in rows:
+            symbol = str(row["symbol"] or "").strip()
+            if not symbol:
+                continue
+            name = str(row["name"] or "").strip()
+            existing = names.get(symbol, "")
+            if symbol not in names or (name and not existing):
+                names[symbol] = name
+        return names
+
     def list_instruments(
         self,
         *,

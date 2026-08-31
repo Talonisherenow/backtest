@@ -395,8 +395,20 @@ def test_render_kline_viewer_honors_dynamic_default_selection():
     assert 'sourceId: payload.default_source_id || sources[0]?.source_id || "default"' in html
     assert 'symbol: payload.default_symbol || sources[0]?.symbols?.[0]?.symbol || ""' in html
     assert 'frequency: payload.default_frequency || sources[0]?.symbols?.[0]?.series?.[0]?.frequency || payload.frequency || "1d"' in html
+    assert "async function bootstrapDynamicSelection()" in html
+    assert "async function ensureExactSymbolAvailable(symbol)" in html
+    assert "await bootstrapDynamicSelection();" in html
+    assert "preserveSymbol: Boolean(requestedSymbol)" in html
+    assert "allowMissingSelection: Boolean(preserveSymbol && state.symbol)" in html
+    assert 'params.set("q", symbol)' in html
     assert "const requestedSymbol = payload.default_symbol || state.symbol;" in html
     assert "const requestedFrequency = payload.default_frequency || state.frequency;" in html
+    # Initial dynamic bootstrap must resolve URL/default symbol instead of forcing page 0.
+    assert "await loadRemoteDataSources();\n            await bootstrapDynamicSelection();" in html
+    assert (
+        "await loadRemoteDataSources();\n"
+        "            await loadDynamicSymbolsPage({ offset: 0, preserveSymbol: false, loadBars: true });"
+    ) not in html
 
 
 def test_render_kline_viewer_supports_remote_data_api_base_url():
