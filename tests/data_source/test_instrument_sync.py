@@ -11,6 +11,7 @@ from backtest.data.instruments import InstrumentStore
 from backtest.data.metadata import MetadataStore
 from backtest.data_source.config import DataSourceServerConfig, DataSourceSpec
 from backtest.data_source.instrument_sync import (
+    AkShareInstrumentCatalogProvider,
     CCXTInstrumentCatalogProvider,
     InstrumentCatalogItem,
     InstrumentSyncScheduleService,
@@ -18,6 +19,7 @@ from backtest.data_source.instrument_sync import (
     InstrumentSyncScheduler,
     InstrumentSyncService,
     UniverseCsvInstrumentCatalogProvider,
+    build_instrument_catalog_provider,
     source_definition_from_spec,
 )
 
@@ -134,7 +136,7 @@ def _spec(
     universe_path: Path | None = None,
 ) -> DataSourceSpec:
     bars_root = tmp_path / source_id / "bars"
-    bars_root.mkdir(parents=True)
+    bars_root.mkdir(parents=True, exist_ok=True)
     return DataSourceSpec(
         source_id=source_id,
         source_label="Bitget" if source_id == "bitget" else "A-share",
@@ -250,6 +252,75 @@ def test_universe_csv_provider_rejects_missing_file(tmp_path: Path):
         provider.list_instruments()
 
 
+def test_akshare_provider_normalizes_live_universe_frame():
+    frame = pd.DataFrame(
+        [
+            {
+                "symbol": "000001.SZ",
+                "code": "000001",
+                "name": "平安银行",
+                "exchange": "SZ",
+                "board": "主板",
+                "list_date": "1991-04-03",
+                "industry": "银行",
+            },
+            {
+                "symbol": "688836.SH",
+                "code": "688836",
+                "name": "宇树科技",
+                "exchange": "SH",
+                "board": "科创板",
+                "list_date": "2026-08-19",
+                "industry": "",
+            },
+        ]
+    )
+    provider = AkShareInstrumentCatalogProvider(
+        source_id="a_share",
+        asset_class="equity",
+        frame_factory=lambda: frame,
+    )
+
+    items = provider.list_instruments()
+
+    assert [item.instrument_id for item in items] == [
+        "A_SHARE:000001.SZ",
+        "A_SHARE:688836.SH",
+    ]
+    assert items[0].symbol == "000001.SZ"
+    assert items[0].name == "平安银行"
+    assert items[0].market == "a_share"
+    assert items[0].exchange == "SZ"
+    assert items[0].metadata["board"] == "主板"
+    assert items[1].name == "宇树科技"
+    assert items[1].exchange == "SH"
+
+
+def test_build_provider_supports_akshare_and_universe_csv(tmp_path: Path):
+    universe = tmp_path / "a_share.csv"
+    pd.DataFrame([{"symbol": "000001.SZ", "name": "平安银行"}]).to_csv(universe, index=False)
+
+    live = build_instrument_catalog_provider(
+        source_definition_from_spec(
+            _spec(tmp_path, source_id="a_share", catalog_source="akshare")
+        )
+    )
+    csv_provider = build_instrument_catalog_provider(
+        source_definition_from_spec(
+            _spec(
+                tmp_path,
+                source_id="a_share",
+                catalog_source="universe_csv",
+                universe_path=universe,
+            )
+        )
+    )
+
+    assert isinstance(live, AkShareInstrumentCatalogProvider)
+    assert isinstance(csv_provider, UniverseCsvInstrumentCatalogProvider)
+    assert csv_provider.list_instruments()[0].instrument_id == "A_SHARE:000001.SZ"
+
+
 def test_source_definition_maps_catalog_source_to_provider_config(tmp_path: Path):
     definition = source_definition_from_spec(_spec(tmp_path))
 
@@ -260,7 +331,24 @@ def test_source_definition_maps_catalog_source_to_provider_config(tmp_path: Path
     assert definition.default_tag_name == "Bitget"
 
 
-def test_source_definition_maps_akshare_universe_to_csv_provider(tmp_path: Path):
+def test_source_definition_maps_akshare_to_live_provider(tmp_path: Path):
+    definition = source_definition_from_spec(
+        _spec(
+            tmp_path,
+            source_id="a_share",
+            catalog_source="akshare",
+            universe_path=tmp_path / "unused.csv",
+        )
+    )
+
+    assert definition.source_id == "a_share"
+    assert definition.provider_type == "akshare"
+    assert definition.provider_config == {}
+    assert definition.default_tag_id == "a_share"
+    assert definition.default_tag_name == "A-share"
+
+
+def test_source_definition_maps_universe_csv_catalog_source(tmp_path: Path):
     universe = tmp_path / "a_share.csv"
     universe.write_text("symbol,name\n000001.SZ,bank\n")
 
@@ -268,28 +356,98 @@ def test_source_definition_maps_akshare_universe_to_csv_provider(tmp_path: Path)
         _spec(
             tmp_path,
             source_id="a_share",
-            catalog_source="akshare",
+            catalog_source="universe_csv",
             universe_path=universe,
         )
     )
 
-    assert definition.source_id == "a_share"
     assert definition.provider_type == "universe_csv"
     assert definition.provider_config == {"path": str(universe)}
-    assert definition.default_tag_id == "a_share"
-    assert definition.default_tag_name == "A-share"
 
 
-def test_source_definition_rejects_akshare_without_universe(tmp_path: Path):
+def test_source_definition_rejects_universe_csv_without_path(tmp_path: Path):
     with pytest.raises(ValueError, match="Universe path is required"):
         source_definition_from_spec(
-            _spec(tmp_path, source_id="a_share", catalog_source="akshare")
+            _spec(tmp_path, source_id="a_share", catalog_source="universe_csv")
         )
 
 
 def test_source_definition_rejects_unsupported_catalog_source(tmp_path: Path):
     with pytest.raises(ValueError, match="Unsupported catalog source"):
         source_definition_from_spec(_spec(tmp_path, catalog_source="custom"))
+
+
+def test_sync_service_upserts_live_akshare_into_existing_csv_instruments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    universe = tmp_path / "a_share.csv"
+    pd.DataFrame(
+        [{"symbol": "000001.SZ", "name": "平安银行", "exchange": "SZ", "board": "主板"}]
+    ).to_csv(universe, index=False)
+
+    csv_spec = _spec(
+        tmp_path,
+        source_id="a_share",
+        catalog_source="universe_csv",
+        universe_path=universe,
+    )
+    live_spec = _spec(tmp_path, source_id="a_share", catalog_source="akshare")
+    metadata = MetadataStore(csv_spec.metadata_path)
+    store = InstrumentStore(metadata)
+
+    csv_service = InstrumentSyncService(
+        config=DataSourceServerConfig(sources=[csv_spec]),
+        store_factory=lambda: store,
+        now=lambda: datetime(2026, 5, 4, 9, 0, 0),
+    )
+    monkeypatch.setattr(metadata, "now", lambda: datetime(2026, 5, 4, 9, 0, 0))
+    csv_result = csv_service.sync_source("a_share")
+
+    live_frame = pd.DataFrame(
+        [
+            {
+                "symbol": "000001.SZ",
+                "code": "000001",
+                "name": "平安银行",
+                "exchange": "SZ",
+                "board": "主板",
+                "list_date": "1991-04-03",
+                "industry": "银行",
+            },
+            {
+                "symbol": "688836.SH",
+                "code": "688836",
+                "name": "宇树科技",
+                "exchange": "SH",
+                "board": "科创板",
+                "list_date": "2026-08-19",
+                "industry": "",
+            },
+        ]
+    )
+    live_service = InstrumentSyncService(
+        config=DataSourceServerConfig(sources=[live_spec]),
+        store_factory=lambda: store,
+        provider_factory=lambda definition: AkShareInstrumentCatalogProvider(
+            source_id=definition.source_id,
+            asset_class=definition.asset_class,
+            frame_factory=lambda: live_frame,
+        ),
+        now=lambda: datetime(2026, 8, 31, 9, 0, 0),
+    )
+    monkeypatch.setattr(metadata, "now", lambda: datetime(2026, 8, 31, 9, 0, 0))
+    live_result = live_service.sync_source("a_share")
+
+    page = store.list_instruments(source_id="a_share")
+    assert csv_result["created"] == 1
+    assert live_result["created"] == 1
+    assert live_result["unchanged"] + live_result["updated"] == 1
+    assert page.total == 2
+    assert {item.instrument_id for item in page.instruments} == {
+        "A_SHARE:000001.SZ",
+        "A_SHARE:688836.SH",
+    }
 
 
 def test_sync_service_upserts_instruments_and_source_tag(

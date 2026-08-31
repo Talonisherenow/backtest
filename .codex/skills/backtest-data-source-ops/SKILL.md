@@ -58,6 +58,7 @@ curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1:8768/api/instrument-sources
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" "http://127.0.0.1:8768/api/instruments?source_id=bitget&limit=5"
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" "http://127.0.0.1:8768/api/instrument-tags?source_id=bitget"
+curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" "http://127.0.0.1:8768/api/kline/symbols?source_id=a_share&limit=5"
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" http://127.0.0.1:8768/api/instrument-sync/schedules
 uv run backtest data tasks --metadata data/crypto/bitget/metadata.sqlite
 uv run backtest data inventory --metadata data/crypto/bitget/metadata.sqlite

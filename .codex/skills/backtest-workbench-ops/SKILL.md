@@ -140,6 +140,9 @@ When verifying `/instruments`:
   `InstrumentRecord.symbol`.
 - The Instrument Sources dialog can run one-off source sync and create/manage
   instrument sync schedules through `/api/instrument-sync/schedules`.
+- Read `/api/instrument-sources` and show `provider_type`: `ccxt`, live
+  `akshare`, or local `universe_csv`. Switching A-share catalog mode is a
+  data-source restart flag (`--a-share-catalog-source`), not a workbench setting.
 - Do not treat a missing `/api/instruments` or `/api/instrument-sync/*` route as
   a UI bug; first check whether the remote data-source server has the updated
   instrument API deployed.

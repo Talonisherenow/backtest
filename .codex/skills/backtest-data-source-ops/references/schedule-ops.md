@@ -114,4 +114,26 @@ Minimal payload:
 }
 ```
 
+A-share catalog sync example (requires live `provider_type=akshare` on the
+running data-source process):
+
+```json
+{
+  "name": "a-share-instrument-sync",
+  "enabled": false,
+  "source_id": "a_share",
+  "trigger": {"type": "interval", "every": 1, "unit": "days", "timezone": "Asia/Shanghai"},
+  "repeat": {"mode": "forever"}
+}
+```
+
 Do not confuse instrument sync schedules with data crawl schedules: instrument sync updates instruments/tags; data crawl schedules submit K-line crawl jobs.
+
+Typical orchestration for “keep listings fresh, then crawl bars”:
+
+1. Enable an instrument-sync schedule for the source (`bitget` or `a_share`).
+2. Keep a data crawl schedule whose `job.target` is the source default tag
+   (`tag_id=bitget` or `tag_id=a_share`, `resolution=dynamic`).
+3. Use A-share crawl frequencies `[1d]`; Bitget commonly uses `[1d, 4h, 1h]`.
+4. Confirm `/api/instrument-sources` shows the expected `provider_type` before
+   treating catalog sync as live.

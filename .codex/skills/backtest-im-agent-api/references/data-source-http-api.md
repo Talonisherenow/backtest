@@ -18,6 +18,7 @@ The API contract is independent of transport. The current server may reach a hom
 GET /api/health
 GET /api/data-sources
 GET /api/kline/manifest
+GET /api/kline/symbols?source_id=<source_id>&limit=<n>&offset=<n>&q=<query>
 GET /api/kline/bars?source_id=<source_id>&symbol=<symbol>&frequency=<frequency>&adjust=<adjust>&limit=<n>&anchor=latest
 GET /api/data/tasks/summary?source_id=<source_id>
 GET /api/data/tasks?source_id=<source_id>&page=<n>&page_size=<n>&symbol=<partial>&frequency=<f>&status=<s>
@@ -29,6 +30,7 @@ GET /api/data/schedules
 GET /api/data/schedules/<schedule_id>
 GET /api/data/schedules/<schedule_id>/runs
 GET /api/instruments?source_id=<source_id>&q=<query>&tag=<tag_id>&limit=<n>&offset=<n>
+GET /api/instruments/<instrument_id>?source_id=<source_id>
 GET /api/instrument-tags?source_id=<source_id>
 GET /api/instrument-tags/<tag_id>/members?source_id=<source_id>
 GET /api/instrument-sources
@@ -40,6 +42,10 @@ GET /api/instrument-sync/schedules/<schedule_id>/runs
 `/api/data/tasks` is paginated. Use `/api/data/tasks/summary` for status and
 frequency totals. `frequency` and `status` can be repeated to express
 multi-select filters.
+
+`/api/kline/symbols` lists symbols that already have cached bars for a source.
+It is not the instrument catalog; use `/api/instruments` for cataloged symbols
+and `/api/instrument-sources` for how that catalog is refreshed.
 
 Latest K-line semantics:
 
@@ -237,6 +243,17 @@ GET  /api/instrument-sync/schedules
 POST /api/instrument-sync/schedules
 POST /api/instrument-sync/schedules/<schedule_id>/run-now
 ```
+
+`GET /api/instrument-sources` returns each source's `provider_type`:
+
+- `ccxt` — live exchange markets (for example Bitget via `provider_config.exchange`)
+- `akshare` — live A-share instrument universe over the network
+- `universe_csv` — local A-share CSV import (`provider_config.path`)
+
+Changing A-share between live `akshare` and local `universe_csv` is a
+data-source process startup/deploy setting (`--a-share-catalog-source`), not an
+HTTP API. If `provider_type` is wrong for the user's intent, hand off to a
+data-source operator; do not invent a local workaround.
 
 ## Status Meaning
 

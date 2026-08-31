@@ -167,6 +167,9 @@ Instrument page expectations:
   symbol.
 - Instrument source sync is separate from data crawl schedules. Its UI uses
   `/api/instrument-sync/run` and `/api/instrument-sync/schedules`.
+- `/api/instrument-sources` shows `provider_type`: `ccxt`, live `akshare`, or
+  local `universe_csv`. Changing A-share catalog mode requires restarting
+  data-source with `--a-share-catalog-source`; the workbench cannot switch it.
 - If `/instruments` loads but source sync controls fail with 404, the remote
   data-source server is older than the workbench UI.
 
