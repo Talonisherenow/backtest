@@ -96,7 +96,15 @@ def make_data_source_handler(api: DataSourceApi):
                 elif parsed.path == "/api/data/schedules":
                     self._send_json(200, api.schedules())
                 elif parsed.path.endswith("/runs") and parsed.path.startswith("/api/data/schedules/"):
-                    self._send_json(200, api.schedule_runs(self._schedule_id_for_suffix(parsed.path, "/runs")))
+                    limit_raw = self._optional(query, "limit")
+                    limit = 50 if limit_raw is None else int(limit_raw)
+                    self._send_json(
+                        200,
+                        api.schedule_runs(
+                            self._schedule_id_for_suffix(parsed.path, "/runs"),
+                            limit=limit,
+                        ),
+                    )
                 elif parsed.path.startswith("/api/data/schedules/"):
                     self._send_json(200, api.schedule(parsed.path.rsplit("/", 1)[-1]))
                 elif parsed.path == "/api/data/jobs":

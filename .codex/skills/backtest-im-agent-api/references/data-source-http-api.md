@@ -122,7 +122,11 @@ GET /api/data/schedule-options
 GET /api/data/schedules
 GET /api/data/schedules/<schedule_id>
 GET /api/data/schedules/<schedule_id>/runs
+GET /api/data/schedules/<schedule_id>/runs?limit=<n>
 ```
+
+`GET /api/data/schedules` omits legacy `job.symbols` when an instrument `target`
+is present. `GET .../runs` defaults to the newest `limit=50` runs (max 200).
 
 Write endpoints:
 

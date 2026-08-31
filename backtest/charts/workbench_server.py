@@ -2845,7 +2845,7 @@ def render_workbench_index_html(
   </main>
   <script>
     const payload = JSON.parse(document.getElementById("workbench-index-payload").textContent);
-    const DATA_MONITOR_REFRESH_MS = 10000;
+    const DATA_MONITOR_REFRESH_MS = 30000;
     const WORKBENCH_DISPLAY_TIME_ZONE = "Asia/Shanghai";
     const WORKBENCH_DISPLAY_TIME_ZONE_OFFSET = "+08:00";
     let dataMonitorTimer = null;
@@ -4943,7 +4943,7 @@ def render_workbench_index_html(
         }
         let scheduleRunsById = {};
         const runEntries = await Promise.all(schedules.map(async (schedule) => {
-          const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs`), dataApiRequestOptions());
+          const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs?limit=50`), dataApiRequestOptions());
           if (!response.ok) {
             return [schedule.schedule_id, []];
           }
