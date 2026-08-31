@@ -34,6 +34,7 @@ Allowed without confirmation:
 - `GET /api/health`
 - `GET /api/data-sources`
 - `GET /api/kline/manifest`
+- `GET /api/kline/symbols`
 - `GET /api/kline/bars`
 - `GET /api/data/tasks/summary`
 - `GET /api/data/tasks`
