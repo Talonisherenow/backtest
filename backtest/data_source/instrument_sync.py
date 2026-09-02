@@ -365,10 +365,19 @@ class InstrumentSyncService:
         )
 
         counts = {"created": 0, "updated": 0, "unchanged": 0, "failed": 0}
+        catalog_instrument_ids: set[str] = set()
         for item in items:
             result = store.upsert_instrument(item.to_instrument_payload(), touch=True)
             counts[result.action] += 1
             store.add_tag_members(definition.default_tag_id, [result.record.instrument_id])
+            catalog_instrument_ids.add(result.record.instrument_id)
+
+        untagged = self._untag_stale_default_members(
+            store,
+            source_id=definition.source_id,
+            tag_id=definition.default_tag_id,
+            catalog_instrument_ids=catalog_instrument_ids,
+        )
 
         return {
             "source_id": definition.source_id,
@@ -377,10 +386,35 @@ class InstrumentSyncService:
             "updated": counts["updated"],
             "unchanged": counts["unchanged"],
             "failed": counts["failed"],
+            "untagged": untagged,
             "total": len(items),
             "tag_id": definition.default_tag_id,
             "synced_at": self.now().isoformat(),
         }
+
+    @staticmethod
+    def _untag_stale_default_members(
+        store: InstrumentStore,
+        *,
+        source_id: str,
+        tag_id: str,
+        catalog_instrument_ids: set[str],
+    ) -> int:
+        """Remove source instruments from the default crawl tag when absent from catalog.
+
+        Instruments remain in inventory and in any other tags; only the source default
+        tag used by crawl schedules is reconciled against the latest active catalog.
+        """
+        untagged = 0
+        for member in store.tag_members(tag_id).members:
+            if member.instrument_id in catalog_instrument_ids:
+                continue
+            record = store.get_instrument(member.instrument_id)
+            if record.source_id != source_id:
+                continue
+            store.remove_tag_member(tag_id, member.instrument_id)
+            untagged += 1
+        return untagged
 
 
 class InstrumentSyncScheduleConfig(BaseModel):

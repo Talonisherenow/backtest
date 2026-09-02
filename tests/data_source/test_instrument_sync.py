@@ -492,6 +492,54 @@ def test_sync_service_upserts_instruments_and_source_tag(
         "BITGET:BTC/USDT",
         "BITGET:ETH/USDT:USDT",
     ]
+    assert first.get("untagged", 0) == 0
+    assert second.get("untagged", 0) == 0
+
+
+def test_sync_service_untags_stale_default_tag_members_absent_from_catalog(
+    tmp_path: Path,
+):
+    spec = _spec(tmp_path)
+    store = InstrumentStore(MetadataStore(spec.metadata_path))
+    store.create_instrument(
+        {
+            "instrument_id": "BITGET:OLD/USDT",
+            "symbol": "OLD/USDT",
+            "name": "Legacy Coin",
+            "market": "crypto_spot",
+            "exchange": "bitget",
+            "asset_class": "crypto",
+            "source_id": "bitget",
+        }
+    )
+    store.ensure_tag({"tag_id": "bitget", "name": "Bitget"})
+    store.ensure_tag({"tag_id": "watchlist", "name": "Watchlist"})
+    store.add_tag_members("bitget", ["BITGET:OLD/USDT"])
+    store.add_tag_members("watchlist", ["BITGET:OLD/USDT"])
+
+    service = InstrumentSyncService(
+        config=DataSourceServerConfig(sources=[spec]),
+        store_factory=lambda: store,
+        provider_factory=lambda definition: CCXTInstrumentCatalogProvider(
+            source_id=definition.source_id,
+            asset_class=definition.asset_class,
+            exchange_id=str(definition.provider_config["exchange"]),
+            exchange=FakeExchange(),
+        ),
+    )
+
+    result = service.sync_source("bitget")
+    bitget_members = {member.instrument_id for member in store.tag_members("bitget").members}
+    watchlist_members = {
+        member.instrument_id for member in store.tag_members("watchlist").members
+    }
+
+    assert result["untagged"] == 1
+    assert result["created"] == 2
+    assert "BITGET:OLD/USDT" not in bitget_members
+    assert bitget_members == {"BITGET:BTC/USDT", "BITGET:ETH/USDT:USDT"}
+    assert "BITGET:OLD/USDT" in watchlist_members
+    assert store.get_instrument("BITGET:OLD/USDT").symbol == "OLD/USDT"
 
 
 def test_sync_service_reraises_upsert_errors(tmp_path: Path):
