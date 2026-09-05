@@ -11,6 +11,12 @@ from backtest.data.store import ParquetBarStore
 from backtest.data.tasks import CrawlTaskManager
 from backtest.data_source.api import DataSourceApi
 from backtest.data_source.config import DataSourceServerConfig, build_default_source_specs
+from backtest.data_source.instrument_sync import (
+    InstrumentSyncScheduleService,
+    InstrumentSyncScheduleStore,
+    InstrumentSyncScheduler,
+    InstrumentSyncService,
+)
 from backtest.data_source.jobs import DataSourceJobRegistry
 from backtest.data_source.schedules import (
     DataSourceScheduleService,
@@ -50,7 +56,12 @@ def serve(
         Path("data/universe/a_share_all_20260504.csv"),
         "--a-share-universe",
         dir_okay=False,
-        help="Optional A-share universe CSV used for symbol names and board labels",
+        help="Optional A-share universe CSV for symbol names and universe_csv catalog sync",
+    ),
+    a_share_catalog_source: str = typer.Option(
+        "akshare",
+        "--a-share-catalog-source",
+        help="A-share instrument catalog: akshare (live) or universe_csv (local CSV)",
     ),
     include_bitget: bool = typer.Option(True, "--include-bitget/--no-bitget", help="Include Bitget source"),
     include_a_share: bool = typer.Option(True, "--include-a-share/--no-a-share", help="Include A-share source"),
@@ -79,6 +90,12 @@ def serve(
         "--scheduler/--no-scheduler",
         help="Start the in-process scheduler loop",
     ),
+    task_summary_refresh_seconds: float = typer.Option(
+        30.0,
+        "--task-summary-refresh-seconds",
+        min=1.0,
+        help="How often crawl-task summary cache is refreshed from SQLite",
+    ),
 ) -> None:
     """Serve cached bars, crawl tasks, inventory, and crawl job APIs."""
     try:
@@ -88,6 +105,7 @@ def serve(
             a_share_bars_root=a_share_bars_root,
             a_share_metadata_path=a_share_metadata,
             a_share_universe=a_share_universe,
+            a_share_catalog_source=a_share_catalog_source,
             include_bitget=include_bitget,
             include_a_share=include_a_share,
         )
@@ -99,6 +117,7 @@ def serve(
             api_token=api_token,
             schedule_db_path=schedule_db,
             scheduler_poll_seconds=scheduler_poll_seconds,
+            task_summary_refresh_seconds=task_summary_refresh_seconds,
         )
         api = DataSourceApi(
             config=config,
@@ -109,14 +128,31 @@ def serve(
             server_config=config,
             submit_job=api.submit_job,
             get_job=api.job,
+            resolve_symbols=api.resolve_schedule_symbols,
         )
         api.schedule_service = schedule_service
+        api.instrument_sync_service = InstrumentSyncService(
+            config=config,
+            store_factory=lambda: api._instrument_store(None),
+        )
+        instrument_sync_schedule_service = InstrumentSyncScheduleService(
+            store=InstrumentSyncScheduleStore(config.schedule_db_path),
+            config=config,
+            sync_source=lambda source_id: api.run_instrument_sync({"source_id": source_id}),
+        )
+        api.instrument_sync_schedule_service = instrument_sync_schedule_service
+        instrument_sync_scheduler = InstrumentSyncScheduler(
+            service=instrument_sync_schedule_service,
+            poll_seconds=config.scheduler_poll_seconds,
+        )
         scheduler = DataSourceScheduler(
             service=schedule_service,
             poll_seconds=config.scheduler_poll_seconds,
         )
         if scheduler_enabled:
             scheduler.start()
+            instrument_sync_scheduler.start()
+        api.task_summary_refresher.start(refresh_immediately=True)
     except Exception as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -125,7 +161,11 @@ def serve(
     serve_data_source_api(api=api, host=host, port=port)
 
 
-def _run_data_job(config: DataSyncJobConfig):
+def _run_data_job(
+    config: DataSyncJobConfig,
+    *,
+    on_item_finished=None,
+):
     metadata = MetadataStore(config.metadata)
     catalog = DataCatalog(metadata)
     service = DataSyncService(
@@ -138,4 +178,7 @@ def _run_data_job(config: DataSyncJobConfig):
         catalog=catalog,
         tasks=CrawlTaskManager(metadata),
     )
-    return MarketDataJobRunner(service=service, catalog=catalog).run(config)
+    return MarketDataJobRunner(service=service, catalog=catalog).run(
+        config,
+        on_item_finished=on_item_finished,
+    )

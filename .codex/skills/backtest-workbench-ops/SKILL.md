@@ -1,6 +1,6 @@
 ---
 name: backtest-workbench-ops
-description: Use when configuring, starting, opening, or troubleshooting the backtest chart workbench, K-line viewer, strategy-results viewer, remote data API base URL, workbench token wiring, result roots, local ports, and browser verification.
+description: Use when configuring, starting, opening, or troubleshooting the backtest chart workbench, K-line viewer, strategy-results viewer, instrument manager, instrument lists/tags, instrument source sync UI, remote data API base URL, token wiring, result roots, local ports, and browser verification.
 ---
 
 # Backtest Workbench Ops
@@ -25,7 +25,7 @@ Allowed:
 - configure `BACKTEST_DATA_API_TOKEN` or `--data-api-token`
 - persist a user-provided data API token into the local shell environment for
   workbench use
-- verify K-line and strategy-results pages
+- verify K-line, strategy-results, instrument manager, schedule editor, and instrument sync UI pages
 
 Not allowed:
 
@@ -61,8 +61,10 @@ When verifying the workbench home data-source monitor:
   not by a full task list fetch.
 - The schedule summary and drawer table are backed by `/api/data/schedules`.
 - The recent schedule run table is backed by
-  `/api/data/schedules/<schedule_id>/runs`; use it to verify the latest trigger
-  for an active schedule rather than relying on crawl task `updated_at`.
+  `/api/data/schedules/<schedule_id>/runs?limit=50` (newest first). Do not fetch
+  unbounded run history on the monitor refresh path.
+- Home monitor refresh defaults to 30 seconds. Prefer that over sub-10s polling
+  against large metadata SQLite databases.
 - The `Details` drawer should provide source tabs, one tab per configured data
   source.
 - The drawer should show schedules with status, trigger, repeat, next run, last
@@ -95,6 +97,14 @@ When verifying the workbench home data-source monitor:
 - The frequency picker in the schedule editor is a dropdown multi-select that
   displays the chosen values, usually offering `1d`, `4h`, `1h`, `15m`, and
   `1m` when supported by the source.
+- The schedule editor target picker supports `Search Symbols` and `Use List`.
+  `Search Symbols` saves `job.target.mode=symbols` with `instrument_ids`; `Use
+  List` saves `job.target.mode=tag` with `tag_id` and dynamic resolution.
+  Legacy `job.symbols` still displays, but new schedule creation should prefer
+  instrument-backed targets when the API supports them.
+- The source selector should be built from remote data/instrument sources. When
+  the source changes, selected schedule target instruments or list must reset
+  because target validation is source-scoped.
 - The workbench range labels `Last N mins`, `Last N hours`, and `Last N days`
   map to the API's `job.date_range.type=last_n_days` with
   `lookback_value` plus `lookback_unit=minutes|hours|days`; do not invent
@@ -120,6 +130,24 @@ When verifying the workbench home data-source monitor:
 - If the drawer shows a task stuck in `running`, ask data-source ops to compare
   metadata status with actual sync-job processes before assuming a crawl is
   still active.
+
+When verifying `/instruments`:
+
+- The route should load with the same `--data-api-base-url` and
+  `BACKTEST_DATA_API_TOKEN` wiring as `/kline`.
+- It reads `/api/data-sources`, `/api/instruments`, `/api/instrument-tags`,
+  `/api/instrument-sources`, and `/api/instrument-sync/schedules`.
+- It supports source and list filters, paginated instrument rows, list creation,
+  tag membership add/remove, and K-line navigation using `source_id` plus
+  `InstrumentRecord.symbol`.
+- The Instrument Sources dialog can run one-off source sync and create/manage
+  instrument sync schedules through `/api/instrument-sync/schedules`.
+- Read `/api/instrument-sources` and show `provider_type`: `ccxt`, live
+  `akshare`, or local `universe_csv`. Switching A-share catalog mode is a
+  data-source restart flag (`--a-share-catalog-source`), not a workbench setting.
+- Do not treat a missing `/api/instruments` or `/api/instrument-sync/*` route as
+  a UI bug; first check whether the remote data-source server has the updated
+  instrument API deployed.
 
 If the user asks to fix data-source deployment, route to `backtest-data-source-ops`.
 

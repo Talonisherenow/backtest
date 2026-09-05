@@ -277,6 +277,40 @@ def tasks(
         typer.echo(f"{record.task_id} {record.symbol} {record.status} attempts={record.attempts}")
 
 
+@app.command("cleanup-tasks")
+def cleanup_tasks(
+    metadata_path: Path = typer.Option(
+        ...,
+        "--metadata",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to metadata SQLite database",
+    ),
+    retain_days: int = typer.Option(
+        3,
+        "--retain-days",
+        min=1,
+        help="Keep crawl tasks created within this many days",
+    ),
+    vacuum: bool = typer.Option(
+        False,
+        "--vacuum/--no-vacuum",
+        help="Run VACUUM after delete to reclaim disk space",
+    ),
+) -> None:
+    """Delete crawl tasks older than the retention window."""
+    result = CrawlTaskManager(_metadata_store(metadata_path)).purge_older_than(
+        retain_days=retain_days,
+        vacuum=vacuum,
+    )
+    typer.echo(
+        f"Purged {result.deleted} crawl tasks older than {result.cutoff.isoformat()} "
+        f"from {metadata_path}; retained {result.retained}"
+        + ("; vacuumed" if result.vacuumed else "")
+    )
+
+
 @app.command("retry")
 def retry(
     failed: bool = typer.Option(

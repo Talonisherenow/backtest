@@ -33,15 +33,30 @@ def serve_chart_workbench(
         data_api_base_url=normalized_data_api_base_url,
         data_api_token=normalized_data_api_token,
     ).encode("utf-8")
-    kline_html = render_kline_viewer_html(
-        build_kline_shell_payload(
-            default_window_size=default_window_size,
-            data_api_base_url=normalized_data_api_base_url,
-            data_api_token=normalized_data_api_token,
-        )
+    instrument_html = render_instrument_manager_html(
+        data_api_base_url=normalized_data_api_base_url,
+        data_api_token=normalized_data_api_token,
     ).encode("utf-8")
     strategy_payload = {"mode": "dynamic", "title": "Strategy Results", "links": {"workbench_home": "/"}}
     strategy_html = render_strategy_results_catalog_html(strategy_payload).encode("utf-8")
+
+    def _optional_query_param(params: dict[str, list[str]], name: str) -> str | None:
+        values = params.get(name)
+        if not values:
+            return None
+        return values[0]
+
+    def _render_kline_shell(params: dict[str, list[str]]) -> bytes:
+        return render_kline_viewer_html(
+            build_kline_shell_payload(
+                default_window_size=default_window_size,
+                data_api_base_url=normalized_data_api_base_url,
+                data_api_token=normalized_data_api_token,
+                default_source_id=_optional_query_param(params, "source_id"),
+                default_symbol=_optional_query_param(params, "symbol"),
+                default_frequency=_optional_query_param(params, "frequency"),
+            )
+        ).encode("utf-8")
 
     class WorkbenchHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -51,10 +66,21 @@ def serve_chart_workbench(
                 self._send_bytes(index_html, "text/html; charset=utf-8")
                 return
             if parsed.path in {"/kline", "/kline_viewer.html", "/crypto_kline_viewer.html"}:
-                self._send_bytes(kline_html, "text/html; charset=utf-8")
+                self._send_bytes(_render_kline_shell(params), "text/html; charset=utf-8")
+                return
+            if parsed.path == "/instruments":
+                self._send_bytes(instrument_html, "text/html; charset=utf-8")
                 return
             if parsed.path in {"/api/manifest", "/api/kline/manifest"}:
-                self._send_json(kline_service.manifest(default_window_size=default_window_size))
+                self._send_json(
+                    kline_service.manifest(
+                        default_window_size=default_window_size,
+                        include_symbols=self._optional(params, "symbols") != "0",
+                    )
+                )
+                return
+            if parsed.path == "/api/kline/symbols":
+                self._handle_kline_symbols(params)
                 return
             if parsed.path in {"/api/bars", "/api/kline/bars"}:
                 self._handle_kline_bars(params)
@@ -93,6 +119,20 @@ def serve_chart_workbench(
                     offset=self._optional_int(params, "offset"),
                     start=self._optional(params, "start"),
                     anchor=self._optional(params, "anchor", "latest") or "latest",
+                )
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            self._send_json(result)
+
+        def _handle_kline_symbols(self, params: dict[str, list[str]]) -> None:
+            try:
+                result = kline_service.symbols(
+                    source_id=self._optional(params, "source_id"),
+                    q=self._optional(params, "q"),
+                    board=self._optional(params, "board"),
+                    limit=self._int_param(params, "limit", 50),
+                    offset=self._int_param(params, "offset", 0),
                 )
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
@@ -198,6 +238,9 @@ def build_kline_shell_payload(
     default_window_size: int,
     data_api_base_url: str | None = None,
     data_api_token: str | None = None,
+    default_source_id: str | None = None,
+    default_symbol: str | None = None,
+    default_frequency: str | None = None,
 ) -> dict:
     payload = {
         "mode": "dynamic",
@@ -208,7 +251,1362 @@ def build_kline_shell_payload(
         payload["data_api_base_url"] = data_api_base_url.rstrip("/")
     if data_api_token:
         payload["data_api_token"] = data_api_token.strip()
+    if default_source_id:
+        payload["default_source_id"] = default_source_id
+    if default_symbol:
+        payload["default_symbol"] = default_symbol
+    if default_frequency:
+        payload["default_frequency"] = default_frequency
     return payload
+
+
+def render_instrument_manager_html(
+    data_api_base_url: str | None = None,
+    data_api_token: str | None = None,
+) -> str:
+    payload = {}
+    if data_api_base_url:
+        payload["data_api_base_url"] = data_api_base_url.rstrip("/")
+    if data_api_token:
+        payload["data_api_token"] = data_api_token.strip()
+    payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    safe_payload = payload_json.replace("</", "<\\/")
+    return """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Instrument Lists - Backtest Workbench</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --line: #d8e0e8;
+      --line-soft: #edf1f5;
+      --text: #1d2733;
+      --muted: #667789;
+      --blue: #1d5fd1;
+      --green: #168a5a;
+      --red: #c2412d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 22px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    h1, h2, h3 { margin: 0; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 15px; }
+    h3 { font-size: 14px; }
+    .title-block {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .header-actions {
+      display: grid;
+      justify-items: end;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+    .home-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .home-link:hover {
+      border-color: #b8c7d6;
+      background: #f8fafc;
+    }
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+    button {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover { background: #f8fafc; border-color: #b8c7d6; }
+    button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+    button.danger { color: var(--red); border-color: #f1b8ad; background: #fff7f5; }
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+    textarea { min-height: 68px; resize: vertical; }
+    .subtitle { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .shell {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      min-height: calc(100vh - 65px);
+      padding: 16px 22px 20px;
+    }
+    .workspace {
+      display: grid;
+      grid-template-columns: 220px minmax(420px, 1fr) 300px;
+      min-height: 0;
+      gap: 14px;
+    }
+    .panel {
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .panel-body {
+      padding: 12px;
+      min-height: 0;
+    }
+    .tag-list {
+      display: grid;
+      gap: 7px;
+      max-height: calc(100vh - 250px);
+      overflow: auto;
+    }
+    .tag-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      min-height: 34px;
+      padding: 7px 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: #fbfdff;
+      color: var(--text);
+      text-align: left;
+      white-space: normal;
+    }
+    .tag-item.active { border-color: #b7d4ff; background: #f4f8ff; }
+    .tag-select-button {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-width: 0;
+      width: 100%;
+      min-height: 0;
+      gap: 8px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+    }
+    .tag-select-button:hover { border-color: transparent; background: transparent; }
+    .tag-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tag-count { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .tag-delete-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      min-width: 22px;
+      min-height: 22px;
+      padding: 0;
+      border-color: transparent;
+      background: transparent;
+      color: #8b98a8;
+      font-size: 16px;
+      line-height: 1;
+      font-weight: 700;
+    }
+    .tag-delete-button:hover {
+      border-color: #f1b8ad;
+      background: #fff7f5;
+      color: var(--red);
+    }
+    .table-panel {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: 1fr 130px 120px auto auto;
+      gap: 8px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .table-wrap {
+      min-height: 0;
+      overflow: auto;
+    }
+    .instrument-pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      min-height: 48px;
+      padding: 9px 12px;
+      border-top: 1px solid var(--line-soft);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .instrument-pagination-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .instrument-pagination select,
+    .instrument-pagination button {
+      min-height: 32px;
+      width: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      white-space: nowrap;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8fafc;
+      color: var(--muted);
+    }
+    tr.selected td { background: #f4f8ff; }
+    .instrument-symbol-cell {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+      line-height: 1.25;
+    }
+    .instrument-symbol-cell strong {
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+    .tag-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      margin: 0 4px 4px 0;
+      padding: 0 7px;
+      border-radius: 999px;
+      background: #eef5ff;
+      color: #195bb8;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .empty {
+      padding: 24px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .detail-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .detail-row {
+      display: grid;
+      grid-template-columns: 88px 1fr;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .detail-row span:first-child { color: var(--muted); }
+    .form-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line-soft);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .error {
+      min-height: 18px;
+      color: var(--red);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .modal-dialog {
+      width: min(420px, calc(100vw - 32px));
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 18px 52px rgba(29, 39, 51, 0.18);
+    }
+    .modal-dialog::backdrop { background: rgba(29, 39, 51, 0.28); }
+    .modal-card { margin: 0; }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .modal-body {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+    }
+    .wide-modal { width: min(920px, calc(100vw - 32px)); }
+    .sync-modal-body { gap: 18px; }
+    .sync-source-list,
+    .sync-schedule-list {
+      display: grid;
+      gap: 8px;
+    }
+    .sync-row {
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      padding: 10px 12px;
+    }
+    .sync-row-title {
+      color: var(--text);
+      font-weight: 800;
+    }
+    .sync-row-meta {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 2px;
+      overflow-wrap: anywhere;
+    }
+    .row-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .checkbox-row input {
+      width: auto;
+      min-height: 0;
+      margin: 0;
+    }
+    .color-preset-field {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--muted);
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .color-swatch-list {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .color-swatch {
+      width: 24px;
+      min-width: 24px;
+      min-height: 24px;
+      padding: 0;
+      border-radius: 999px;
+      border-color: var(--line);
+      background: var(--swatch-color);
+    }
+    .color-swatch:hover {
+      border-color: #9fb1c3;
+      background: var(--swatch-color);
+    }
+    .color-swatch.active {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px #dbeafe;
+    }
+    .modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid var(--line-soft);
+    }
+    @media (max-width: 1050px) {
+      .workspace { grid-template-columns: 1fr; }
+      .filters { grid-template-columns: 1fr 1fr; }
+      .tag-list { max-height: none; }
+    }
+    @media (max-width: 680px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .header-actions { justify-items: start; }
+      .shell { padding-left: 12px; padding-right: 12px; }
+      .filters, .form-row { grid-template-columns: 1fr; }
+      .instrument-pagination {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .instrument-pagination-controls { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+  <script id="instrument-manager-payload" type="application/json">__INSTRUMENT_MANAGER_PAYLOAD__</script>
+  <header>
+    <div class="title-block">
+      <h1>Instrument Lists</h1>
+      <div class="subtitle">Backtest Workbench</div>
+    </div>
+    <div class="header-actions">
+      <a class="home-link" href="/">Workbench Home</a>
+      <button id="openInstrumentSyncDialogButton" type="button">Sources</button>
+    </div>
+  </header>
+  <section class="shell">
+    <section class="workspace">
+      <aside class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Lists</h2>
+            <div class="subtitle" id="tagMeta"></div>
+          </div>
+          <button id="openTagDialogButton" type="button">New List</button>
+        </div>
+        <div class="panel-body">
+          <div class="tag-list" id="instrumentTagList"></div>
+        </div>
+      </aside>
+      <section class="panel table-panel">
+        <div class="filters">
+          <input id="instrumentSearchInput" type="search" autocomplete="off" placeholder="Search symbol or name">
+          <select id="instrumentSourceFilter"></select>
+          <select id="instrumentTagFilter"></select>
+          <button id="instrumentSearchButton" type="button">Search</button>
+          <button id="openInstrumentDialogButton" type="button">New</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Instrument</th>
+                <th>Name</th>
+                <th>Source</th>
+                <th>Market</th>
+                <th>Settle</th>
+                <th>Synced</th>
+                <th>Lists</th>
+              </tr>
+            </thead>
+            <tbody id="instrumentRows"></tbody>
+          </table>
+        </div>
+        <div class="instrument-pagination">
+          <div id="instrumentPaginationMeta"></div>
+          <div class="instrument-pagination-controls">
+            <select id="instrumentPageSizeSelect" aria-label="Rows per page">
+              <option value="25">25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+            <button id="instrumentPreviousPageButton" type="button">Previous</button>
+            <button id="instrumentNextPageButton" type="button">Next</button>
+          </div>
+        </div>
+      </section>
+      <aside class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Details</h2>
+            <div class="subtitle" id="instrumentDetailMeta"></div>
+          </div>
+          <button id="openKlineButton" type="button">Open K-line</button>
+        </div>
+        <div class="panel-body">
+          <div class="detail-grid" id="instrumentDetail"></div>
+          <form class="form-grid" id="instrumentTagMemberForm">
+            <h3>Add Selected To List</h3>
+            <select id="instrumentTagMemberSelect"></select>
+            <button type="submit">Add To List</button>
+          </form>
+          <div class="error" id="instrumentError"></div>
+        </div>
+      </aside>
+    </section>
+  </section>
+  <dialog id="tagCreateDialog" class="modal-dialog" aria-labelledby="tagCreateDialogTitle">
+    <form class="modal-card" id="tagCreateForm">
+      <div class="modal-header">
+        <h2 id="tagCreateDialogTitle">New List</h2>
+        <button id="closeTagDialogButton" type="button">Close</button>
+      </div>
+      <div class="modal-body">
+        <input id="tagNameInput" type="text" autocomplete="off" placeholder="Name">
+        <div class="color-preset-field" aria-label="List color">
+          <span>Color</span>
+          <input id="tagColorInput" type="hidden" value="#1d5fd1">
+          <div id="tagColorSwatches" class="color-swatch-list" role="radiogroup" aria-label="List color">
+            <button class="color-swatch active" data-tag-color="#1d5fd1" style="--swatch-color: #1d5fd1;" type="button" role="radio" aria-label="Blue" aria-checked="true"></button>
+            <button class="color-swatch" data-tag-color="#168a5a" style="--swatch-color: #168a5a;" type="button" role="radio" aria-label="Green" aria-checked="false"></button>
+            <button class="color-swatch" data-tag-color="#d97706" style="--swatch-color: #d97706;" type="button" role="radio" aria-label="Amber" aria-checked="false"></button>
+            <button class="color-swatch" data-tag-color="#c2412d" style="--swatch-color: #c2412d;" type="button" role="radio" aria-label="Red" aria-checked="false"></button>
+            <button class="color-swatch" data-tag-color="#7c3aed" style="--swatch-color: #7c3aed;" type="button" role="radio" aria-label="Purple" aria-checked="false"></button>
+            <button class="color-swatch" data-tag-color="#64748b" style="--swatch-color: #64748b;" type="button" role="radio" aria-label="Slate" aria-checked="false"></button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="cancelTagDialogButton" type="button">Cancel</button>
+        <button class="primary" type="submit">Create List</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="instrumentCreateDialog" class="modal-dialog" aria-labelledby="instrumentCreateDialogTitle">
+    <form class="modal-card" id="instrumentCreateForm">
+      <div class="modal-header">
+        <h2 id="instrumentCreateDialogTitle">New Instrument</h2>
+        <button id="closeInstrumentDialogButton" type="button">Close</button>
+      </div>
+      <div class="modal-body">
+        <input id="instrumentIdInput" type="text" autocomplete="off" placeholder="Instrument ID">
+        <input id="instrumentNameInput" type="text" autocomplete="off" placeholder="Name">
+        <div class="form-row">
+          <input id="instrumentMarketInput" type="text" autocomplete="off" placeholder="Market">
+          <input id="instrumentExchangeInput" type="text" autocomplete="off" placeholder="Exchange">
+        </div>
+        <div class="form-row">
+          <input id="instrumentAssetClassInput" type="text" autocomplete="off" placeholder="Asset class">
+          <input id="instrumentQuoteCurrencyInput" type="text" autocomplete="off" placeholder="Quote currency">
+        </div>
+        <textarea id="instrumentMetadataInput" placeholder='{"industry":"bank"}'></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="cancelInstrumentDialogButton" type="button">Cancel</button>
+        <button class="primary" type="submit">Create Instrument</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="instrumentSyncDialog" class="modal-dialog wide-modal" aria-labelledby="instrumentSyncDialogTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="instrumentSyncDialogTitle">Instrument Sources</h2>
+        <button id="closeInstrumentSyncDialogButton" type="button">Close</button>
+      </div>
+      <div class="modal-body sync-modal-body">
+        <section>
+          <h3>Sources</h3>
+          <div class="sync-source-list" id="instrumentSourceRows"></div>
+        </section>
+        <section>
+          <h3>New Schedule</h3>
+          <form class="form-grid" id="instrumentSyncScheduleForm">
+            <input id="instrumentSyncScheduleName" type="text" autocomplete="off" placeholder="Name">
+            <select id="instrumentSyncScheduleSource"></select>
+            <div class="form-row">
+              <input id="instrumentSyncEvery" type="number" min="1" value="1">
+              <select id="instrumentSyncUnit">
+                <option value="hours">hours</option>
+                <option value="days">days</option>
+              </select>
+            </div>
+            <label class="checkbox-row">
+              <input id="instrumentSyncEnabled" type="checkbox">
+              <span>Enabled</span>
+            </label>
+            <button class="primary" type="submit">Create Schedule</button>
+          </form>
+        </section>
+        <section>
+          <h3>Schedules</h3>
+          <div class="sync-schedule-list" id="instrumentSyncScheduleRows"></div>
+        </section>
+        <div class="error" id="instrumentSyncError"></div>
+      </div>
+    </div>
+  </dialog>
+  <script>
+    const payload = JSON.parse(document.getElementById("instrument-manager-payload").textContent);
+    let instrumentSearchTimer = null;
+    let instrumentState = {
+      sources: [],
+      instruments: [],
+      total: 0,
+      allTotal: null,
+      tags: [],
+      selectedSourceId: "",
+      selectedTagId: "",
+      selectedInstrumentId: "",
+      query: "",
+      page: 1,
+      pageSize: 25,
+      syncSources: [],
+      syncSchedules: [],
+      syncMessage: "",
+      error: "",
+    };
+
+    const escapeHtml = (value) => String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+
+    function dataApiUrl(path) {
+      const baseUrl = String(payload.data_api_base_url || "").replace(/\\/+$/, "");
+      return baseUrl ? `${baseUrl}${path}` : path;
+    }
+
+    function instrumentRequestOptions() {
+      const options = { cache: "no-store" };
+      if (payload.data_api_token) {
+        const headers = new Headers();
+        headers.set("Authorization", `Bearer ${payload.data_api_token}`);
+        options.headers = headers;
+      }
+      return options;
+    }
+
+    function instrumentMutationOptions(method, body) {
+      const options = instrumentRequestOptions();
+      options.method = method;
+      const headers = new Headers(options.headers || undefined);
+      headers.set("Content-Type", "application/json");
+      options.headers = headers;
+      options.body = JSON.stringify(body);
+      return options;
+    }
+
+    function instrumentApiUrl({ includeTag = true, limit = null, offset = null } = {}) {
+      const params = new URLSearchParams();
+      if (limit === null || limit === undefined) {
+        params.set("limit", String(instrumentState.pageSize));
+      } else {
+        params.set("limit", String(limit));
+      }
+      if (offset === null || offset === undefined) {
+        params.set("offset", String((instrumentState.page - 1) * instrumentState.pageSize));
+      } else {
+        params.set("offset", String(offset));
+      }
+      if (instrumentState.selectedSourceId) params.set("source_id", instrumentState.selectedSourceId);
+      if (includeTag && instrumentState.selectedTagId) params.set("tag", instrumentState.selectedTagId);
+      if (instrumentState.query) params.set("q", instrumentState.query);
+      return dataApiUrl(`/api/instruments?${params.toString()}`);
+    }
+
+    function instrumentPageCount() {
+      return Math.max(1, Math.ceil((Number(instrumentState.total) || 0) / instrumentState.pageSize));
+    }
+
+    function resetInstrumentPaging() {
+      instrumentState.page = 1;
+    }
+
+    function sourceLabel(source) {
+      return source.source_label || source.source_id || "Source";
+    }
+
+    function formatInstrumentSyncTime(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(date).reduce((acc, part) => {
+        if (part.type !== "literal") acc[part.type] = part.value;
+        return acc;
+      }, {});
+      return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+    }
+
+    function isDefaultSourceTag(tag) {
+      return Boolean(tag?.tag_id && instrumentState.sources.some((source) => source.source_id === tag.tag_id));
+    }
+
+    function instrumentSourceLabel(instrument) {
+      const source = instrumentState.sources.find((item) => item.source_id === instrument.source_id);
+      return source ? sourceLabel(source) : (instrument.source_id || "");
+    }
+
+    function settleCurrency(instrument) {
+      const metadata = instrument.metadata || {};
+      return instrument.quote_currency || metadata.settle || metadata.settle_currency || metadata.quote || "";
+    }
+
+    function instrumentDisplaySymbol(instrument) {
+      const raw = instrument.symbol || instrument.instrument_id || "";
+      const settle = settleCurrency(instrument);
+      if (settle && raw.toUpperCase().endsWith(`:${settle.toUpperCase()}`)) {
+        return raw.slice(0, -(settle.length + 1));
+      }
+      return raw;
+    }
+
+    function marketLabel(value) {
+      const labels = {
+        a_share: "A-share",
+        crypto: "Crypto",
+        crypto_spot: "Spot",
+        crypto_swap: "Swap",
+        crypto_future: "Future",
+      };
+      if (!value) return "";
+      return labels[value] || value.split("_").map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
+    }
+
+    function isDefaultInstrumentTag(tag, instrument) {
+      return Boolean(tag?.tag_id && instrument?.source_id && tag.tag_id === instrument.source_id);
+    }
+
+    function renderDetailTagChip(tag, instrument) {
+      if (isDefaultInstrumentTag(tag, instrument)) {
+        return `<span class="tag-chip">${escapeHtml(tag.name)}</span>`;
+      }
+      return `<span class="tag-chip">${escapeHtml(tag.name)} <button data-remove-tag-id="${escapeHtml(tag.tag_id)}" type="button">x</button></span>`;
+    }
+
+    function selectedInstrument() {
+      return instrumentState.instruments.find((instrument) => instrument.instrument_id === instrumentState.selectedInstrumentId)
+        || instrumentState.instruments[0]
+        || null;
+    }
+
+    function klineUrlForInstrument(instrument) {
+      const params = new URLSearchParams();
+      if (instrument.source_id) params.set("source_id", instrument.source_id);
+      params.set("symbol", instrument.symbol || instrument.instrument_id);
+      return `/kline?${params.toString()}`;
+    }
+
+    function openSelectedInstrumentKline() {
+      const instrument = selectedInstrument();
+      if (!instrument) return;
+      window.location.href = klineUrlForInstrument(instrument);
+    }
+
+    function renderFilters() {
+      const sourceFilter = document.getElementById("instrumentSourceFilter");
+      sourceFilter.innerHTML = `<option value="">All sources</option>${instrumentState.sources.map((source) => {
+        const selected = source.source_id === instrumentState.selectedSourceId ? " selected" : "";
+        return `<option value="${escapeHtml(source.source_id)}"${selected}>${escapeHtml(sourceLabel(source))}</option>`;
+      }).join("")}`;
+
+      const tagFilter = document.getElementById("instrumentTagFilter");
+      tagFilter.innerHTML = `<option value="">All lists</option>${instrumentState.tags.map((tag) => {
+        const selected = tag.tag_id === instrumentState.selectedTagId ? " selected" : "";
+        return `<option value="${escapeHtml(tag.tag_id)}"${selected}>${escapeHtml(tag.name)}</option>`;
+      }).join("")}`;
+
+      const memberSelect = document.getElementById("instrumentTagMemberSelect");
+      memberSelect.innerHTML = instrumentState.tags.map((tag) => (
+        `<option value="${escapeHtml(tag.tag_id)}">${escapeHtml(tag.name)}</option>`
+      )).join("");
+    }
+
+    function renderTags() {
+      const list = document.getElementById("instrumentTagList");
+      document.getElementById("tagMeta").textContent = `${instrumentState.tags.length} lists`;
+      const allActive = instrumentState.selectedTagId ? "" : " active";
+      const allItem = `<button class="tag-item${allActive}" data-special-tag="all" data-tag-id="" type="button">
+        <span>All</span>
+        <span class="tag-count">${escapeHtml(instrumentState.allTotal ?? instrumentState.total ?? 0)}</span>
+      </button>`;
+      const tagItems = instrumentState.tags.map((tag) => {
+        const active = tag.tag_id === instrumentState.selectedTagId ? " active" : "";
+        const deleteButton = isDefaultSourceTag(tag) ? "" : `
+          <button class="tag-delete-button" data-delete-tag-id="${escapeHtml(tag.tag_id)}" aria-label="Delete ${escapeHtml(tag.name)}" title="Delete list" type="button">×</button>`;
+        return `<div class="tag-item${active}">
+          <button class="tag-select-button" data-tag-id="${escapeHtml(tag.tag_id)}" type="button">
+            <span class="tag-name">${escapeHtml(tag.name)}</span>
+            <span class="tag-count">${escapeHtml(tag.member_count || 0)}</span>
+          </button>
+          ${deleteButton}
+        </div>`;
+      }).join("");
+      list.innerHTML = `${allItem}${tagItems}`;
+      for (const button of list.querySelectorAll("[data-tag-id]")) {
+        button.addEventListener("click", () => {
+          instrumentState.selectedTagId = button.dataset.tagId || "";
+          resetInstrumentPaging();
+          loadInstrumentManager();
+        });
+      }
+      for (const button of list.querySelectorAll("[data-delete-tag-id]")) {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          deleteInstrumentTag(button.dataset.deleteTagId || "");
+        });
+      }
+    }
+
+    function renderRows() {
+      const rows = document.getElementById("instrumentRows");
+      rows.innerHTML = instrumentState.instruments.length ? instrumentState.instruments.map((instrument) => {
+        const selected = selectedInstrument()?.instrument_id === instrument.instrument_id ? " selected" : "";
+        const tags = Array.isArray(instrument.tags) ? instrument.tags : [];
+        return `<tr class="${selected}" data-instrument-id="${escapeHtml(instrument.instrument_id)}">
+          <td><div class="instrument-symbol-cell">
+            <strong>${escapeHtml(instrumentDisplaySymbol(instrument))}</strong>
+          </div></td>
+          <td>${escapeHtml(instrument.name || "")}</td>
+          <td>${escapeHtml(instrumentSourceLabel(instrument))}</td>
+          <td>${escapeHtml(marketLabel(instrument.market || instrument.asset_class || ""))}</td>
+          <td>${escapeHtml(settleCurrency(instrument))}</td>
+          <td>${escapeHtml(formatInstrumentSyncTime(instrument.updated_at))}</td>
+          <td>${tags.map((tag) => `<span class="tag-chip">${escapeHtml(tag.name)}</span>`).join("")}</td>
+        </tr>`;
+      }).join("") : `<tr><td class="empty" colspan="7">No instruments</td></tr>`;
+      for (const row of rows.querySelectorAll("[data-instrument-id]")) {
+        row.addEventListener("click", () => {
+          instrumentState.selectedInstrumentId = row.dataset.instrumentId || "";
+          renderInstrumentManager();
+        });
+      }
+    }
+
+    function renderInstrumentPagination() {
+      const pageCount = instrumentPageCount();
+      const pageSizeSelect = document.getElementById("instrumentPageSizeSelect");
+      const previousButton = document.getElementById("instrumentPreviousPageButton");
+      const nextButton = document.getElementById("instrumentNextPageButton");
+      const meta = document.getElementById("instrumentPaginationMeta");
+      const total = Number(instrumentState.total) || 0;
+      const start = total ? ((instrumentState.page - 1) * instrumentState.pageSize) + 1 : 0;
+      const end = Math.min(total, instrumentState.page * instrumentState.pageSize);
+
+      if (pageSizeSelect.value !== String(instrumentState.pageSize)) {
+        pageSizeSelect.value = String(instrumentState.pageSize);
+      }
+      previousButton.disabled = instrumentState.page <= 1 || total === 0;
+      nextButton.disabled = instrumentState.page >= pageCount || total === 0;
+      meta.textContent = total
+        ? `Showing ${start}-${end} of ${total} · Page ${instrumentState.page} / ${pageCount}`
+        : "No instruments";
+    }
+
+    function renderDetail() {
+      const instrument = selectedInstrument();
+      const detail = document.getElementById("instrumentDetail");
+      const meta = document.getElementById("instrumentDetailMeta");
+      if (!instrument) {
+        meta.textContent = "No selection";
+        detail.innerHTML = `<div class="empty">Select an instrument</div>`;
+        return;
+      }
+      instrumentState.selectedInstrumentId = instrument.instrument_id;
+      meta.textContent = instrumentDisplaySymbol(instrument);
+      const tags = Array.isArray(instrument.tags) ? instrument.tags : [];
+      detail.innerHTML = `
+        <div class="detail-row"><span>Name</span><strong>${escapeHtml(instrument.name || "")}</strong></div>
+        <div class="detail-row"><span>Symbol</span><strong>${escapeHtml(instrumentDisplaySymbol(instrument))}</strong></div>
+        <div class="detail-row"><span>ID</span><strong>${escapeHtml(instrument.instrument_id || "")}</strong></div>
+        <div class="detail-row"><span>Source</span><strong>${escapeHtml(instrumentSourceLabel(instrument))}</strong></div>
+        <div class="detail-row"><span>Exchange</span><strong>${escapeHtml(instrument.exchange || "")}</strong></div>
+        <div class="detail-row"><span>Market</span><strong>${escapeHtml(marketLabel(instrument.market || ""))}</strong></div>
+        <div class="detail-row"><span>Settle</span><strong>${escapeHtml(settleCurrency(instrument))}</strong></div>
+        <div class="detail-row"><span>Synced</span><strong>${escapeHtml(formatInstrumentSyncTime(instrument.updated_at))}</strong></div>
+        <div class="detail-row"><span>Asset</span><strong>${escapeHtml(instrument.asset_class || "")}</strong></div>
+        <div class="detail-row"><span>Lists</span><div>${tags.length ? tags.map((tag) => renderDetailTagChip(tag, instrument)).join("") : "None"}</div></div>
+      `;
+      for (const button of detail.querySelectorAll("[data-remove-tag-id]")) {
+        button.addEventListener("click", () => removeInstrumentFromTag(button.dataset.removeTagId || "", instrument.instrument_id));
+      }
+    }
+
+    function renderInstrumentManager() {
+      document.getElementById("instrumentError").textContent = instrumentState.error || "";
+      renderFilters();
+      renderTags();
+      renderRows();
+      renderInstrumentPagination();
+      renderDetail();
+    }
+
+    async function loadInstrumentManager() {
+      if (!payload.data_api_base_url) {
+        instrumentState.error = "Data API is not configured";
+        renderInstrumentManager();
+        return;
+      }
+      try {
+        const sourcesResponse = await fetch(dataApiUrl("/api/data-sources"), instrumentRequestOptions());
+        const tagsResponse = await fetch(dataApiUrl("/api/instrument-tags"), instrumentRequestOptions());
+        const instrumentsResponse = await fetch(instrumentApiUrl(), instrumentRequestOptions());
+        if (!sourcesResponse.ok || !tagsResponse.ok || !instrumentsResponse.ok) {
+          throw new Error("Unable to load instruments");
+        }
+        const sourcesPayload = await sourcesResponse.json();
+        const tagsPayload = await tagsResponse.json();
+        const instrumentsPayload = await instrumentsResponse.json();
+        let allTotal = Number(instrumentsPayload.total || 0);
+        if (instrumentState.selectedTagId) {
+          const allInstrumentsResponse = await fetch(instrumentApiUrl({ includeTag: false, limit: 1, offset: 0 }), instrumentRequestOptions());
+          if (allInstrumentsResponse.ok) {
+            const allInstrumentsPayload = await allInstrumentsResponse.json();
+            allTotal = Number(allInstrumentsPayload.total || 0);
+          }
+        }
+        const nextTotal = Number(instrumentsPayload.total || 0);
+        const nextPageCount = Math.max(1, Math.ceil(nextTotal / instrumentState.pageSize));
+        if (instrumentState.page > nextPageCount) {
+          instrumentState.page = nextPageCount;
+          await loadInstrumentManager();
+          return;
+        }
+        instrumentState = {
+          ...instrumentState,
+          sources: Array.isArray(sourcesPayload.sources) ? sourcesPayload.sources : [],
+          tags: Array.isArray(tagsPayload.tags) ? tagsPayload.tags : [],
+          instruments: Array.isArray(instrumentsPayload.instruments) ? instrumentsPayload.instruments : [],
+          total: nextTotal,
+          allTotal,
+          error: "",
+        };
+      } catch (error) {
+        instrumentState = { ...instrumentState, error: error.message };
+      }
+      renderInstrumentManager();
+    }
+
+    async function loadInstrumentSyncState() {
+      if (!payload.data_api_base_url) return;
+      const [sourcesResponse, schedulesResponse] = await Promise.all([
+        fetch(dataApiUrl("/api/instrument-sources"), instrumentRequestOptions()),
+        fetch(dataApiUrl("/api/instrument-sync/schedules"), instrumentRequestOptions()),
+      ]);
+      if (!sourcesResponse.ok || !schedulesResponse.ok) {
+        throw new Error("Unable to load instrument sources");
+      }
+      const sourcesPayload = await sourcesResponse.json();
+      const schedulesPayload = await schedulesResponse.json();
+      instrumentState.syncSources = Array.isArray(sourcesPayload.sources) ? sourcesPayload.sources : [];
+      instrumentState.syncSchedules = Array.isArray(schedulesPayload.schedules) ? schedulesPayload.schedules : [];
+      renderInstrumentSyncDialog();
+    }
+
+    function renderInstrumentSyncDialog() {
+      const sourceRows = document.getElementById("instrumentSourceRows");
+      sourceRows.innerHTML = instrumentState.syncSources.length ? instrumentState.syncSources.map((source) => `
+        <div class="sync-row">
+          <div>
+            <div class="sync-row-title">${escapeHtml(source.source_label || source.source_id)}</div>
+            <div class="sync-row-meta">${escapeHtml(source.provider_type || "")} · ${escapeHtml(JSON.stringify(source.provider_config || {}))}</div>
+          </div>
+          <button type="button" data-sync-source-id="${escapeHtml(source.source_id)}">Sync Now</button>
+        </div>
+      `).join("") : `<div class="empty">No sync sources</div>`;
+      for (const button of sourceRows.querySelectorAll("[data-sync-source-id]")) {
+        button.addEventListener("click", () => runInstrumentSourceSync(button.dataset.syncSourceId || ""));
+      }
+      const sourceSelect = document.getElementById("instrumentSyncScheduleSource");
+      sourceSelect.innerHTML = instrumentState.syncSources.map((source) => (
+        `<option value="${escapeHtml(source.source_id)}">${escapeHtml(source.source_label || source.source_id)}</option>`
+      )).join("");
+      renderInstrumentSyncSchedules();
+      document.getElementById("instrumentSyncError").textContent = instrumentState.syncMessage || "";
+    }
+
+    function renderInstrumentSyncSchedules() {
+      const rows = document.getElementById("instrumentSyncScheduleRows");
+      rows.innerHTML = instrumentState.syncSchedules.length ? instrumentState.syncSchedules.map((schedule) => `
+        <div class="sync-row">
+          <div>
+            <div class="sync-row-title">${escapeHtml(schedule.name || schedule.schedule_id)}</div>
+            <div class="sync-row-meta">${escapeHtml(schedule.config?.source_id || schedule.source_id || "")} · ${escapeHtml(schedule.status || "")}</div>
+          </div>
+          <div class="row-actions">
+            <button type="button" data-sync-schedule-action="run" data-sync-schedule-id="${escapeHtml(schedule.schedule_id)}">Run</button>
+            <button type="button" data-sync-schedule-action="${schedule.enabled ? "disable" : "enable"}" data-sync-schedule-id="${escapeHtml(schedule.schedule_id)}">${schedule.enabled ? "Disable" : "Enable"}</button>
+            <button type="button" data-sync-schedule-action="delete" data-sync-schedule-id="${escapeHtml(schedule.schedule_id)}">Delete</button>
+          </div>
+        </div>
+      `).join("") : `<div class="empty">No sync schedules</div>`;
+      for (const button of rows.querySelectorAll("[data-sync-schedule-action]")) {
+        button.addEventListener("click", () => handleInstrumentSyncScheduleAction(button.dataset.syncScheduleAction || "", button.dataset.syncScheduleId || ""));
+      }
+    }
+
+    async function runInstrumentSourceSync(sourceId) {
+      if (!sourceId) return;
+      try {
+        const payload = { source_id: sourceId };
+        const response = await fetch(dataApiUrl("/api/instrument-sync/run"), instrumentMutationOptions("POST", payload));
+        if (!response.ok) throw new Error(await response.text());
+        const result = await response.json();
+        instrumentState.syncMessage = `Synced ${result.source_id}: ${result.created} created, ${result.updated} updated`;
+        await loadInstrumentManager();
+        await loadInstrumentSyncState();
+      } catch (error) {
+        instrumentState.syncMessage = error.message;
+        renderInstrumentSyncDialog();
+      }
+    }
+
+    async function createInstrumentSyncSchedule(event) {
+      event.preventDefault();
+      try {
+        const sourceId = document.getElementById("instrumentSyncScheduleSource").value;
+        const every = Number(document.getElementById("instrumentSyncEvery").value) || 1;
+        const unit = document.getElementById("instrumentSyncUnit").value || "hours";
+        const name = document.getElementById("instrumentSyncScheduleName").value.trim()
+          || `${sourceId} instruments`;
+        const payload = {
+          name,
+          enabled: document.getElementById("instrumentSyncEnabled").checked,
+          source_id: sourceId,
+          trigger: {
+            type: "interval",
+            every,
+            unit,
+            start_at: new Date().toISOString(),
+            timezone: "Asia/Shanghai",
+          },
+        };
+        const response = await fetch(dataApiUrl("/api/instrument-sync/schedules"), instrumentMutationOptions("POST", payload));
+        if (!response.ok) throw new Error(await response.text());
+        instrumentState.syncMessage = `Created schedule ${name}`;
+        document.getElementById("instrumentSyncScheduleForm").reset();
+        await loadInstrumentSyncState();
+      } catch (error) {
+        instrumentState.syncMessage = error.message;
+        renderInstrumentSyncDialog();
+      }
+    }
+
+    async function handleInstrumentSyncScheduleAction(action, scheduleId) {
+      if (!action || !scheduleId) return;
+      if (action === "delete" && !window.confirm("Delete this sync schedule?")) return;
+      try {
+        const path = action === "delete"
+          ? `/api/instrument-sync/schedules/${encodeURIComponent(scheduleId)}`
+          : `/api/instrument-sync/schedules/${encodeURIComponent(scheduleId)}/${action === "run" ? "run-now" : action}`;
+        const method = action === "delete" ? "DELETE" : "POST";
+        const response = await fetch(dataApiUrl(path), instrumentMutationOptions(method, {}));
+        if (!response.ok) throw new Error(await response.text());
+        instrumentState.syncMessage = action === "run" ? "Schedule run completed" : "Schedule updated";
+        if (action === "run") await loadInstrumentManager();
+        await loadInstrumentSyncState();
+      } catch (error) {
+        instrumentState.syncMessage = error.message;
+        renderInstrumentSyncDialog();
+      }
+    }
+
+    function createInstrumentPayload() {
+      let metadata = {};
+      const metadataText = document.getElementById("instrumentMetadataInput").value.trim();
+      if (metadataText) {
+        metadata = JSON.parse(metadataText);
+      }
+      const sourceId = instrumentState.selectedSourceId
+        || (instrumentState.sources[0] ? instrumentState.sources[0].source_id : "");
+      return {
+        instrument_id: document.getElementById("instrumentIdInput").value,
+        symbol: document.getElementById("instrumentIdInput").value,
+        name: document.getElementById("instrumentNameInput").value,
+        market: document.getElementById("instrumentMarketInput").value,
+        exchange: document.getElementById("instrumentExchangeInput").value,
+        asset_class: document.getElementById("instrumentAssetClassInput").value,
+        quote_currency: document.getElementById("instrumentQuoteCurrencyInput").value,
+        source_id: sourceId || undefined,
+        metadata,
+      };
+    }
+
+    async function createInstrument(event) {
+      event.preventDefault();
+      try {
+        const payload = createInstrumentPayload();
+        const response = await fetch(dataApiUrl("/api/instruments"), instrumentMutationOptions("POST", payload));
+        if (!response.ok) throw new Error(await response.text());
+        closeInstrumentDialog();
+        await loadInstrumentManager();
+      } catch (error) {
+        instrumentState.error = error.message;
+        renderInstrumentManager();
+      }
+    }
+
+    function openInstrumentDialog() {
+      const dialog = document.getElementById("instrumentCreateDialog");
+      if (dialog.showModal) {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute("open", "");
+      }
+      document.getElementById("instrumentIdInput").focus();
+    }
+
+    function closeInstrumentDialog() {
+      document.getElementById("instrumentCreateForm").reset();
+      const dialog = document.getElementById("instrumentCreateDialog");
+      if (dialog.close) {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
+      }
+    }
+
+    function openTagDialog() {
+      const dialog = document.getElementById("tagCreateDialog");
+      if (dialog.showModal) {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute("open", "");
+      }
+      document.getElementById("tagNameInput").focus();
+    }
+
+    function selectTagColor(color) {
+      document.getElementById("tagColorInput").value = color;
+      for (const button of document.querySelectorAll("[data-tag-color]")) {
+        const active = button.dataset.tagColor === color;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-checked", active ? "true" : "false");
+      }
+    }
+
+    function resetTagColorSelection() {
+      selectTagColor("#1d5fd1");
+    }
+
+    function closeTagDialog() {
+      document.getElementById("tagCreateForm").reset();
+      resetTagColorSelection();
+      const dialog = document.getElementById("tagCreateDialog");
+      if (dialog.close) {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
+      }
+    }
+
+    async function createTag(event) {
+      event.preventDefault();
+      try {
+        const payload = {
+          name: document.getElementById("tagNameInput").value,
+          color: document.getElementById("tagColorInput").value || undefined,
+        };
+        const response = await fetch(dataApiUrl("/api/instrument-tags"), instrumentMutationOptions("POST", payload));
+        if (!response.ok) throw new Error(await response.text());
+        closeTagDialog();
+        await loadInstrumentManager();
+      } catch (error) {
+        instrumentState.error = error.message;
+        renderInstrumentManager();
+      }
+    }
+
+    async function deleteInstrumentTag(tagId) {
+      if (!tagId) return;
+      const tag = instrumentState.tags.find((item) => item.tag_id === tagId);
+      if (isDefaultSourceTag(tag || { tag_id: tagId })) return;
+      const tagLabel = tag?.name || tagId;
+      if (!window.confirm(`Delete list "${tagLabel}"? This will remove the list from all instruments.`)) return;
+      try {
+        const response = await fetch(
+          dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}`),
+          instrumentMutationOptions("DELETE", {}),
+        );
+        if (!response.ok) throw new Error(await response.text());
+        if (instrumentState.selectedTagId === tagId) {
+          instrumentState.selectedTagId = "";
+        }
+        await loadInstrumentManager();
+      } catch (error) {
+        instrumentState.error = error.message;
+        renderInstrumentManager();
+      }
+    }
+
+    async function addInstrumentToTag(tagId, instrumentId) {
+      if (!tagId || !instrumentId) return;
+      const payload = { instrument_ids: [instrumentId] };
+      const response = await fetch(dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}/members`), instrumentMutationOptions("POST", payload));
+      if (!response.ok) throw new Error(await response.text());
+      await loadInstrumentManager();
+    }
+
+    async function removeInstrumentFromTag(tagId, instrumentId) {
+      if (!tagId || !instrumentId) return;
+      const instrument = selectedInstrument();
+      if (isDefaultInstrumentTag({ tag_id: tagId }, instrument)) return;
+      const response = await fetch(
+        dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}/members/${encodeURIComponent(instrumentId)}`),
+        instrumentMutationOptions("DELETE", {}),
+      );
+      if (!response.ok) {
+        instrumentState.error = await response.text();
+      }
+      await loadInstrumentManager();
+    }
+
+    document.getElementById("instrumentSearchButton").addEventListener("click", () => {
+      resetInstrumentPaging();
+      loadInstrumentManager();
+    });
+    document.getElementById("openInstrumentDialogButton").addEventListener("click", openInstrumentDialog);
+    document.getElementById("closeInstrumentDialogButton").addEventListener("click", closeInstrumentDialog);
+    document.getElementById("cancelInstrumentDialogButton").addEventListener("click", closeInstrumentDialog);
+    document.getElementById("openInstrumentSyncDialogButton").addEventListener("click", async () => {
+      const dialog = document.getElementById("instrumentSyncDialog");
+      try {
+        instrumentState.syncMessage = "";
+        await loadInstrumentSyncState();
+      } catch (error) {
+        instrumentState.syncMessage = error.message;
+        renderInstrumentSyncDialog();
+      }
+      if (dialog.showModal) {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute("open", "");
+      }
+    });
+    document.getElementById("closeInstrumentSyncDialogButton").addEventListener("click", () => {
+      document.getElementById("instrumentSyncDialog").close();
+    });
+    document.getElementById("instrumentSyncDialog").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) event.currentTarget.close();
+    });
+    document.getElementById("instrumentCreateDialog").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) closeInstrumentDialog();
+    });
+    document.getElementById("instrumentCreateDialog").addEventListener("cancel", () => {
+      document.getElementById("instrumentCreateForm").reset();
+    });
+    document.getElementById("openTagDialogButton").addEventListener("click", openTagDialog);
+    document.getElementById("closeTagDialogButton").addEventListener("click", closeTagDialog);
+    document.getElementById("cancelTagDialogButton").addEventListener("click", closeTagDialog);
+    document.getElementById("tagCreateDialog").addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) closeTagDialog();
+    });
+    document.getElementById("tagCreateDialog").addEventListener("cancel", () => {
+      document.getElementById("tagCreateForm").reset();
+      resetTagColorSelection();
+    });
+    for (const button of document.querySelectorAll("[data-tag-color]")) {
+      button.addEventListener("click", () => selectTagColor(button.dataset.tagColor || "#1d5fd1"));
+    }
+    document.getElementById("instrumentSourceFilter").addEventListener("change", (event) => {
+      instrumentState.selectedSourceId = event.target.value;
+      resetInstrumentPaging();
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentTagFilter").addEventListener("change", (event) => {
+      instrumentState.selectedTagId = event.target.value;
+      resetInstrumentPaging();
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentSearchInput").addEventListener("input", (event) => {
+      clearTimeout(instrumentSearchTimer);
+      instrumentSearchTimer = setTimeout(() => {
+        instrumentState.query = event.target.value.trim();
+        resetInstrumentPaging();
+        loadInstrumentManager();
+      }, 250);
+    });
+    document.getElementById("instrumentPreviousPageButton").addEventListener("click", () => {
+      instrumentState.page = Math.max(1, instrumentState.page - 1);
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentNextPageButton").addEventListener("click", () => {
+      instrumentState.page = Math.min(instrumentPageCount(), instrumentState.page + 1);
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentPageSizeSelect").addEventListener("change", (event) => {
+      instrumentState.pageSize = Number(event.target.value) || 25;
+      resetInstrumentPaging();
+      loadInstrumentManager();
+    });
+    document.getElementById("instrumentCreateForm").addEventListener("submit", createInstrument);
+    document.getElementById("instrumentSyncScheduleForm").addEventListener("submit", createInstrumentSyncSchedule);
+    document.getElementById("tagCreateForm").addEventListener("submit", createTag);
+    document.getElementById("instrumentTagMemberForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        await addInstrumentToTag(
+          document.getElementById("instrumentTagMemberSelect").value,
+          selectedInstrument()?.instrument_id || "",
+        );
+      } catch (error) {
+        instrumentState.error = error.message;
+        renderInstrumentManager();
+      }
+    });
+    document.getElementById("openKlineButton").addEventListener("click", openSelectedInstrumentKline);
+
+    loadInstrumentManager();
+  </script>
+</body>
+</html>
+""".replace("__INSTRUMENT_MANAGER_PAYLOAD__", safe_payload)
 
 
 def render_workbench_index_html(
@@ -325,6 +1723,11 @@ def render_workbench_index_html(
       white-space: nowrap;
     }
     .text-button:hover { background: #f8fafc; border-color: #b8c7d6; }
+    .text-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
     .text-button.danger-button {
       border-color: #f1b8ad;
       background: #fff7f5;
@@ -405,11 +1808,13 @@ def render_workbench_index_html(
       overflow: hidden;
     }
     .drawer-panel[hidden] { display: none; }
-    .schedule-drawer-panel {
-      display: grid;
-      grid-template-rows: minmax(220px, 1fr) minmax(170px, 0.85fr);
-      gap: 12px;
+    .schedule-drawer-panel,
+    .schedule-runs-drawer-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
       padding: 12px 16px;
+      overflow: hidden;
     }
     .task-drawer-panel {
       display: grid;
@@ -511,15 +1916,33 @@ def render_workbench_index_html(
       border-bottom: 1px solid var(--line);
     }
     .schedule-runs-panel { max-height: 180px; }
-    .schedule-drawer-panel .schedule-panel {
-      max-height: none;
+    .schedule-drawer-panel .schedule-panel,
+    .schedule-runs-drawer-panel .schedule-panel {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 8px;
       min-height: 0;
+      max-height: none;
       overflow: hidden;
       padding: 10px;
       border: 1px solid var(--line-soft);
       border-radius: 6px;
     }
-    .schedule-drawer-panel .schedule-runs-panel { max-height: none; }
+    .schedule-drawer-panel .schedule-table-wrap,
+    .schedule-runs-drawer-panel .schedule-table-wrap {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow: auto;
+    }
+    .schedule-drawer-panel .panel-pagination,
+    .schedule-runs-drawer-panel .panel-pagination {
+      position: relative;
+      z-index: 2;
+      flex: 0 0 auto;
+      padding-top: 4px;
+      background: var(--surface);
+    }
     .schedule-actions {
       display: flex;
       gap: 6px;
@@ -537,6 +1960,12 @@ def render_workbench_index_html(
       align-items: center;
       color: var(--muted);
       font-size: 12px;
+    }
+    .schedule-panel-title {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      min-width: 0;
     }
     .schedule-panel-header strong {
       color: var(--text);
@@ -592,6 +2021,31 @@ def render_workbench_index_html(
       color: var(--muted);
       font-size: 11px;
       font-weight: 500;
+    }
+    .schedule-run-progress {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      min-width: 220px;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.35;
+      text-transform: none;
+      white-space: normal;
+    }
+    .schedule-run-progress span {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .schedule-run-progress .ok { color: #1f7a45; }
+    .schedule-run-progress .fail { color: var(--red); }
+    .schedule-run-progress .run { color: #195bb8; }
+    .schedule-run-progress .wait { color: #8a5b00; }
+    .schedule-run-progress .muted {
+      color: var(--muted);
+      font-weight: 600;
     }
     .schedule-editor-backdrop {
       position: fixed;
@@ -793,6 +2247,87 @@ def render_workbench_index_html(
       box-shadow: 0 12px 28px rgb(21 31 43 / 18%);
     }
     .frequency-menu[hidden] { display: none; }
+    .schedule-target-field {
+      grid-column: 1 / -1;
+    }
+    .schedule-target-mode {
+      margin-bottom: 6px;
+    }
+    .schedule-target-panel {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfdff;
+    }
+    .schedule-target-panel[hidden] { display: none; }
+    .schedule-target-search-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+    }
+    .schedule-target-search-row button {
+      min-height: 32px;
+      padding: 0 12px;
+      border: 1px solid #cfe0f8;
+      border-radius: 6px;
+      background: #eef5ff;
+      color: #195bb8;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .schedule-selected-instruments,
+    .schedule-instrument-results {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .schedule-instrument-results {
+      max-height: 124px;
+      overflow: auto;
+      align-content: flex-start;
+    }
+    .schedule-instrument-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      min-height: 28px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: none;
+      cursor: pointer;
+    }
+    .schedule-instrument-chip.selected {
+      border-color: #b7d4ff;
+      background: #eef5ff;
+      color: #195bb8;
+    }
+    .schedule-instrument-chip button {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .schedule-target-meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.4;
+      text-transform: none;
+    }
     .schedule-editor-actions {
       display: flex;
       justify-content: flex-end;
@@ -912,7 +2447,6 @@ def render_workbench_index_html(
         width: calc(100vw - 16px);
         height: calc(100vh - 16px);
       }
-      .schedule-drawer-panel { grid-template-rows: minmax(180px, 1fr) minmax(150px, 0.8fr); }
       .drawer-filters { grid-template-columns: 1fr; }
       .panel-pagination { align-items: flex-start; flex-direction: column; }
       .panel-pagination-controls { flex-wrap: wrap; }
@@ -949,13 +2483,17 @@ def render_workbench_index_html(
     </div>
     <div class="drawer-main-tabs" role="tablist" aria-label="Data source monitor sections">
       <button class="drawer-main-tab active" id="scheduleDrawerTab" data-drawer-tab="schedules" type="button" role="tab" aria-selected="true" aria-controls="scheduleDrawerPanel">Schedules</button>
+      <button class="drawer-main-tab" id="scheduleRunsDrawerTab" data-drawer-tab="runs" type="button" role="tab" aria-selected="false" aria-controls="scheduleRunsDrawerPanel">Recent Runs</button>
       <button class="drawer-main-tab" id="taskDrawerTab" data-drawer-tab="tasks" type="button" role="tab" aria-selected="false" aria-controls="taskDrawerPanel">Crawl Tasks</button>
     </div>
     <div class="drawer-panel schedule-drawer-panel" id="scheduleDrawerPanel" role="tabpanel" aria-labelledby="scheduleDrawerTab">
       <section class="schedule-panel" aria-label="Data source schedules">
         <div class="schedule-panel-header">
-          <strong>Schedules</strong>
-          <span id="dataScheduleMeta"></span>
+          <div class="schedule-panel-title">
+            <strong>Schedules</strong>
+            <span id="dataScheduleMeta"></span>
+          </div>
+          <button class="text-button" id="scheduleCreateButton" type="button">New</button>
         </div>
         <div class="schedule-table-wrap">
           <table>
@@ -991,6 +2529,8 @@ def render_workbench_index_html(
           </div>
         </div>
       </section>
+    </div>
+    <div class="drawer-panel schedule-runs-drawer-panel" id="scheduleRunsDrawerPanel" role="tabpanel" aria-labelledby="scheduleRunsDrawerTab" hidden>
       <section class="schedule-panel schedule-runs-panel" aria-label="Recent schedule runs">
         <div class="schedule-panel-header">
           <strong>Recent Runs</strong>
@@ -1004,9 +2544,8 @@ def render_workbench_index_html(
                 <th>Target</th>
                 <th>Range</th>
                 <th>Run Status</th>
-                <th>Job Status</th>
                 <th>Triggered</th>
-                <th>Job</th>
+                <th>Task Progress</th>
               </tr>
             </thead>
             <tbody id="dataScheduleRunRows"></tbody>
@@ -1086,7 +2625,7 @@ def render_workbench_index_html(
   <section class="schedule-editor" id="scheduleEditDialog" hidden aria-label="Edit schedule">
     <div class="schedule-editor-header">
       <div>
-        <h3>Edit Schedule</h3>
+        <h3 id="scheduleEditTitle">Edit Schedule</h3>
         <div class="subtitle" id="scheduleEditSubtitle"></div>
       </div>
       <button class="text-button" id="scheduleEditCloseButton" type="button">Close</button>
@@ -1102,7 +2641,7 @@ def render_workbench_index_html(
           </label>
           <label class="schedule-editor-field">
             <span>Source</span>
-            <input id="scheduleEditSourceId" type="text" autocomplete="off">
+            <select id="scheduleEditSourceId"></select>
           </label>
           <label class="schedule-editor-field">
             <span>Timezone</span>
@@ -1202,10 +2741,28 @@ def render_workbench_index_html(
       <section class="schedule-editor-section">
         <h4>Data</h4>
         <div class="schedule-editor-grid">
-          <label class="schedule-editor-field">
+          <div class="schedule-editor-field schedule-target-field">
             <span>Symbols</span>
-            <input id="scheduleEditSymbols" type="text" autocomplete="off">
-          </label>
+            <input id="scheduleEditSymbols" type="hidden">
+            <input id="scheduleEditTargetMode" type="hidden">
+            <div class="schedule-editor-segmented schedule-target-mode" id="scheduleEditTargetModeTabs">
+              <button data-schedule-target-mode="symbols" type="button">Search Symbols</button>
+              <button data-schedule-target-mode="tag" type="button">Use List</button>
+            </div>
+            <div class="schedule-target-panel" data-schedule-target-panel="symbols">
+              <div class="schedule-target-search-row">
+                <input id="scheduleInstrumentSearch" type="search" placeholder="Search symbol, name, or code" autocomplete="off">
+                <button id="scheduleInstrumentSearchButton" type="button">Search</button>
+              </div>
+              <div class="schedule-target-meta" id="scheduleInstrumentSearchMeta">Select instruments from the current source.</div>
+              <div class="schedule-selected-instruments" id="scheduleSelectedInstruments"></div>
+              <div class="schedule-instrument-results" id="scheduleInstrumentSearchResults"></div>
+            </div>
+            <div class="schedule-target-panel" data-schedule-target-panel="tag" hidden>
+              <select id="scheduleEditTagId"></select>
+              <div class="schedule-target-meta" id="scheduleTagMemberPreview">Select a list to preview its members.</div>
+            </div>
+          </div>
           <div class="schedule-editor-field">
             <span>Frequencies</span>
             <input id="scheduleEditFrequencies" type="hidden">
@@ -1281,14 +2838,19 @@ def render_workbench_index_html(
       <strong>K-line Viewer</strong>
       <span>Inspect cached market bars across configured data sources.</span>
     </a>
+    <a href="/instruments">
+      <strong>Instrument Lists</strong>
+      <span>Browse instruments, tags, and watchlist-style lists from the data API.</span>
+    </a>
   </main>
   <script>
     const payload = JSON.parse(document.getElementById("workbench-index-payload").textContent);
-    const DATA_MONITOR_REFRESH_MS = 10000;
+    const DATA_MONITOR_REFRESH_MS = 30000;
     const WORKBENCH_DISPLAY_TIME_ZONE = "Asia/Shanghai";
     const WORKBENCH_DISPLAY_TIME_ZONE_OFFSET = "+08:00";
     let dataMonitorTimer = null;
     let taskSearchTimer = null;
+    let scheduleInstrumentSearchTimer = null;
     let dataMonitorState = {
       sources: [],
       summariesBySource: {},
@@ -1304,9 +2866,22 @@ def render_workbench_index_html(
       scheduleRunPage: 1,
       scheduleRunPageSize: 25,
       editingScheduleId: "",
+      scheduleEditMode: "edit",
+      scheduleTarget: {
+        mode: "symbols",
+        selectedInstruments: [],
+        searchResults: [],
+        searchQuery: "",
+        tagsBySource: {},
+        tagMembersByKey: {},
+        selectedTagId: "",
+      },
       lastUpdated: "",
       error: "",
     };
+    const SCHEDULE_SELECTED_INSTRUMENT_DISPLAY_LIMIT = 20;
+    const SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET = 20;
+    const SCHEDULE_INSTRUMENT_SEARCH_PAGE_SIZE = 100;
 
     const escapeHtml = (value) => String(value ?? "")
       .replaceAll("&", "&amp;")
@@ -1647,7 +3222,11 @@ def render_workbench_index_html(
     }
 
     function activeDrawerTab() {
-      return dataMonitorState.activeDrawerTab === "tasks" ? "tasks" : "schedules";
+      const tab = dataMonitorState.activeDrawerTab;
+      if (tab === "tasks" || tab === "runs") {
+        return tab;
+      }
+      return "schedules";
     }
 
     function syncDrawerTabs() {
@@ -1665,12 +3244,21 @@ def render_workbench_index_html(
     }
 
     function setDrawerTab(tabId) {
-      dataMonitorState.activeDrawerTab = tabId === "tasks" ? "tasks" : "schedules";
+      if (tabId === "tasks") {
+        dataMonitorState.activeDrawerTab = "tasks";
+      } else if (tabId === "runs") {
+        dataMonitorState.activeDrawerTab = "runs";
+      } else {
+        dataMonitorState.activeDrawerTab = "schedules";
+      }
       syncDrawerTabs();
       renderTaskDrawer();
       const source = selectedSource();
       if (activeDrawerTab() === "tasks" && source && !dataMonitorState.taskPagesBySource[source.source_id]) {
         loadSelectedTaskPage();
+      }
+      if (activeDrawerTab() === "runs") {
+        loadScheduleRuns();
       }
     }
 
@@ -1684,6 +3272,44 @@ def render_workbench_index_html(
 
     function scheduleById(scheduleId) {
       return scheduleList().find((schedule) => schedule.schedule_id === scheduleId) || null;
+    }
+
+    function formatJobTaskProgress(job) {
+      if (!job) {
+        return { html: '<span class="muted">No job linked</span>', title: "" };
+      }
+      const total = Number(job.total_items || 0);
+      const success = Number(job.success_count || 0);
+      const failed = Number(job.failed_count || 0);
+      const completed = success + failed;
+      const status = String(job.status || "");
+      let running = 0;
+      let pending = 0;
+      if (status === "running") {
+        running = total > completed ? 1 : 0;
+        pending = Math.max(0, total - completed - running);
+      } else if (status === "submitted") {
+        pending = total > 0 ? Math.max(0, total - completed) : 0;
+      }
+      const parts = [
+        `<span class="ok">Success ${success}</span>`,
+        `<span class="fail">Failed ${failed}</span>`,
+        `<span class="run">Running ${running}</span>`,
+        `<span class="wait">Pending ${pending}</span>`,
+      ];
+      const title = total
+        ? `${total} items · ${status}`
+        : status || "unknown";
+      if (!total && status === "submitted") {
+        return {
+          html: '<span class="muted">Starting…</span>',
+          title,
+        };
+      }
+      return {
+        html: `<div class="schedule-run-progress">${parts.join("")}</div>`,
+        title,
+      };
     }
 
     function jobById(jobId) {
@@ -1715,8 +3341,15 @@ def render_workbench_index_html(
 
     function formatScheduleJob(schedule) {
       const job = scheduleConfig(schedule).job || {};
+      const target = job.target || null;
       const symbols = Array.isArray(job.symbols) ? job.symbols : [];
-      const symbolText = symbols.length <= 3 ? symbols.join(", ") : `${symbols.length} symbols`;
+      let symbolText = symbols.length <= 3 ? symbols.join(", ") : `${symbols.length} symbols`;
+      if (target?.mode === "tag") {
+        symbolText = `List: ${target.tag_id || ""}`;
+      } else if (target?.mode === "symbols" && !symbolText) {
+        const instrumentIds = Array.isArray(target.instrument_ids) ? target.instrument_ids : [];
+        symbolText = instrumentIds.length <= 3 ? instrumentIds.join(", ") : `${instrumentIds.length} symbols`;
+      }
       const frequencies = Array.isArray(job.frequencies) ? job.frequencies.join(", ") : "";
       return [job.source_id, symbolText, frequencies].filter(Boolean).join(" · ");
     }
@@ -1775,7 +3408,7 @@ def render_workbench_index_html(
         const leftTime = new Date(left.triggered_at || left.created_at || "").getTime();
         const rightTime = new Date(right.triggered_at || right.created_at || "").getTime();
         return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime);
-      }).slice(0, 8);
+      });
     }
 
     function taskPageUrl(sourceId, filters) {
@@ -2012,6 +3645,646 @@ def render_workbench_index_html(
       scheduleEditInput(id).value = value ?? "";
     }
 
+    function scheduleTargetState() {
+      if (!dataMonitorState.scheduleTarget) {
+        dataMonitorState.scheduleTarget = {
+          mode: "symbols",
+          selectedInstruments: [],
+          searchResults: [],
+          searchQuery: "",
+          tagsBySource: {},
+          tagMembersByKey: {},
+          selectedTagId: "",
+        };
+      }
+      return dataMonitorState.scheduleTarget;
+    }
+
+    function scheduleTargetKey(sourceId, tagId) {
+      return `${sourceId || ""}::${tagId || ""}`;
+    }
+
+    function scheduleInstrumentSymbol(instrument) {
+      return instrument?.symbol || instrument?.instrument_id || "";
+    }
+
+    function scheduleSymbolFromInstrumentId(instrumentId) {
+      const value = String(instrumentId || "").trim();
+      const sourceSeparatorIndex = value.indexOf(":");
+      if (sourceSeparatorIndex >= 0 && !value.slice(0, sourceSeparatorIndex).includes("/")) {
+        return value.slice(sourceSeparatorIndex + 1);
+      }
+      return value;
+    }
+
+    function schedulePayloadSymbolFromValue(rawSymbol) {
+      let value = scheduleSymbolFromInstrumentId(rawSymbol);
+      const contractSeparatorIndex = value.indexOf(":");
+      if (contractSeparatorIndex >= 0 && value.includes("/")) {
+        value = value.slice(0, contractSeparatorIndex);
+      }
+      return value.trim().toUpperCase();
+    }
+
+    function supportedScheduleSymbol(symbol) {
+      const value = String(symbol || "").trim().toUpperCase();
+      return /^\\d{6}\\.(SZ|SH|BJ)$/.test(value)
+        || /^(SZ|SH|BJ)\\d{6}$/.test(value)
+        || /^\\d{6}$/.test(value)
+        || /^[A-Z0-9]+\\/[A-Z0-9]+$/.test(value);
+    }
+
+    function schedulePayloadSymbolsForInstruments(instruments) {
+      const symbols = [];
+      const seen = new Set();
+      for (const instrument of instruments || []) {
+        const symbol = schedulePayloadSymbolFromValue(scheduleInstrumentSymbol(instrument));
+        if (!symbol || !supportedScheduleSymbol(symbol) || seen.has(symbol)) {
+          continue;
+        }
+        seen.add(symbol);
+        symbols.push(symbol);
+      }
+      return symbols;
+    }
+
+    function scheduleInstrumentLabel(instrument) {
+      const symbol = scheduleInstrumentSymbol(instrument);
+      const name = instrument?.name || "";
+      if (name && name !== symbol) {
+        return `${symbol} · ${name}`;
+      }
+      return symbol;
+    }
+
+    function normalizeScheduleInstrument(value, sourceId = "") {
+      const instrumentId = String(value?.instrument_id || value?.id || value?.symbol || "").trim();
+      return {
+        instrument_id: instrumentId,
+        symbol: String(value?.symbol || scheduleSymbolFromInstrumentId(instrumentId)).trim(),
+        name: value?.name || "",
+        source_id: value?.source_id || sourceId || inputValue("scheduleEditSourceId"),
+      };
+    }
+
+    function scheduleInstrumentIdentityKeys(instrument) {
+      const instrumentIdKey = String(instrument?.instrument_id || "").trim().toLowerCase();
+      const symbolKey = String(scheduleInstrumentSymbol(instrument) || "").trim().toLowerCase();
+      const keys = [];
+      if (instrumentIdKey) keys.push(`id:${instrumentIdKey}`);
+      if (symbolKey) keys.push(`symbol:${symbolKey}`);
+      return keys;
+    }
+
+    function scheduleInstrumentIdentityKeySet(instruments) {
+      const keys = new Set();
+      for (const instrument of instruments || []) {
+        for (const key of scheduleInstrumentIdentityKeys(instrument)) {
+          keys.add(key);
+        }
+      }
+      return keys;
+    }
+
+    function scheduleInstrumentAlreadySelected(instrument, selectedKeys) {
+      return scheduleInstrumentIdentityKeys(instrument).some((key) => selectedKeys.has(key));
+    }
+
+    function scheduleInstrumentDetailMap(instruments) {
+      const detailsByKey = new Map();
+      for (const instrument of instruments || []) {
+        for (const key of scheduleInstrumentIdentityKeys(instrument)) {
+          if (!detailsByKey.has(key)) {
+            detailsByKey.set(key, instrument);
+          }
+        }
+      }
+      return detailsByKey;
+    }
+
+    function enrichSelectedScheduleInstruments(instruments) {
+      const state = scheduleTargetState();
+      const detailsByKey = scheduleInstrumentDetailMap(instruments);
+      state.selectedInstruments = state.selectedInstruments.map((current) => {
+        const detail = scheduleInstrumentIdentityKeys(current)
+          .map((key) => detailsByKey.get(key))
+          .find(Boolean);
+        if (!detail) return current;
+        return {
+          ...current,
+          instrument_id: current.instrument_id || detail.instrument_id || "",
+          symbol: current.symbol || detail.symbol || "",
+          name: current.name || detail.name || "",
+          source_id: current.source_id || detail.source_id || "",
+        };
+      });
+    }
+
+    function scheduleInstrumentMatchesQuery(instrument, query) {
+      const normalizedQuery = String(query || "").trim().toLowerCase();
+      if (!normalizedQuery) return true;
+      return [
+        instrument?.instrument_id,
+        instrument?.symbol,
+        instrument?.name,
+        scheduleInstrumentLabel(instrument),
+      ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+    }
+
+    function sortSelectedScheduleInstrumentsForDisplay(instruments, query) {
+      if (!String(query || "").trim()) {
+        return instruments;
+      }
+      return [...instruments].sort((left, right) => {
+        const leftMatches = scheduleInstrumentMatchesQuery(left, query);
+        const rightMatches = scheduleInstrumentMatchesQuery(right, query);
+        if (leftMatches !== rightMatches) return leftMatches ? -1 : 1;
+        return scheduleInstrumentLabel(left).localeCompare(scheduleInstrumentLabel(right));
+      });
+    }
+
+    function visibleScheduleSelectedInstruments() {
+      return scheduleSelectedInstrumentsForDisplay()
+        .slice(0, SCHEDULE_SELECTED_INSTRUMENT_DISPLAY_LIMIT);
+    }
+
+    function scheduleSelectedInstrumentsForDisplay() {
+      const state = scheduleTargetState();
+      const instruments = String(state.searchQuery || "").trim()
+        ? state.selectedInstruments.filter((instrument) => scheduleInstrumentMatchesQuery(instrument, state.searchQuery))
+        : state.selectedInstruments;
+      return sortSelectedScheduleInstrumentsForDisplay(instruments, state.searchQuery);
+    }
+
+    function scheduleSearchResultsForDisplay() {
+      const state = scheduleTargetState();
+      const selectedKeys = scheduleInstrumentIdentityKeySet(state.selectedInstruments);
+      return state.searchResults.filter((instrument) => !scheduleInstrumentAlreadySelected(instrument, selectedKeys));
+    }
+
+    function visibleScheduleSearchResults() {
+      return scheduleSearchResultsForDisplay()
+        .slice(0, SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET);
+    }
+
+    function selectedScheduleSymbols() {
+      return schedulePayloadSymbolsForInstruments(scheduleTargetState().selectedInstruments);
+    }
+
+    function syncScheduleSymbolsInput() {
+      setInputValue("scheduleEditSymbols", selectedScheduleSymbols().join(", "));
+    }
+
+    function renderScheduleSourceOptions(selectedId) {
+      const select = document.getElementById("scheduleEditSourceId");
+      const sources = Array.isArray(dataMonitorState.sources) ? dataMonitorState.sources : [];
+      const selected = selectedId || sources[0]?.source_id || "";
+      const hasSelected = sources.some((source) => source.source_id === selected);
+      const extra = selected && !hasSelected
+        ? `<option value="${escapeHtml(selected)}">${escapeHtml(selected)}</option>`
+        : "";
+      select.innerHTML = `${extra}${sources.map((source) => (
+        `<option value="${escapeHtml(source.source_id)}">${escapeHtml(sourceLabel(source))}</option>`
+      )).join("")}`;
+      if (selected) {
+        select.value = selected;
+      }
+    }
+
+    function tagsForScheduleSource(sourceId) {
+      const state = scheduleTargetState();
+      const tags = Array.isArray(state.tagsBySource[sourceId]) ? state.tagsBySource[sourceId] : [];
+      return [...tags].sort((left, right) => {
+        if (left.tag_id === sourceId && right.tag_id !== sourceId) return -1;
+        if (right.tag_id === sourceId && left.tag_id !== sourceId) return 1;
+        return String(left.name || left.tag_id || "").localeCompare(String(right.name || right.tag_id || ""));
+      });
+    }
+
+    function tagMembersForScheduleSource(sourceId, tagId) {
+      const state = scheduleTargetState();
+      const key = scheduleTargetKey(sourceId, tagId);
+      return Array.isArray(state.tagMembersByKey[key]) ? state.tagMembersByKey[key] : [];
+    }
+
+    function renderScheduleSelectedInstruments() {
+      const state = scheduleTargetState();
+      const container = document.getElementById("scheduleSelectedInstruments");
+      const displayInstruments = scheduleSelectedInstrumentsForDisplay();
+      const visibleInstruments = visibleScheduleSelectedInstruments();
+      const hiddenCount = Math.max(0, displayInstruments.length - visibleInstruments.length);
+      const hiddenMeta = displayInstruments.length > visibleInstruments.length
+        ? `<span class="schedule-target-meta">&hellip; +${hiddenCount} more</span>`
+        : "";
+      container.innerHTML = displayInstruments.length
+        ? `${visibleInstruments.map((instrument) => `
+            <span class="schedule-instrument-chip selected">
+              ${escapeHtml(scheduleInstrumentLabel(instrument))}
+              <button data-remove-schedule-instrument="${escapeHtml(instrument.instrument_id)}" type="button" aria-label="Remove ${escapeHtml(scheduleInstrumentLabel(instrument))}">×</button>
+            </span>
+          `).join("")}${hiddenMeta}`
+        : state.selectedInstruments.length && String(state.searchQuery || "").trim()
+          ? `<span class="schedule-target-meta">No selected symbols match this search.</span>`
+        : `<span class="schedule-target-meta">No symbols selected</span>`;
+      for (const button of container.querySelectorAll("[data-remove-schedule-instrument]")) {
+        button.addEventListener("click", () => {
+          const instrumentId = button.dataset.removeScheduleInstrument || "";
+          state.selectedInstruments = state.selectedInstruments.filter((instrument) => instrument.instrument_id !== instrumentId);
+          renderScheduleTargetControls();
+        });
+      }
+    }
+
+    function renderScheduleInstrumentResults() {
+      const state = scheduleTargetState();
+      const container = document.getElementById("scheduleInstrumentSearchResults");
+      const results = visibleScheduleSearchResults();
+      container.innerHTML = results.length
+        ? results.map((instrument) => {
+          return `<button class="schedule-instrument-chip" data-select-schedule-instrument="${escapeHtml(instrument.instrument_id)}" type="button">
+            ${escapeHtml(scheduleInstrumentLabel(instrument))}
+          </button>`;
+        }).join("")
+        : `<span class="schedule-target-meta">${state.searchQuery ? "No additional instruments match this search." : "Search existing instruments or pick from the first page."}</span>`;
+      for (const button of container.querySelectorAll("[data-select-schedule-instrument]")) {
+        button.addEventListener("click", () => {
+          const instrument = results.find((item) => item.instrument_id === button.dataset.selectScheduleInstrument);
+          if (!instrument) return;
+          const selectedKeys = scheduleInstrumentIdentityKeySet(state.selectedInstruments);
+          if (!scheduleInstrumentAlreadySelected(instrument, selectedKeys)) {
+            state.selectedInstruments = [...state.selectedInstruments, instrument];
+          }
+          renderScheduleTargetControls();
+        });
+      }
+    }
+
+    function renderScheduleTagOptions(sourceId) {
+      const state = scheduleTargetState();
+      const select = document.getElementById("scheduleEditTagId");
+      const tags = tagsForScheduleSource(sourceId);
+      if (state.selectedTagId && !tags.some((tag) => tag.tag_id === state.selectedTagId)) {
+        state.selectedTagId = "";
+      }
+      if (!state.selectedTagId && tags.length) {
+        state.selectedTagId = tags[0].tag_id;
+      }
+      select.innerHTML = tags.length
+        ? tags.map((tag) => {
+          const countText = Number.isFinite(Number(tag.member_count)) ? ` (${tag.member_count})` : "";
+          return `<option value="${escapeHtml(tag.tag_id)}">${escapeHtml(tag.name || tag.tag_id)}${escapeHtml(countText)}</option>`;
+        }).join("")
+        : `<option value="">No lists</option>`;
+      select.value = state.selectedTagId || "";
+    }
+
+    function renderScheduleTagPreview(sourceId) {
+      const state = scheduleTargetState();
+      const preview = document.getElementById("scheduleTagMemberPreview");
+      const tagId = state.selectedTagId || inputValue("scheduleEditTagId");
+      if (!tagId) {
+        preview.textContent = "Select a list to preview its members.";
+        return;
+      }
+      const members = tagMembersForScheduleSource(sourceId, tagId);
+      if (!members.length) {
+        preview.textContent = "List selected. Member preview will load when available.";
+        return;
+      }
+      const symbols = schedulePayloadSymbolsForInstruments(members);
+      const sample = symbols.slice(0, 6).join(", ");
+      preview.textContent = symbols.length > 6
+        ? `${symbols.length} symbols · ${sample}, ...`
+        : `${symbols.length} symbols · ${sample}`;
+    }
+
+    function renderScheduleTargetControls() {
+      const state = scheduleTargetState();
+      const mode = state.mode === "tag" ? "tag" : "symbols";
+      const sourceId = inputValue("scheduleEditSourceId");
+      setInputValue("scheduleEditTargetMode", mode);
+      syncScheduleSymbolsInput();
+      for (const button of document.querySelectorAll("[data-schedule-target-mode]")) {
+        button.classList.toggle("active", button.dataset.scheduleTargetMode === mode);
+      }
+      for (const panel of document.querySelectorAll("[data-schedule-target-panel]")) {
+        panel.hidden = panel.dataset.scheduleTargetPanel !== mode;
+      }
+      const searchInput = document.getElementById("scheduleInstrumentSearch");
+      if (document.activeElement !== searchInput) {
+        searchInput.value = state.searchQuery || "";
+      }
+      const searchMeta = document.getElementById("scheduleInstrumentSearchMeta");
+      searchMeta.textContent = sourceId
+        ? `${state.selectedInstruments.length} selected from ${sourceId}`
+        : "Select a source before choosing symbols.";
+      renderScheduleSelectedInstruments();
+      renderScheduleInstrumentResults();
+      renderScheduleTagOptions(sourceId);
+      renderScheduleTagPreview(sourceId);
+      updateScheduleEditSummary();
+    }
+
+    function setScheduleTargetMode(mode) {
+      const state = scheduleTargetState();
+      state.mode = mode === "tag" ? "tag" : "symbols";
+      setInputValue("scheduleEditTargetMode", state.mode);
+      renderScheduleTargetControls();
+      if (state.mode === "tag") {
+        loadScheduleTargetTags(inputValue("scheduleEditSourceId"));
+      } else if (!state.searchResults.length) {
+        searchScheduleInstruments();
+      }
+    }
+
+    function scheduleTargetFromJob(job) {
+      const state = scheduleTargetState();
+      const sourceId = job.source_id || inputValue("scheduleEditSourceId");
+      const target = job.target || null;
+      const symbols = Array.isArray(job.symbols) ? job.symbols : [];
+      state.searchQuery = "";
+      state.searchResults = [];
+      state.selectedTagId = "";
+      if (target?.mode === "tag") {
+        state.mode = "tag";
+        state.selectedInstruments = [];
+        state.selectedTagId = target.tag_id || "";
+        return;
+      }
+      state.mode = "symbols";
+      const instrumentIds = target?.mode === "symbols" && Array.isArray(target.instrument_ids)
+        ? target.instrument_ids
+        : symbols;
+      state.selectedInstruments = instrumentIds.map((instrumentId, index) => normalizeScheduleInstrument({
+        instrument_id: instrumentId,
+        symbol: symbols[index] || instrumentId,
+        source_id: sourceId,
+      }, sourceId));
+    }
+
+    function syncScheduleTargetControls() {
+      const state = scheduleTargetState();
+      state.mode = inputValue("scheduleEditTargetMode") === "tag" ? "tag" : "symbols";
+      state.selectedTagId = inputValue("scheduleEditTagId") || state.selectedTagId;
+      renderScheduleTargetControls();
+    }
+
+    function handleScheduleSourceChange() {
+      const state = scheduleTargetState();
+      state.selectedInstruments = [];
+      state.searchResults = [];
+      state.searchQuery = "";
+      state.selectedTagId = "";
+      setInputValue("scheduleInstrumentSearch", "");
+      renderScheduleTargetControls();
+      loadScheduleTargetTags(inputValue("scheduleEditSourceId"));
+      searchScheduleInstruments();
+    }
+
+    async function loadScheduleTargetTags(sourceId) {
+      const state = scheduleTargetState();
+      if (!dataMonitorEnabled() || !sourceId) {
+        state.tagsBySource[sourceId || ""] = [];
+        renderScheduleTargetControls();
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set("source_id", sourceId);
+      try {
+        const response = await fetch(dataApiUrl(`/api/instrument-tags?${params.toString()}`), dataApiRequestOptions());
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        state.tagsBySource[sourceId] = Array.isArray(payload.tags) ? payload.tags : [];
+        renderScheduleTargetControls();
+        if (state.mode === "tag" && state.selectedTagId) {
+          await loadScheduleTagMembers();
+        }
+      } catch (error) {
+        state.tagsBySource[sourceId] = [];
+        document.getElementById("scheduleTagMemberPreview").textContent = `Unable to load lists · ${error.message}`;
+      }
+    }
+
+    async function fetchScheduleTagMembersFromInstruments(sourceId, tagId) {
+      const pageSize = 500;
+      let offset = 0;
+      const instruments = [];
+      while (true) {
+        const params = new URLSearchParams();
+        params.set("source_id", sourceId);
+        params.set("tag", tagId);
+        params.set("limit", String(pageSize));
+        params.set("offset", String(offset));
+        const response = await fetch(dataApiUrl(`/api/instruments?${params.toString()}`), dataApiRequestOptions());
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const page = Array.isArray(payload.instruments)
+          ? payload.instruments.map((instrument) => normalizeScheduleInstrument(instrument, sourceId))
+          : [];
+        instruments.push(...page);
+        const total = Number(payload.total);
+        const responseLimit = Number(payload.limit);
+        const responseOffset = Number(payload.offset);
+        const effectivePageSize = Number.isFinite(responseLimit) && responseLimit > 0 ? responseLimit : pageSize;
+        if (!page.length || (Number.isFinite(total) && instruments.length >= total) || page.length < effectivePageSize) {
+          break;
+        }
+        const nextOffset = Number.isFinite(responseOffset) && Number.isFinite(responseLimit)
+          ? responseOffset + responseLimit
+          : offset + pageSize;
+        if (nextOffset <= offset) {
+          break;
+        }
+        offset = nextOffset;
+      }
+      return instruments;
+    }
+
+    async function fetchScheduleInstrumentSearchPage(sourceId, query, offset, limit) {
+      const params = new URLSearchParams();
+      params.set("source_id", sourceId);
+      params.set("limit", String(limit));
+      params.set("offset", String(offset));
+      if (query) {
+        params.set("q", query);
+      }
+      const response = await fetch(dataApiUrl(`/api/instruments?${params.toString()}`), dataApiRequestOptions());
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      return {
+        instruments: Array.isArray(payload.instruments)
+          ? payload.instruments.map((instrument) => normalizeScheduleInstrument(instrument, sourceId))
+          : [],
+        total: Number(payload.total),
+        limit: Number(payload.limit),
+        offset: Number(payload.offset),
+      };
+    }
+
+    function nextScheduleInstrumentSearchOffset(page, fallbackOffset, fallbackLimit) {
+      if (!page.instruments.length) return null;
+      const effectiveLimit = Number.isFinite(page.limit) && page.limit > 0 ? page.limit : fallbackLimit;
+      if (Number.isFinite(page.total) && fallbackOffset + page.instruments.length >= page.total) return null;
+      if (page.instruments.length < effectiveLimit) return null;
+      const responseOffset = Number.isFinite(page.offset) ? page.offset : fallbackOffset;
+      const nextOffset = responseOffset + effectiveLimit;
+      return nextOffset > fallbackOffset ? nextOffset : null;
+    }
+
+    async function searchScheduleInstruments() {
+      const state = scheduleTargetState();
+      const sourceId = inputValue("scheduleEditSourceId");
+      state.searchQuery = inputValue("scheduleInstrumentSearch");
+      if (!dataMonitorEnabled() || !sourceId) {
+        state.searchResults = [];
+        renderScheduleTargetControls();
+        return;
+      }
+      try {
+        const pageSize = state.searchQuery
+          ? SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET
+          : SCHEDULE_INSTRUMENT_SEARCH_PAGE_SIZE;
+        let offset = 0;
+        let page = await fetchScheduleInstrumentSearchPage(sourceId, state.searchQuery, offset, pageSize);
+        state.searchResults = page.instruments;
+        enrichSelectedScheduleInstruments(state.searchResults);
+        while (!state.searchQuery && scheduleSearchResultsForDisplay().length < SCHEDULE_UNSELECTED_INSTRUMENT_DISPLAY_TARGET) {
+          const nextOffset = nextScheduleInstrumentSearchOffset(page, offset, pageSize);
+          if (nextOffset === null) break;
+          offset = nextOffset;
+          page = await fetchScheduleInstrumentSearchPage(sourceId, state.searchQuery, offset, pageSize);
+          state.searchResults = [...state.searchResults, ...page.instruments];
+          enrichSelectedScheduleInstruments(state.searchResults);
+        }
+      } catch (error) {
+        state.searchResults = [];
+        document.getElementById("scheduleInstrumentSearchMeta").textContent = `Unable to search instruments · ${error.message}`;
+      }
+      renderScheduleTargetControls();
+    }
+
+    async function loadScheduleTagMembers() {
+      const state = scheduleTargetState();
+      const sourceId = inputValue("scheduleEditSourceId");
+      const tagId = inputValue("scheduleEditTagId") || state.selectedTagId;
+      state.selectedTagId = tagId;
+      if (!dataMonitorEnabled() || !sourceId || !tagId) {
+        renderScheduleTargetControls();
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set("source_id", sourceId);
+      const key = scheduleTargetKey(sourceId, tagId);
+      try {
+        let membersPayload = null;
+        let members = [];
+        const membersResponse = await fetch(
+          dataApiUrl(`/api/instrument-tags/${encodeURIComponent(tagId)}/members?${params.toString()}`),
+          dataApiRequestOptions(),
+        );
+        if (membersResponse.ok) {
+          membersPayload = await membersResponse.json();
+          members = (Array.isArray(membersPayload.members) ? membersPayload.members : [])
+            .map((member) => normalizeScheduleInstrument(member, sourceId));
+        } else if (membersResponse.status !== 404) {
+          throw new Error(`HTTP ${membersResponse.status}`);
+        }
+        try {
+          const instrumentMembers = await fetchScheduleTagMembersFromInstruments(sourceId, tagId);
+          if (instrumentMembers.length) {
+            members = instrumentMembers;
+          }
+        } catch (fallbackError) {
+          if (!membersPayload) {
+            throw fallbackError;
+          }
+        }
+        state.tagMembersByKey[key] = members;
+      } catch (error) {
+        state.tagMembersByKey[key] = [];
+        document.getElementById("scheduleTagMemberPreview").textContent = `Unable to load list members · ${error.message}`;
+      }
+      renderScheduleTargetControls();
+    }
+
+    async function ensureScheduleTagMembersLoaded() {
+      const state = scheduleTargetState();
+      if (state.mode !== "tag") return;
+      const sourceId = inputValue("scheduleEditSourceId");
+      const tagId = inputValue("scheduleEditTagId") || state.selectedTagId;
+      if (!sourceId || !tagId) return;
+      if (!tagMembersForScheduleSource(sourceId, tagId).length) {
+        await loadScheduleTagMembers();
+      }
+    }
+
+    function buildScheduleTargetPayload() {
+      const state = scheduleTargetState();
+      if (state.mode === "tag") {
+        const sourceId = inputValue("scheduleEditSourceId");
+        const tagId = inputValue("scheduleEditTagId") || state.selectedTagId;
+        const members = tagMembersForScheduleSource(sourceId, tagId);
+        return {
+          symbols: schedulePayloadSymbolsForInstruments(members),
+          target: {
+            mode: "tag",
+            tag_id: tagId,
+            resolution: "dynamic",
+          },
+        };
+      }
+      return {
+        symbols: selectedScheduleSymbols(),
+        target: {
+          mode: "symbols",
+          instrument_ids: scheduleTargetState().selectedInstruments
+            .map((instrument) => instrument.instrument_id)
+            .filter(Boolean),
+          resolution: "dynamic",
+        },
+      };
+    }
+
+    function scheduleStaticFallbackPayload(payload) {
+      const symbols = Array.isArray(payload.job?.symbols) ? payload.job.symbols : [];
+      return {
+        ...payload,
+        job: {
+          ...payload.job,
+          symbols,
+          target: null,
+        },
+      };
+    }
+
+    function shouldFallbackScheduleToStaticSymbols(payload, message) {
+      return payload.job?.target?.mode === "tag"
+        && Array.isArray(payload.job?.symbols)
+        && payload.job.symbols.length > 0
+        && String(message || "").includes("Unsupported symbol");
+    }
+
+    function scheduleApiErrorMessage(response, responsePayload) {
+      return responsePayload.error || responsePayload.message || `HTTP ${response.status}`;
+    }
+
+    async function saveScheduleEditPayload(isCreate, schedule, payload) {
+      const response = isCreate
+        ? await fetch(dataApiUrl("/api/data/schedules"), dataApiMutationOptions("POST", payload))
+        : await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}`), dataApiMutationOptions("PATCH", payload));
+      let responsePayload = {};
+      try {
+        responsePayload = await response.json();
+      } catch (error) {
+        responsePayload = {};
+      }
+      return { response, responsePayload };
+    }
+
+    function scheduleEditorMode() {
+      return dataMonitorState.scheduleEditMode === "create" ? "create" : "edit";
+    }
+
     function toDatetimeLocalValue(value) {
       if (!value) return "";
       const parts = displayDateTimeParts(value);
@@ -2167,24 +4440,64 @@ def render_workbench_index_html(
 
     function closeScheduleEditor() {
       dataMonitorState.editingScheduleId = "";
+      dataMonitorState.scheduleEditMode = "edit";
       document.getElementById("scheduleEditDialog").hidden = true;
       document.getElementById("scheduleEditBackdrop").hidden = true;
       setScheduleEditError("");
     }
 
-    function openScheduleEditor(scheduleId) {
-      const schedule = scheduleById(scheduleId);
-      if (!schedule) {
-        return;
-      }
+    function defaultNewScheduleConfig() {
+      const source = selectedSource() || (dataMonitorState.sources || [])[0] || {};
+      const sourceId = source.source_id || "";
+      const nowValue = toDatetimeLocalValue(new Date());
+      return {
+        schedule_id: "",
+        name: `${sourceId || "source"}-schedule`,
+        config: {
+          name: `${sourceId || "source"}-schedule`,
+          enabled: false,
+          trigger: {
+            type: "interval",
+            every: 1,
+            unit: "hours",
+            start_at: nowValue,
+            timezone: "Asia/Shanghai",
+            execution_delay_seconds: 0,
+          },
+          repeat: { mode: "forever" },
+          job: {
+            source_id: sourceId,
+            symbols: [],
+            frequencies: ["1h"],
+            date_range: {
+              type: "last_n_days",
+              lookback_value: 7,
+              lookback_unit: "days",
+              days: 7,
+              end_offset_value: 0,
+              end_offset_unit: "minutes",
+              end_offset_days: 0,
+            },
+            page_delay_seconds: 0,
+            refresh_existing: true,
+          },
+          overlap_policy: "skip",
+        },
+      };
+    }
+
+    function populateScheduleEditor(schedule, mode) {
       const config = scheduleConfig(schedule);
       const trigger = config.trigger || {};
       const repeat = config.repeat || {};
       const job = config.job || {};
       const dateRange = job.date_range || {};
-      dataMonitorState.editingScheduleId = schedule.schedule_id;
-      document.getElementById("scheduleEditSubtitle").textContent = schedule.schedule_id || "";
+      dataMonitorState.scheduleEditMode = mode === "create" ? "create" : "edit";
+      dataMonitorState.editingScheduleId = schedule.schedule_id || "";
+      document.getElementById("scheduleEditTitle").textContent = scheduleEditorMode() === "create" ? "New Schedule" : "Edit Schedule";
+      document.getElementById("scheduleEditSubtitle").textContent = schedule.schedule_id || "Create a disabled schedule, then enable it when ready.";
       setInputValue("scheduleEditName", config.name || schedule.name || "");
+      renderScheduleSourceOptions(job.source_id || "");
       setInputValue("scheduleEditSourceId", job.source_id || "");
       setInputValue("scheduleEditOverlapPolicy", config.overlap_policy || "skip");
       setInputValue("scheduleEditTriggerType", trigger.type || "interval");
@@ -2200,7 +4513,7 @@ def render_workbench_index_html(
       setInputValue("scheduleEditRepeatMode", repeat.mode || "forever");
       setInputValue("scheduleEditRepeatCount", repeat.count || "");
       setInputValue("scheduleEditUntil", toDatetimeLocalValue(repeat.until));
-      setInputValue("scheduleEditSymbols", Array.isArray(job.symbols) ? job.symbols.join(", ") : "");
+      scheduleTargetFromJob(job);
       setSelectedFrequencies(Array.isArray(job.frequencies) ? job.frequencies : []);
       setInputValue("scheduleEditRangePreset", rangePresetForDateRange(dateRange));
       setInputValue("scheduleEditDateRangeType", dateRange.type || "last_n_days");
@@ -2217,8 +4530,25 @@ def render_workbench_index_html(
       scheduleEditInput("scheduleEditRefreshExisting").checked = job.refresh_existing !== false;
       setScheduleEditError("");
       syncScheduleEditorControls();
+      renderScheduleTargetControls();
+      loadScheduleTargetTags(inputValue("scheduleEditSourceId"));
+      if (scheduleTargetState().mode === "symbols") {
+        searchScheduleInstruments();
+      }
       document.getElementById("scheduleEditBackdrop").hidden = false;
       document.getElementById("scheduleEditDialog").hidden = false;
+    }
+
+    function openScheduleEditor(scheduleId) {
+      const schedule = scheduleById(scheduleId);
+      if (!schedule) {
+        return;
+      }
+      populateScheduleEditor(schedule, "edit");
+    }
+
+    function openNewScheduleEditor() {
+      populateScheduleEditor(defaultNewScheduleConfig(), "create");
     }
 
     function buildScheduleEditPayload(schedule) {
@@ -2284,13 +4614,14 @@ def render_workbench_index_html(
         dateRange.end_offset_days = 0;
       }
 
-      return {
+      const targetPayload = buildScheduleTargetPayload();
+      const payload = {
         name: inputValue("scheduleEditName") || config.name || schedule.name,
         trigger,
         repeat,
         job: {
           source_id: inputValue("scheduleEditSourceId") || config.job?.source_id || "",
-          symbols: listValue("scheduleEditSymbols"),
+          ...targetPayload,
           frequencies: selectedFrequencies(),
           date_range: dateRange,
           page_delay_seconds: numberValue("scheduleEditPageDelaySeconds", 0),
@@ -2298,6 +4629,44 @@ def render_workbench_index_html(
         },
         overlap_policy: inputValue("scheduleEditOverlapPolicy") || "skip",
       };
+      if (scheduleEditorMode() === "create") {
+        payload.enabled = false;
+      }
+      return payload;
+    }
+
+    function validateScheduleEditPayload(payload) {
+      if (!payload.name) return "Name is required.";
+      if (!payload.job?.source_id) return "Source is required.";
+      if (!Array.isArray(payload.job?.frequencies) || !payload.job.frequencies.length) {
+        return "Select at least one frequency.";
+      }
+      const target = payload.job?.target || {};
+      const symbols = Array.isArray(payload.job?.symbols) ? payload.job.symbols : [];
+      if (target.mode === "tag") {
+        if (!target.tag_id) return "Select a symbol list.";
+        if (!symbols.length) return "Selected list has no symbols. Wait for member preview to load or choose another list.";
+      } else if (!symbols.length && !Array.isArray(target.instrument_ids)) {
+        return "Select at least one symbol.";
+      } else if (!symbols.length && !target.instrument_ids.length) {
+        return "Select at least one symbol.";
+      }
+      const trigger = payload.trigger || {};
+      if (trigger.type === "interval" && (!trigger.every || !trigger.unit)) {
+        return "Interval trigger requires every and unit.";
+      }
+      if (trigger.type === "once" && !trigger.run_at) return "Once trigger requires run at.";
+      if (trigger.type === "weekly" && !selectedWeekdays().length) {
+        return "Weekly trigger requires at least one day.";
+      }
+      const range = payload.job?.date_range || {};
+      if (range.type === "fixed" && (!range.start_at || !range.end_at)) {
+        return "Fixed range requires start and end.";
+      }
+      if (range.type !== "fixed" && !range.lookback_value) {
+        return "Range N is required.";
+      }
+      return "";
     }
 
     async function readApiError(response) {
@@ -2360,26 +4729,35 @@ def render_workbench_index_html(
 
     async function saveScheduleEdits(event) {
       event.preventDefault();
-      const schedule = scheduleById(dataMonitorState.editingScheduleId);
-      if (!schedule) {
+      const isCreate = scheduleEditorMode() === "create";
+      const schedule = isCreate ? defaultNewScheduleConfig() : scheduleById(dataMonitorState.editingScheduleId);
+      if (!schedule && !isCreate) {
         closeScheduleEditor();
         return;
       }
-      const payload = buildScheduleEditPayload(schedule);
       setScheduleEditError("");
+      await ensureScheduleTagMembersLoaded();
+      const payload = buildScheduleEditPayload(schedule);
+      const validationError = validateScheduleEditPayload(payload);
+      if (validationError) {
+        setScheduleEditError(validationError);
+        return;
+      }
       try {
-        const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}`), dataApiMutationOptions("PATCH", payload));
-        let responsePayload = {};
-        try {
-          responsePayload = await response.json();
-        } catch (error) {
-          responsePayload = {};
-        }
+        let savePayload = payload;
+        let { response, responsePayload } = await saveScheduleEditPayload(isCreate, schedule, savePayload);
         if (!response.ok) {
-          setScheduleEditError(responsePayload.error || responsePayload.message || `HTTP ${response.status}`);
-          return;
+          const errorMessage = scheduleApiErrorMessage(response, responsePayload);
+          if (shouldFallbackScheduleToStaticSymbols(payload, errorMessage)) {
+            savePayload = scheduleStaticFallbackPayload(payload);
+            ({ response, responsePayload } = await saveScheduleEditPayload(isCreate, schedule, savePayload));
+          }
+          if (!response.ok) {
+            setScheduleEditError(scheduleApiErrorMessage(response, responsePayload));
+            return;
+          }
         }
-        const requestedDelay = Number(payload.trigger?.execution_delay_seconds || 0);
+        const requestedDelay = Number(savePayload.trigger?.execution_delay_seconds || 0);
         const savedDelay = Number(responsePayload?.config?.trigger?.execution_delay_seconds || 0);
         if (requestedDelay > 0 && Math.abs(savedDelay - requestedDelay) > 0.001) {
           setScheduleEditError("The data source server does not support execution delay yet. Deploy the updated data-source API, then save again.");
@@ -2398,7 +4776,7 @@ def render_workbench_index_html(
       if (dataMonitorState.error) {
         metaEl.textContent = "Run history unavailable";
         renderScheduleRunPagination(paginatedItems([], 1, dataMonitorState.scheduleRunPageSize));
-        rowsEl.innerHTML = `<tr><td class="empty" colspan="7">Unable to load schedule runs</td></tr>`;
+        rowsEl.innerHTML = `<tr><td class="empty" colspan="6">Unable to load schedule runs</td></tr>`;
         return;
       }
       const runs = recentScheduleRuns();
@@ -2411,11 +4789,11 @@ def render_workbench_index_html(
         const schedule = run.schedule || scheduleById(run.schedule_id) || {};
         const job = run.job_id ? jobById(run.job_id) : null;
         const runStatus = escapeHtml(run.status || "unknown");
-        const jobStatus = escapeHtml(job?.status || (run.job_id ? "submitted" : ""));
-        const jobLine = job
-          ? `${job.success_count || 0}/${job.total_items || 0} ok · failed ${job.failed_count || 0}`
-          : run.error || "";
+        const progress = formatJobTaskProgress(job);
         const rangeText = formatScheduleDateRange(schedule, run.triggered_at || run.due_at);
+        const progressSubline = run.job_id
+          ? escapeHtml(run.job_id)
+          : escapeHtml(run.error || "");
         return `<tr>
           <td>
             <div class="schedule-name">
@@ -2426,16 +4804,15 @@ def render_workbench_index_html(
           <td>${escapeHtml(formatScheduleJob(schedule))}</td>
           <td>${escapeHtml(rangeText)}</td>
           <td><span class="task-status ${runStatus}">${runStatus}</span></td>
-          <td>${jobStatus ? `<span class="task-status ${jobStatus}">${jobStatus}</span>` : ""}</td>
           <td>${escapeHtml(formatDateTime(run.triggered_at))}</td>
           <td>
-            <div class="schedule-name">
-              <strong>${escapeHtml(run.job_id || "")}</strong>
-              <span class="schedule-subline">${escapeHtml(jobLine)}</span>
+            <div class="schedule-name" title="${escapeHtml(progress.title)}">
+              ${progress.html}
+              <span class="schedule-subline">${progressSubline}</span>
             </div>
           </td>
         </tr>`;
-      }).join("") : `<tr><td class="empty" colspan="7">No schedule runs yet</td></tr>`;
+      }).join("") : `<tr><td class="empty" colspan="6">No schedule runs yet</td></tr>`;
     }
 
     function renderTaskDrawer() {
@@ -2490,7 +4867,7 @@ def render_workbench_index_html(
           <td>${escapeHtml(formatTaskRange(task))}</td>
           <td><span class="task-status ${status}">${status}</span></td>
           <td>${escapeHtml(task.attempts ?? "")}</td>
-          <td>${escapeHtml(formatClock(taskUpdatedAt(task)))}</td>
+          <td>${escapeHtml(formatDateTime(taskUpdatedAt(task)))}</td>
           <td>${escapeHtml(task.last_error || "")}</td>
         </tr>`;
       }).join("") : `<tr><td class="empty" colspan="9">No matching crawl tasks</td></tr>`;
@@ -2523,6 +4900,45 @@ def render_workbench_index_html(
         };
       }
       renderDataMonitor();
+    }
+
+    async function loadScheduleRuns() {
+      if (!dataMonitorEnabled()) {
+        return;
+      }
+      const schedules = scheduleList();
+      try {
+        const runEntries = await Promise.all(schedules.map(async (schedule) => {
+          const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs?limit=50`), dataApiRequestOptions());
+          if (!response.ok) {
+            return [schedule.schedule_id, []];
+          }
+          const runsPayload = await response.json();
+          return [schedule.schedule_id, Array.isArray(runsPayload.runs) ? runsPayload.runs : []];
+        }));
+        dataMonitorState = {
+          ...dataMonitorState,
+          scheduleRunsById: Object.fromEntries(runEntries),
+        };
+      } catch (error) {
+        dataMonitorState = {
+          ...dataMonitorState,
+          lastUpdated: new Date(),
+          error: error.message,
+        };
+      }
+      renderDataMonitor();
+    }
+
+    function maybeRefreshOpenDrawerData() {
+      if (document.getElementById("dataSourceDrawer").hidden) {
+        return;
+      }
+      if (activeDrawerTab() === "tasks") {
+        loadSelectedTaskPage();
+      } else if (activeDrawerTab() === "runs") {
+        loadScheduleRuns();
+      }
     }
 
     function selectTaskSource(sourceId) {
@@ -2567,16 +4983,6 @@ def render_workbench_index_html(
           const schedulesPayload = await schedulesResponse.json();
           schedules = Array.isArray(schedulesPayload.schedules) ? schedulesPayload.schedules : [];
         }
-        let scheduleRunsById = {};
-        const runEntries = await Promise.all(schedules.map(async (schedule) => {
-          const response = await fetch(dataApiUrl(`/api/data/schedules/${encodeURIComponent(schedule.schedule_id)}/runs`), dataApiRequestOptions());
-          if (!response.ok) {
-            return [schedule.schedule_id, []];
-          }
-          const runsPayload = await response.json();
-          return [schedule.schedule_id, Array.isArray(runsPayload.runs) ? runsPayload.runs : []];
-        }));
-        scheduleRunsById = Object.fromEntries(runEntries);
         const selectedSourceId = sources.some((source) => source.source_id === dataMonitorState.selectedSourceId)
           ? dataMonitorState.selectedSourceId
           : sources[0]?.source_id || "";
@@ -2586,7 +4992,6 @@ def render_workbench_index_html(
           summariesBySource: Object.fromEntries(summaryEntries),
           jobs,
           schedules,
-          scheduleRunsById,
           selectedSourceId,
           lastUpdated: new Date(),
           error: "",
@@ -2599,9 +5004,7 @@ def render_workbench_index_html(
         };
       }
       renderDataMonitor();
-      if (!document.getElementById("dataSourceDrawer").hidden && activeDrawerTab() === "tasks") {
-        await loadSelectedTaskPage();
-      }
+      maybeRefreshOpenDrawerData();
     }
 
     function refreshDataMonitorWhenVisible() {
@@ -2629,6 +5032,8 @@ def render_workbench_index_html(
       const source = selectedSource();
       if (activeDrawerTab() === "tasks" && source && !dataMonitorState.taskPagesBySource[source.source_id]) {
         loadSelectedTaskPage();
+      } else if (activeDrawerTab() === "runs") {
+        loadScheduleRuns();
       } else {
         renderTaskDrawer();
       }
@@ -2646,6 +5051,7 @@ def render_workbench_index_html(
       button.addEventListener("click", () => setDrawerTab(button.dataset.drawerTab || "schedules"));
     }
     document.getElementById("scheduleEditForm").addEventListener("submit", saveScheduleEdits);
+    document.getElementById("scheduleCreateButton").addEventListener("click", openNewScheduleEditor);
     document.getElementById("scheduleEditCloseButton").addEventListener("click", closeScheduleEditor);
     document.getElementById("scheduleEditDismissButton").addEventListener("click", closeScheduleEditor);
     document.getElementById("scheduleEditBackdrop").addEventListener("click", closeScheduleEditor);
@@ -2669,6 +5075,27 @@ def render_workbench_index_html(
       input.addEventListener("input", syncScheduleEditorControls);
       input.addEventListener("change", syncScheduleEditorControls);
     }
+    document.getElementById("scheduleEditSourceId").addEventListener("change", handleScheduleSourceChange);
+    for (const button of document.querySelectorAll("[data-schedule-target-mode]")) {
+      button.addEventListener("click", () => setScheduleTargetMode(button.dataset.scheduleTargetMode || "symbols"));
+    }
+    document.getElementById("scheduleEditTagId").addEventListener("change", () => {
+      scheduleTargetState().selectedTagId = inputValue("scheduleEditTagId");
+      loadScheduleTagMembers();
+    });
+    document.getElementById("scheduleInstrumentSearch").addEventListener("input", () => {
+      if (scheduleInstrumentSearchTimer) {
+        clearTimeout(scheduleInstrumentSearchTimer);
+      }
+      scheduleInstrumentSearchTimer = setTimeout(searchScheduleInstruments, 250);
+    });
+    document.getElementById("scheduleInstrumentSearch").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchScheduleInstruments();
+      }
+    });
+    document.getElementById("scheduleInstrumentSearchButton").addEventListener("click", searchScheduleInstruments);
     document.getElementById("schedulePageSizeSelect").addEventListener("change", (event) => {
       dataMonitorState.schedulePageSize = Number(event.target.value) || 25;
       dataMonitorState.schedulePage = 1;
@@ -2679,7 +5106,12 @@ def render_workbench_index_html(
       renderScheduleRows();
     });
     document.getElementById("scheduleNextPageButton").addEventListener("click", () => {
-      dataMonitorState.schedulePage += 1;
+      const schedules = scheduleList();
+      const totalPages = Math.max(
+        1,
+        Math.ceil(schedules.length / Math.max(1, dataMonitorState.schedulePageSize || 25)),
+      );
+      dataMonitorState.schedulePage = Math.min(totalPages, dataMonitorState.schedulePage + 1);
       renderScheduleRows();
     });
     document.getElementById("scheduleRunPageSizeSelect").addEventListener("change", (event) => {
@@ -2692,7 +5124,12 @@ def render_workbench_index_html(
       renderScheduleRunRows();
     });
     document.getElementById("scheduleRunNextPageButton").addEventListener("click", () => {
-      dataMonitorState.scheduleRunPage += 1;
+      const runs = recentScheduleRuns();
+      const totalPages = Math.max(
+        1,
+        Math.ceil(runs.length / Math.max(1, dataMonitorState.scheduleRunPageSize || 25)),
+      );
+      dataMonitorState.scheduleRunPage = Math.min(totalPages, dataMonitorState.scheduleRunPage + 1);
       renderScheduleRunRows();
     });
     document.getElementById("taskSymbolSearch").addEventListener("input", (event) => {

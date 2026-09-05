@@ -7,6 +7,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 
+from backtest.data.jobs import DataSyncJobConfig, JobItemResult
+
 
 @dataclass(frozen=True)
 class DataSourceJobSnapshot:
@@ -85,9 +87,33 @@ class DataSourceJobRegistry:
     def _run(self, job_id: str, config: Any) -> None:
         started_at = self.now()
         current = self.get(job_id)
-        self._store(replace(current, status="running", started_at=started_at, error=None))
+        planned_total = _planned_item_count(config)
+        self._store(
+            replace(
+                current,
+                status="running",
+                started_at=started_at,
+                total_items=planned_total,
+                success_count=0,
+                failed_count=0,
+                error=None,
+            )
+        )
+
+        def on_item_finished(item: JobItemResult) -> None:
+            snapshot = self.get(job_id)
+            success_delta = 1 if item.status == "success" else 0
+            failed_delta = 1 if item.status == "failed" else 0
+            self._store(
+                replace(
+                    snapshot,
+                    success_count=snapshot.success_count + success_delta,
+                    failed_count=snapshot.failed_count + failed_delta,
+                )
+            )
+
         try:
-            result = self.run_job(config)
+            result = _invoke_run_job(self.run_job, config, on_item_finished)
             failed_count = int(getattr(result, "failed_count", 0))
             status = "failed" if failed_count > 0 else "success"
             self._store(
@@ -137,3 +163,26 @@ class DataSourceJobRegistry:
     def _slug(value: str) -> str:
         slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
         return slug or "job"
+
+
+def _planned_item_count(config: Any) -> int:
+    if isinstance(config, DataSyncJobConfig):
+        return len(config.symbols) * len(config.frequencies)
+    if isinstance(config, dict):
+        symbols = config.get("symbols") or []
+        frequencies = config.get("frequencies") or []
+        return len(symbols) * len(frequencies)
+    symbols = getattr(config, "symbols", None) or []
+    frequencies = getattr(config, "frequencies", None) or []
+    return len(symbols) * len(frequencies)
+
+
+def _invoke_run_job(
+    run_job: Callable[..., Any],
+    config: Any,
+    on_item_finished: Callable[[JobItemResult], None],
+) -> Any:
+    try:
+        return run_job(config, on_item_finished=on_item_finished)
+    except TypeError:
+        return run_job(config)

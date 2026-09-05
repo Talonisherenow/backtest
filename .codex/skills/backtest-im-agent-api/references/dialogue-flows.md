@@ -45,21 +45,21 @@ Flow:
 ## Schedule Management
 
 User intent examples: "每小时帮我补 BTC 数据", "创建一个定时任务", "打开这个任务",
-"关闭这个周期任务", "执行 24 次后停止".
+"关闭这个周期任务", "执行 24 次后停止", "定时爬这个列表".
 
 Flow:
 
 1. Ensure an API client is configured. Run access discovery only if the client is missing, unvalidated, changed, or currently failing.
 2. Call `GET /api/data/schedule-options` when supported fields, source defaults, frequencies, trigger types, repeat modes, or date range types are unknown.
 3. Identify trigger time, optional concrete `start_at`, optional execution
-   delay, repeat policy, symbols, frequencies, source, date range,
+   delay, repeat policy, target instruments or list, frequencies, source, date range,
    `refresh_existing`, retry policy, overlap policy, request gap, and whether
    the schedule should start enabled.
 4. Fill defaults where safe: `timezone=Asia/Shanghai`, `enabled=false` for newly created schedules, and `overlap_policy=skip`.
 5. Ask one concise follow-up if a required field remains ambiguous.
 6. Show the final schedule summary, including trigger, start time when provided,
    execution delay when nonzero, repeat count or stop condition, source,
-   symbols, frequencies, date range, refresh policy, request gap, retry policy,
+   target, frequencies, date range, refresh policy, request gap, retry policy,
    overlap policy, and enabled state.
 7. Call schedule write endpoints only after explicit confirmation.
 8. Return `schedule_id`, enabled state, `next_run_at`, and the next status-check action.
@@ -72,6 +72,12 @@ When the user says "last N minutes/hours/days", keep the API
 `date_range.type=last_n_days` and set `lookback_value` plus
 `lookback_unit=minutes|hours|days`.
 
+When the user asks to schedule a saved list/watchlist, use
+`job.target={"mode":"tag","tag_id":"<id>","resolution":"dynamic"}`. When the
+user selects specific known instruments, use
+`job.target={"mode":"symbols","instrument_ids":[...]}`. Use legacy
+`job.symbols` only when there are no instrument records or the remote API is old.
+
 For enable, disable, delete, and run-now requests, confirm the target schedule id
 or exact schedule name before writing. `run-now` submits a normal data job
 through the existing job path; after it returns, use `/api/data/jobs/<job_id>`
@@ -79,7 +85,7 @@ for job execution status.
 
 ## Read Requests
 
-For health, source list, K-line, job, schedule, task, or inventory questions, call the narrowest read endpoint through the configured API client. Use `/api/data/tasks/summary` for totals and paginated `/api/data/tasks` for rows. Run access discovery only when the user asks for a connectivity check or the direct call fails with configuration, authorization, base URL, or forwarding symptoms.
+For health, source list, K-line, job, schedule, instrument, tag/list, source sync, task, or inventory questions, call the narrowest read endpoint through the configured API client. Use `/api/data/tasks/summary` for totals and paginated `/api/data/tasks` for rows. Run access discovery only when the user asks for a connectivity check or the direct call fails with configuration, authorization, base URL, or forwarding symptoms.
 
 For "latest K-line is missing" questions, check candle semantics before
 escalating:
@@ -95,6 +101,38 @@ escalating:
 
 If the user asks why a task is stuck or whether a crawler is still running, first read job/task state through the API. Do not inspect processes or logs from IM. If the API state is ambiguous, report the ambiguity and hand off process/log verification to a data-source operator.
 
+## Instrument And List Management
+
+User intent examples: "查一下 Bitget 有哪些标的", "创建一个自选列表", "把 BTC 加到自选", "同步 Bitget 标的池", "同步 A 股标的".
+
+Flow:
+
+1. Ensure an API client is configured.
+2. For read requests, use `GET /api/instruments`, `/api/instrument-tags`, `/api/instrument-tags/<tag_id>/members`, or `/api/instrument-sources`.
+3. For writes, confirm source, instrument ids, tag/list id, member changes, or sync source before calling the API.
+4. For source sync, first read `/api/instrument-sources` and state the
+   `provider_type` (`ccxt`, live `akshare`, or local `universe_csv`). Then call
+   `POST /api/instrument-sync/run` only after confirming it refreshes the
+   instrument catalog, not K-line bars.
+5. Report counts and changed objects; do not print tokens or server paths.
+6. If the user expected live A-share listings but `provider_type` is
+   `universe_csv`, say an operator must restart data-source with
+   `--a-share-catalog-source akshare`; the IM agent cannot change that setting.
+
+## Instrument Sync Schedule Management
+
+Use this when the user wants to periodically refresh instrument catalogs, such as "每天同步一次 Bitget 标的" or "每天同步一次 A 股标的".
+
+Flow:
+
+1. Confirm this is instrument catalog sync, not K-line crawl.
+2. Confirm `source_id`, trigger, timezone, repeat policy, and enabled state.
+3. Call `/api/instrument-sync/schedules` write endpoints only after confirmation.
+4. Use `/api/instrument-sync/schedules/<schedule_id>/runs` for history.
+5. Keep catalog sync schedules separate from bar crawl schedules. Typical
+   orchestration: instrument-sync keeps the default source tag fresh; a data
+   crawl schedule with `target.mode=tag` on that tag pulls K-lines.
+
 ## Operations Requests
 
-If the user asks to SSH, restart services, edit Nginx, edit frp, inspect logs, run local crawlers, write scripts, query SQLite, or change system service files, say the IM agent is limited to discovering and calling the data-source HTTP API from its current runtime. Offer API access discovery and read-only API checks instead.
+If the user asks to SSH, restart services, edit Nginx, edit frp, inspect logs, run local crawlers, write scripts, query SQLite, change `--a-share-catalog-source`, or change system service files, say the IM agent is limited to discovering and calling the data-source HTTP API from its current runtime. Offer API access discovery and read-only API checks instead, and hand deploy/restart work to a data-source operator.

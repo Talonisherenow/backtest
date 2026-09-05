@@ -1,6 +1,6 @@
 ---
 name: backtest-im-agent-api
-description: Use when a server-side IM agent must answer backtest data-source, crawler, crawl task, K-line, inventory, A-share, crypto, Bitget, or API-only market-data requests.
+description: Use when a server-side IM agent must answer backtest data-source, crawler, crawl task, K-line, inventory, schedule, instrument, tag/list, A-share, crypto, Bitget, Binance, or API-only market-data requests.
 ---
 
 # Backtest IM Agent API
@@ -13,7 +13,7 @@ Support IM conversations by using a configured backtest data-source HTTP API cli
 
 Never SSH, execute shell commands, edit Nginx, edit frp, inspect system logs, restart services, read/write server files, modify repos, query SQLite directly, or run ad-hoc `akshare`, `ccxt`, Python, shell, or crawler scripts to satisfy an IM data request. If users ask for operations work, explain this boundary and offer API-level checks.
 
-When the user mentions crawler service, crawl/fetch jobs, scheduled crawl jobs, recurring data fetch, periodic tasks, task status, inventory, K-line data, A-share data, crypto data, Bitget/Binance data, symbols, or Chinese phrases such as `爬虫`, `爬取`, `数据源`, `数据任务`, `定时任务`, `周期任务`, `循环执行`, `打开任务`, `关闭任务`, `行情`, `标的`, or `K线`, use this skill and call the HTTP API. If an API endpoint exists, do not reproduce its behavior locally.
+When the user mentions crawler service, crawl/fetch jobs, scheduled crawl jobs, recurring data fetch, periodic tasks, task status, inventory, K-line data, instrument lists, watchlists, source sync, A-share data, crypto data, Bitget/Binance data, symbols, or Chinese phrases such as `爬虫`, `爬取`, `数据源`, `数据任务`, `定时任务`, `周期任务`, `循环执行`, `打开任务`, `关闭任务`, `行情`, `标的`, `列表`, `自选`, or `K线`, use this skill and call the HTTP API. If an API endpoint exists, do not reproduce its behavior locally.
 
 ## API Client Availability
 
@@ -34,6 +34,7 @@ Allowed without confirmation:
 - `GET /api/health`
 - `GET /api/data-sources`
 - `GET /api/kline/manifest`
+- `GET /api/kline/symbols`
 - `GET /api/kline/bars`
 - `GET /api/data/tasks/summary`
 - `GET /api/data/tasks`
@@ -44,6 +45,14 @@ Allowed without confirmation:
 - `GET /api/data/schedules`
 - `GET /api/data/schedules/<schedule_id>`
 - `GET /api/data/schedules/<schedule_id>/runs`
+- `GET /api/instruments`
+- `GET /api/instruments/<instrument_id>`
+- `GET /api/instrument-tags`
+- `GET /api/instrument-tags/<tag_id>/members`
+- `GET /api/instrument-sources`
+- `GET /api/instrument-sync/schedules`
+- `GET /api/instrument-sync/schedules/<schedule_id>`
+- `GET /api/instrument-sync/schedules/<schedule_id>/runs`
 
 Allowed only after user confirmation:
 
@@ -55,9 +64,27 @@ Allowed only after user confirmation:
 - `POST /api/data/schedules/<schedule_id>/enable`
 - `POST /api/data/schedules/<schedule_id>/disable`
 - `POST /api/data/schedules/<schedule_id>/run-now`
+- `POST /api/instruments`
+- `PATCH /api/instruments/<instrument_id>`
+- `DELETE /api/instruments/<instrument_id>`
+- `POST /api/instrument-tags`
+- `PATCH /api/instrument-tags/<tag_id>`
+- `DELETE /api/instrument-tags/<tag_id>`
+- `PUT /api/instrument-tags/<tag_id>/members`
+- `POST /api/instrument-tags/<tag_id>/members`
+- `DELETE /api/instrument-tags/<tag_id>/members/<instrument_id>`
+- `POST /api/instrument-sync/run`
+- `POST /api/instrument-sync/schedules`
+- `PATCH /api/instrument-sync/schedules/<schedule_id>`
+- `DELETE /api/instrument-sync/schedules/<schedule_id>`
+- `POST /api/instrument-sync/schedules/<schedule_id>/enable`
+- `POST /api/instrument-sync/schedules/<schedule_id>/disable`
+- `POST /api/instrument-sync/schedules/<schedule_id>/run-now`
 
 ## Conversation Flow
 
 Read `references/dialogue-flows.md` when the user asks to fetch data, submit jobs, retry failures, or perform operations work.
+
+Read `references/instrument-api.md` when the user asks about instruments, symbols, tags/lists, watchlists, source catalog sync, or instrument sync schedules.
 
 Do not print bearer tokens. Report authorization failures without exposing token values.

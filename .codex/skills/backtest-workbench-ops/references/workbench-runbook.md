@@ -62,6 +62,7 @@ Open:
 http://127.0.0.1:8767/
 http://127.0.0.1:8767/kline
 http://127.0.0.1:8767/strategy-results
+http://127.0.0.1:8767/instruments
 ```
 
 Useful probes:
@@ -75,6 +76,12 @@ zsh -lc 'curl -sS -o /tmp/backtest-schedules-check.json -w "%{http_code}\n" \
 zsh -lc 'curl -sS \
   -H "Authorization: Bearer $BACKTEST_DATA_API_TOKEN" \
   https://data.example.com/api/data/schedule-options'
+zsh -lc 'curl -sS \
+  -H "Authorization: Bearer $BACKTEST_DATA_API_TOKEN" \
+  "https://data.example.com/api/instruments?source_id=bitget&limit=5"'
+zsh -lc 'curl -sS \
+  -H "Authorization: Bearer $BACKTEST_DATA_API_TOKEN" \
+  https://data.example.com/api/instrument-sources'
 ```
 
 When `--data-api-base-url` is set, the workbench home also calls the remote data
@@ -101,6 +108,13 @@ Current monitor expectations:
 - Execution delay is `trigger.execution_delay_seconds`: it delays submission
   after the scheduled anchor. Request gap is `job.page_delay_seconds`: it delays
   provider page requests inside a crawl.
+- The schedule target picker saves instrument-backed targets when available:
+  `job.target.mode=symbols` with `instrument_ids`, or
+  `job.target.mode=tag` with `tag_id` and dynamic resolution. It should not
+  submit source-mismatched instrument ids.
+- Existing legacy schedules with `job.symbols` should remain visible, but new
+  schedules created from the UI should prefer `job.target` when instruments or
+  lists are present.
 
 K-line viewer expectations:
 
@@ -137,5 +151,26 @@ zsh -lc 'curl -sS \
 If an execution-delay edit returns HTTP 200 but the response omits
 `config.trigger.execution_delay_seconds`, the remote data-source server is old.
 Deploy or restart the updated data-source API before testing that field again.
+
+Instrument page expectations:
+
+- `/instruments` renders an instrument/list manager backed by the remote data
+  API. It is unavailable in local-bars-only mode unless a data API base URL is
+  configured.
+- The page loads `/api/data-sources`, `/api/instruments`, `/api/instrument-tags`,
+  `/api/instrument-sources`, and `/api/instrument-sync/schedules`.
+- Source filters, list filters, search, pagination, create-list dialog, create
+  instrument dialog, tag membership controls, and K-line navigation should all
+  stay within the same data API token context.
+- K-line navigation for an instrument must use `source_id` and the record's
+  provider `symbol`; do not use the source-scoped `instrument_id` as the K-line
+  symbol.
+- Instrument source sync is separate from data crawl schedules. Its UI uses
+  `/api/instrument-sync/run` and `/api/instrument-sync/schedules`.
+- `/api/instrument-sources` shows `provider_type`: `ccxt`, live `akshare`, or
+  local `universe_csv`. Changing A-share catalog mode requires restarting
+  data-source with `--a-share-catalog-source`; the workbench cannot switch it.
+- If `/instruments` loads but source sync controls fail with 404, the remote
+  data-source server is older than the workbench UI.
 
 Security note: do not publish this local workbench to the Internet when it embeds `data_api_token`.

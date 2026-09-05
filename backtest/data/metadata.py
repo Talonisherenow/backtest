@@ -2,17 +2,22 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from backtest.data.sqlite_util import open_sqlite_connection
+
+_SCHEMA_INITIALIZED: set[str] = set()
+
 
 class MetadataStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_schema()
+        key = str(self.path.resolve())
+        if key not in _SCHEMA_INITIALIZED:
+            self._init_schema()
+            _SCHEMA_INITIALIZED.add(key)
 
-    def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def connect(self):
+        return open_sqlite_connection(self.path, enable_foreign_keys=True)
 
     def now(self) -> datetime:
         return datetime.now(timezone.utc)
@@ -40,6 +45,7 @@ class MetadataStore:
                 )
                 """
             )
+            self._init_instrument_schema(conn)
 
     def _init_catalog_schema(self, conn: sqlite3.Connection) -> None:
         desired_pk = [
@@ -95,6 +101,59 @@ class MetadataStore:
                 updated_at TEXT NOT NULL,
                 quality_status TEXT NOT NULL,
                 PRIMARY KEY (symbol, frequency, adjust, source, start_date, end_date, cache_path)
+            )
+            """
+        )
+
+    def _init_instrument_schema(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS instruments (
+                instrument_id TEXT PRIMARY KEY,
+                symbol TEXT,
+                name TEXT,
+                market TEXT,
+                exchange TEXT,
+                asset_class TEXT,
+                quote_currency TEXT,
+                source_id TEXT,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_instruments_source_id
+            ON instruments(source_id)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS instrument_tags (
+                tag_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                color TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS instrument_tag_members (
+                tag_id TEXT NOT NULL,
+                instrument_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (tag_id, instrument_id),
+                FOREIGN KEY (tag_id)
+                    REFERENCES instrument_tags(tag_id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (instrument_id)
+                    REFERENCES instruments(instrument_id)
+                    ON DELETE CASCADE
             )
             """
         )

@@ -139,6 +139,103 @@
       font: inherit;
       font-size: 14px;
     }
+    .symbol-combobox {
+      position: relative;
+    }
+    .symbol-select-hidden {
+      display: none;
+    }
+    .symbol-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 36px;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 7px 9px;
+      font: inherit;
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .symbol-trigger:disabled {
+      color: var(--muted);
+      cursor: not-allowed;
+      background: #f8fafc;
+    }
+    .symbol-trigger::after {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-right: 1.5px solid var(--muted);
+      border-bottom: 1.5px solid var(--muted);
+      transform: translateY(-2px) rotate(45deg);
+      flex: 0 0 auto;
+    }
+    .symbol-trigger span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .symbol-menu {
+      position: absolute;
+      z-index: 12;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 14px 32px rgba(31, 41, 51, 0.18);
+      overflow: hidden;
+    }
+    .symbol-menu[hidden] {
+      display: none;
+    }
+    .symbol-menu-status {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .symbol-options {
+      max-height: 360px;
+      overflow: auto;
+      padding: 4px;
+    }
+    .symbol-option {
+      display: block;
+      width: 100%;
+      min-height: 32px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--text);
+      padding: 6px 8px;
+      font: inherit;
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .symbol-option:hover,
+    .symbol-option.active {
+      background: #e9f2ff;
+      color: var(--blue);
+    }
+    .symbol-option.loading {
+      color: var(--muted);
+      cursor: default;
+    }
     .range {
       display: flex;
       width: max-content;
@@ -653,7 +750,7 @@
       transform: translateX(100%);
       transition: transform 160ms ease;
       display: grid;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto auto auto 1fr;
     }
     .data-drawer.open {
       transform: translateX(0);
@@ -699,6 +796,41 @@
       border-color: #9dc5ff;
       background: #eef6ff;
       color: var(--blue);
+    }
+    .status-pager {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px 0;
+      background: #fbfcfd;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .status-pager[hidden] {
+      display: none;
+    }
+    .status-pager-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .status-pager button {
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--blue);
+      padding: 0 10px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .status-pager button:disabled {
+      color: var(--muted);
+      cursor: not-allowed;
+      opacity: 0.55;
     }
     .status-list {
       overflow: auto;
@@ -869,7 +1001,16 @@
         <select id="boardSelect"></select>
       </label>
       <label class="control control-symbol">Symbol
-        <select id="symbolSelect"></select>
+        <div class="symbol-combobox" id="symbolCombobox">
+          <button type="button" class="symbol-trigger" id="symbolTrigger" aria-expanded="false" aria-haspopup="listbox">
+            <span id="symbolTriggerText">Select symbol</span>
+          </button>
+          <div class="symbol-menu" id="symbolMenu" hidden>
+            <div class="symbol-menu-status" id="symbolMenuStatus"></div>
+            <div class="symbol-options" id="symbolOptions" role="listbox" tabindex="-1"></div>
+          </div>
+        </div>
+        <select id="symbolSelect" class="symbol-select-hidden" tabindex="-1" aria-hidden="true"></select>
       </label>
       <label class="control control-search">Search
         <input id="searchInput" type="search" autocomplete="off" placeholder="Code or name">
@@ -968,6 +1109,7 @@
       <button type="button" class="toolbar-button" id="closeDrawerButton">Close</button>
     </div>
     <div class="source-switcher" id="sourceButtons" aria-label="Data source"></div>
+    <div class="status-pager" id="dataStatusPager" hidden></div>
     <div class="status-list" id="dataStatusList"></div>
   </aside>
   <script>
@@ -975,26 +1117,40 @@
     const dynamicMode = payload.mode === "dynamic";
     const workbenchHomeHref = payload.links?.workbench_home || payload.metadata?.workbench_home_href || "";
     const DYNAMIC_BUFFER_MULTIPLIER = 3;
+    const DATA_STATUS_PAGE_SIZE = 50;
+    const TASK_SYMBOL_PAGE_SIZE = DATA_STATUS_PAGE_SIZE;
+    const LOAD_MORE_OPTION_VALUE = "__load_more_symbols__";
     const KLINE_DISPLAY_TIME_ZONE = "Asia/Shanghai";
     const KLINE_DISPLAY_TIME_ZONE_OFFSET = "+08:00";
     let sources = normalizeSources(payload);
     const state = {
-      sourceId: sources[0]?.source_id || "default",
-      symbol: sources[0]?.symbols?.[0]?.symbol || "",
-      frequency: sources[0]?.symbols?.[0]?.series?.[0]?.frequency || payload.frequency || "1d",
+      sourceId: payload.default_source_id || sources[0]?.source_id || "default",
+      symbol: payload.default_symbol || sources[0]?.symbols?.[0]?.symbol || "",
+      frequency: payload.default_frequency || sources[0]?.symbols?.[0]?.series?.[0]?.frequency || payload.frequency || "1d",
       board: "all",
       search: "",
+      symbolOffset: 0,
       windowSize: String(payload.default_window_size || payload.limit || 300),
       windowOverlap: String(payload.default_window_overlap ?? 0.8),
       windowStart: 0,
       drawerOpen: false,
+      dataStatusPage: 1,
+      symbolMenuOpen: false,
       loading: false,
       error: "",
       seriesData: null,
     };
+    let symbolSearchTimer = null;
+    let symbolLoadInFlight = false;
 
     const boardSelect = document.getElementById("boardSelect");
     const symbolSelect = document.getElementById("symbolSelect");
+    const symbolCombobox = document.getElementById("symbolCombobox");
+    const symbolTrigger = document.getElementById("symbolTrigger");
+    const symbolTriggerText = document.getElementById("symbolTriggerText");
+    const symbolMenu = document.getElementById("symbolMenu");
+    const symbolMenuStatus = document.getElementById("symbolMenuStatus");
+    const symbolOptions = document.getElementById("symbolOptions");
     const searchInput = document.getElementById("searchInput");
     const frequencyButtons = document.getElementById("frequencyButtons");
     const windowSizeSelect = document.getElementById("windowSizeSelect");
@@ -1014,6 +1170,7 @@
     const drawerBackdrop = document.getElementById("drawerBackdrop");
     const dataStatusDrawer = document.getElementById("dataStatusDrawer");
     const sourceButtons = document.getElementById("sourceButtons");
+    const dataStatusPager = document.getElementById("dataStatusPager");
     const dataStatusList = document.getElementById("dataStatusList");
     const dataStatusMeta = document.getElementById("dataStatusMeta");
     const summary = document.getElementById("summary");
@@ -1101,6 +1258,22 @@
       return options;
     }
 
+    async function requestJson(path, label) {
+      const response = await fetch(apiUrl(path), apiRequestOptions());
+      let body = {};
+      try {
+        body = await response.json();
+      } catch (error) {
+        if (response.ok) {
+          throw error;
+        }
+      }
+      if (!response.ok || body.error) {
+        throw new Error(body.error || `${label} request failed: ${response.status}`);
+      }
+      return body;
+    }
+
     function normalizeSources(payload) {
       if (Array.isArray(payload.sources) && payload.sources.length) {
         return payload.sources;
@@ -1120,6 +1293,127 @@
 
     function currentSymbols() {
       return currentSource().symbols || [];
+    }
+
+    function sourceAllSymbols(source) {
+      return Array.isArray(source.all_symbols) ? source.all_symbols : (source.symbols || []);
+    }
+
+    function sourceSymbolCount(source) {
+      const page = source.symbol_page || {};
+      return Number(page.total || page.estimated_total || 0)
+        || (Array.isArray(source.all_symbols) ? source.all_symbols.length : 0)
+        || Number(source.symbol_total || 0)
+        || (source.symbols || []).length;
+    }
+
+    function isLegacySymbolSource(source = currentSource()) {
+      return Boolean(source.all_symbols || source.symbol_page?.legacy);
+    }
+
+    function boardSymbols() {
+      const source = currentSource();
+      return isLegacySymbolSource(source) ? sourceAllSymbols(source) : currentSymbols();
+    }
+
+    function upsertSource(nextSource) {
+      const index = sources.findIndex((item) => item.source_id === nextSource.source_id);
+      if (index >= 0) {
+        sources[index] = nextSource;
+      } else {
+        sources.push(nextSource);
+      }
+      return nextSource;
+    }
+
+    function mergeSeriesLists(existingSeries = [], incomingSeries = []) {
+      const byFrequency = new Map();
+      for (const series of existingSeries) {
+        if (series?.frequency) {
+          byFrequency.set(series.frequency, { ...series });
+        }
+      }
+      for (const series of incomingSeries) {
+        if (!series?.frequency) {
+          continue;
+        }
+        const current = byFrequency.get(series.frequency) || {};
+        byFrequency.set(series.frequency, { ...current, ...series });
+      }
+      return Array.from(byFrequency.values()).sort((left, right) => frequencyRank(left.frequency) - frequencyRank(right.frequency));
+    }
+
+    function mergeSymbolLists(existingSymbols = [], incomingSymbols = []) {
+      const bySymbol = new Map();
+      for (const item of existingSymbols) {
+        if (!item?.symbol) {
+          continue;
+        }
+        bySymbol.set(item.symbol, {
+          ...item,
+          series: mergeSeriesLists([], seriesList(item)),
+        });
+      }
+      for (const item of incomingSymbols) {
+        if (!item?.symbol) {
+          continue;
+        }
+        const current = bySymbol.get(item.symbol);
+        if (!current) {
+          bySymbol.set(item.symbol, {
+            ...item,
+            series: mergeSeriesLists([], seriesList(item)),
+          });
+          continue;
+        }
+        bySymbol.set(item.symbol, {
+          ...current,
+          ...item,
+          series: mergeSeriesLists(seriesList(current), seriesList(item)),
+        });
+      }
+      return Array.from(bySymbol.values());
+    }
+
+    function scannedTaskRows(source) {
+      const page = source.symbol_page || {};
+      return Math.min(Number(page.scanned_tasks || 0), Number(page.task_total || page.scanned_tasks || 0));
+    }
+
+    function symbolLoadLabel(source = currentSource()) {
+      const loaded = (source.symbols || []).length;
+      const page = source.symbol_page || {};
+      const total = sourceSymbolCount(source);
+      if (total && total > loaded) {
+        return `${compact(loaded)} of ${compact(total)} symbols loaded`;
+      }
+      if (Number(page.task_total || 0)) {
+        const scanned = scannedTaskRows(source);
+        return `${compact(loaded)}${page.has_more ? "+" : ""} symbols loaded · ${compact(scanned)}/${compact(page.task_total)} cached series scanned`;
+      }
+      if (page.has_more) {
+        return `${compact(loaded)}+ symbols loaded`;
+      }
+      return `${compact(loaded)} symbols loaded`;
+    }
+
+    function sourceButtonCountLabel(source) {
+      const loaded = (source.symbols || []).length;
+      const page = source.symbol_page || {};
+      const total = sourceSymbolCount(source);
+      if (total && total > loaded) {
+        return loaded ? `${compact(loaded)}/${compact(total)}` : compact(total);
+      }
+      return page.has_more ? `${compact(loaded)}+` : compact(loaded);
+    }
+
+    function nextSymbolOffset(source = currentSource()) {
+      const page = source.symbol_page || {};
+      if (Array.isArray(source.all_symbols)) {
+        return (source.symbols || []).length;
+      }
+      const fallbackStep = Number(page.page_step || page.limit || DATA_STATUS_PAGE_SIZE);
+      return Number(page.next_offset ?? (Number(page.offset || 0) + fallbackStep));
     }
 
     function currentBySymbol() {
@@ -1147,6 +1441,72 @@
         return item.series;
       }
       return [{ frequency: payload.frequency || "1d", adjust: payload.adjust || "", rows: (item.bars || []).length, bars: item.bars || [] }];
+    }
+
+    function frequencyRank(value) {
+      const ranks = { "1m": 1, "5m": 2, "15m": 3, "30m": 4, "1h": 5, "4h": 6, "1d": 7 };
+      return ranks[String(value || "")] || 999;
+    }
+
+    function sortedFrequencies(values) {
+      return Array.from(new Set(values.filter(Boolean))).sort((left, right) => {
+        const rankDiff = frequencyRank(left) - frequencyRank(right);
+        return rankDiff || String(left).localeCompare(String(right));
+      });
+    }
+
+    function inferredSymbolLocation(symbol, source) {
+      const sourceId = String(source.source_id || "").toLowerCase();
+      if (source.asset_class === "crypto" || sourceId.includes("bitget")) {
+        return {
+          exchange: "Crypto",
+          board: String(symbol || "").includes(":") ? "Swap" : "Spot",
+        };
+      }
+      const suffix = String(symbol || "").split(".").pop();
+      return {
+        exchange: suffix && suffix !== symbol ? suffix : "",
+        board: source.source_label || source.source_id || "A-share",
+      };
+    }
+
+    function taskRowsToSymbols(tasks, source) {
+      const bySymbol = new Map();
+      for (const task of tasks || []) {
+        const symbol = task.symbol;
+        const frequency = task.frequency || "";
+        if (!symbol || !frequency) {
+          continue;
+        }
+        if (!bySymbol.has(symbol)) {
+          const location = inferredSymbolLocation(symbol, source);
+          bySymbol.set(symbol, {
+            symbol,
+            name: task.name || "",
+            exchange: task.exchange || location.exchange,
+            board: task.board || location.board,
+            series: [],
+          });
+        }
+        const item = bySymbol.get(symbol);
+        if (item.series.some((entry) => entry.frequency === frequency)) {
+          continue;
+        }
+        item.series.push({
+          frequency,
+          adjust: task.adjust || source.adjust || payload.adjust || "",
+          rows: Number(task.rows || 0),
+          first_bar: task.first_bar || task.range_start || task.start || "",
+          last_bar: task.last_bar || task.range_end || task.end || "",
+          years: Array.isArray(task.years) ? task.years : [],
+          bars: [],
+        });
+      }
+      const items = Array.from(bySymbol.values()).slice(0, DATA_STATUS_PAGE_SIZE);
+      for (const item of items) {
+        item.series.sort((left, right) => frequencyRank(left.frequency) - frequencyRank(right.frequency));
+      }
+      return items;
     }
 
     function seriesByFrequency(item) {
@@ -1259,10 +1619,11 @@
     }
 
     function populateBoards() {
-      const symbols = currentSymbols();
+      const symbols = boardSymbols();
       const boards = Array.from(new Set(symbols.map(boardKey).filter(Boolean))).sort();
+      const allLabel = dynamicMode ? "Loaded symbols" : "All symbols";
       boardSelect.innerHTML = [
-        `<option value="all">All symbols (${symbols.length})</option>`,
+        `<option value="all">${allLabel} (${symbols.length})</option>`,
         ...boards.map((board) => {
           const count = symbols.filter((item) => boardKey(item) === board).length;
           return `<option value="${escapeHtml(board)}">${escapeHtml(board)} (${count})</option>`;
@@ -1274,31 +1635,85 @@
       boardSelect.value = state.board;
     }
 
-    function filteredSymbols() {
+    function matchesCurrentFilters(item) {
       const query = state.search.trim().toLowerCase();
-      return currentSymbols().filter((item) => {
-        const matchesBoard = state.board === "all" || boardKey(item) === state.board;
-        const target = `${item.symbol} ${item.name || ""} ${item.exchange || ""} ${item.board || ""}`.toLowerCase();
-        return matchesBoard && (!query || target.includes(query));
-      });
+      const matchesBoard = state.board === "all" || boardKey(item) === state.board;
+      const target = `${item.symbol} ${item.name || ""} ${item.exchange || ""} ${item.board || ""}`.toLowerCase();
+      return matchesBoard && (!query || target.includes(query));
     }
 
-    function populateSymbols() {
+    function filteredSymbols() {
+      return currentSymbols().filter(matchesCurrentFilters);
+    }
+
+    function populateSymbols({ preserveSymbolMenuScroll = false, allowMissingSelection = false } = {}) {
       const visible = filteredSymbols();
       const previousSymbol = state.symbol;
       if (!visible.some((item) => item.symbol === state.symbol)) {
-        state.symbol = visible[0]?.symbol || "";
+        if (!(allowMissingSelection && state.symbol)) {
+          state.symbol = visible[0]?.symbol || "";
+        }
       }
       symbolSelect.innerHTML = visible.map((item) => {
         const selected = item.symbol === state.symbol ? " selected" : "";
         return `<option value="${escapeHtml(item.symbol)}"${selected}>${escapeHtml(optionLabel(item))}</option>`;
       }).join("");
+      renderSymbolMenu({ preserveScroll: preserveSymbolMenuScroll });
       populateFrequencies();
       if (previousSymbol !== state.symbol || dynamicMode) {
         state.seriesData = null;
       }
       if (!dynamicMode && previousSymbol !== state.symbol) {
         setWindowToLatest(currentSeries(selectedItem()));
+      }
+    }
+
+    function renderSymbolMenu({ preserveScroll = false } = {}) {
+      const previousScrollTop = symbolOptions.scrollTop;
+      const visible = filteredSymbols();
+      const selected = selectedItem();
+      symbolTrigger.disabled = !visible.length && !currentSource().symbol_page?.has_more;
+      symbolTriggerText.textContent = selected ? optionLabel(selected) : "No matching symbol";
+      symbolMenuStatus.textContent = dynamicMode
+        ? `${symbolLoadLabel(currentSource())}${currentSource().symbol_page?.has_more ? " | Scroll to load more" : ""}`
+        : `${visible.length} symbols`;
+      const optionButtons = visible.map((item) => {
+        const active = item.symbol === state.symbol ? " active" : "";
+        return `<button type="button" class="symbol-option${active}" role="option" aria-selected="${item.symbol === state.symbol ? "true" : "false"}" data-symbol="${escapeHtml(item.symbol)}">${escapeHtml(optionLabel(item))}</button>`;
+      });
+      if (dynamicMode && currentSource().symbol_page?.has_more) {
+        optionButtons.push(`<div class="symbol-option loading">${symbolLoadInFlight ? "Loading more symbols..." : "Scroll to load more symbols..."}</div>`);
+      }
+      symbolOptions.innerHTML = optionButtons.join("") || `<div class="symbol-option loading">No matching symbol</div>`;
+      if (preserveScroll) {
+        symbolOptions.scrollTop = previousScrollTop;
+      }
+    }
+
+    function toggleSymbolMenu(open = !state.symbolMenuOpen) {
+      state.symbolMenuOpen = open;
+      symbolMenu.hidden = !state.symbolMenuOpen;
+      symbolTrigger.setAttribute("aria-expanded", String(state.symbolMenuOpen));
+      if (state.symbolMenuOpen) {
+        renderSymbolMenu();
+      }
+    }
+
+    function chooseSymbol(symbol) {
+      state.symbol = symbol;
+      state.seriesData = null;
+      populateFrequencies();
+      renderSymbolMenu();
+      loadLatestOrRender();
+    }
+
+    function maybeLoadMoreFromSymbolMenu() {
+      if (!dynamicMode || symbolLoadInFlight || !currentSource().symbol_page?.has_more) {
+        return;
+      }
+      const distanceToBottom = symbolOptions.scrollHeight - symbolOptions.scrollTop - symbolOptions.clientHeight;
+      if (distanceToBottom < 120) {
+        loadMoreSymbols({ loadBars: false });
       }
     }
 
@@ -2521,25 +2936,68 @@
     function renderSourceButtons() {
       sourceButtons.innerHTML = sources.map((source) => {
         const active = source.source_id === state.sourceId ? " active" : "";
-        const count = (source.symbols || []).length;
-        const label = `${source.source_label || source.source_id} (${count})`;
+        const count = sourceSymbolCount(source);
+        const suffix = dynamicMode ? sourceButtonCountLabel(source) : `${count}`;
+        const label = dynamicMode
+          ? `${source.source_label || source.source_id} (${suffix})`
+          : `${source.source_label || source.source_id} (${count})`;
         return `<button type="button" class="${active.trim()}" data-source="${escapeHtml(source.source_id)}">${escapeHtml(label)}</button>`;
       }).join("");
     }
 
-    function renderDataStatus() {
+    function dataStatusPageCount(symbols) {
+      return Math.max(1, Math.ceil(symbols.length / DATA_STATUS_PAGE_SIZE));
+    }
+
+    function dataStatusPageForSymbol(symbols, symbol) {
+      const index = symbols.findIndex((item) => item.symbol === symbol);
+      return index < 0 ? 1 : Math.floor(index / DATA_STATUS_PAGE_SIZE) + 1;
+    }
+
+    function clampDataStatusPage(symbols) {
+      const pages = dataStatusPageCount(symbols);
+      state.dataStatusPage = Math.min(Math.max(1, state.dataStatusPage), pages);
+      return pages;
+    }
+
+    function renderDataStatus({ preserveScroll = false } = {}) {
+      const previousScrollTop = dataStatusList.scrollTop;
       const source = currentSource();
       const symbols = currentSymbols();
       const totalSeries = symbols.reduce((count, item) => count + seriesList(item).length, 0);
+      const symbolPage = source.symbol_page || {};
+      const pageCount = dynamicMode ? 1 : clampDataStatusPage(symbols);
+      const start = dynamicMode ? 0 : (state.dataStatusPage - 1) * DATA_STATUS_PAGE_SIZE;
+      const pageSymbols = dynamicMode ? symbols : symbols.slice(start, start + DATA_STATUS_PAGE_SIZE);
       renderSourceButtons();
-      dataStatusMeta.textContent = `${source.source_label || source.source_id} | ${symbols.length} symbols | ${totalSeries} cached series`;
+      dataStatusMeta.textContent = dynamicMode
+        ? `${source.source_label || source.source_id} | ${symbolLoadLabel(source)} | ${totalSeries} cached series`
+        : `${source.source_label || source.source_id} | ${symbols.length} symbols | ${totalSeries} cached series`;
       dataStatusButton.title = `${source.source_label || source.source_id} | ${totalSeries} series`;
-      dataStatusStripMeta.textContent = `${source.source_label || source.source_id} | ${totalSeries} cached series`;
+      dataStatusStripMeta.textContent = dynamicMode
+        ? `${source.source_label || source.source_id} | ${symbolLoadLabel(source)} | ${totalSeries} cached series`
+        : `${source.source_label || source.source_id} | ${totalSeries} cached series`;
       if (!totalSeries) {
+        dataStatusPager.hidden = true;
         dataStatusList.innerHTML = `<div class="empty">No cached data</div>`;
         return;
       }
-      dataStatusList.innerHTML = symbols.map((item) => {
+      dataStatusPager.hidden = dynamicMode
+        ? !symbolPage.has_more
+        : symbols.length <= DATA_STATUS_PAGE_SIZE;
+      const end = start + pageSymbols.length;
+      dataStatusPager.innerHTML = `
+        <span>${dynamicMode
+          ? symbolLoadLabel(source)
+          : `Showing ${compact(start + 1)}-${compact(Math.min(end, symbols.length))} of ${compact(symbols.length)} symbols`}</span>
+        <span class="status-pager-actions">
+          ${dynamicMode
+            ? `<span>${symbolLoadInFlight ? "Loading more symbols..." : "Scroll to load more"}</span>`
+            : `<button type="button" data-status-page="previous"${state.dataStatusPage <= 1 ? " disabled" : ""}>Previous</button>
+          <button type="button" data-status-page="next"${state.dataStatusPage >= pageCount ? " disabled" : ""}>Next</button>`}
+        </span>
+      `;
+      dataStatusList.innerHTML = pageSymbols.map((item) => {
         const series = seriesList(item);
         const rows = series.map((entry) => {
           const active = item.symbol === state.symbol && entry.frequency === state.frequency ? " active" : "";
@@ -2571,6 +3029,9 @@
           </section>
         `;
       }).join("");
+      if (preserveScroll) {
+        dataStatusList.scrollTop = previousScrollTop;
+      }
     }
 
     function createCustomIndicator({ name, formula, appendPanel = true }) {
@@ -2664,8 +3125,14 @@
       state.sourceId = sourceId;
       state.board = "all";
       state.search = "";
+      state.symbolOffset = 0;
       state.seriesData = null;
+      state.dataStatusPage = 1;
       searchInput.value = "";
+      if (dynamicMode) {
+        loadDynamicSymbolsPage({ offset: 0, preserveSymbol: false, loadBars: true });
+        return;
+      }
       populateBoards();
       populateSymbols();
       loadLatestOrRender();
@@ -2673,6 +3140,9 @@
 
     function toggleDataStatus(open = !state.drawerOpen) {
       state.drawerOpen = open;
+      if (state.drawerOpen && !dynamicMode) {
+        state.dataStatusPage = dataStatusPageForSymbol(currentSymbols(), state.symbol);
+      }
       dataStatusDrawer.classList.toggle("open", state.drawerOpen);
       drawerBackdrop.hidden = !state.drawerOpen;
       dataStatusButton.setAttribute("aria-expanded", String(state.drawerOpen));
@@ -2739,11 +3209,19 @@
       chart.className = "empty";
       chart.textContent = "Loading local data index...";
       try {
-        const response = await fetch(apiUrl("/api/kline/manifest"), apiRequestOptions());
-        const manifest = await response.json();
-        if (!response.ok || manifest.error) {
-          throw new Error(manifest.error || `Manifest request failed: ${response.status}`);
+        if (dynamicMode) {
+          try {
+            await loadRemoteDataSources();
+            await bootstrapDynamicSelection();
+            return;
+          } catch (error) {
+            if (payload.data_api_base_url) {
+              throw error;
+            }
+          }
         }
+        const manifestPath = dynamicMode ? "/api/kline/manifest?symbols=0" : "/api/kline/manifest";
+        const manifest = await requestJson(manifestPath, "Manifest");
         sources = normalizeSources(manifest);
         if (!sources.some((source) => source.source_id === state.sourceId)) {
           state.sourceId = sources[0]?.source_id || "default";
@@ -2751,8 +3229,24 @@
         state.board = "all";
         state.search = "";
         searchInput.value = "";
-        state.symbol = currentSymbols()[0]?.symbol || "";
-        state.frequency = seriesList(selectedItem())[0]?.frequency || manifest.frequency || "1d";
+        if (dynamicMode) {
+          if (sources.some((source) => (source.symbols || []).length)) {
+            await useManifestSymbolPage({ loadBars: true });
+            return;
+          }
+          await loadSymbolsPage({ offset: 0, preserveSymbol: false, loadBars: true });
+          return;
+        }
+        const requestedSymbol = payload.default_symbol || state.symbol;
+        const symbols = currentSymbols();
+        state.symbol = symbols.some((item) => item.symbol === requestedSymbol)
+          ? requestedSymbol
+          : symbols[0]?.symbol || "";
+        const requestedFrequency = payload.default_frequency || state.frequency;
+        const selectedSeries = seriesList(selectedItem());
+        state.frequency = selectedSeries.some((entry) => entry.frequency === requestedFrequency)
+          ? requestedFrequency
+          : selectedSeries[0]?.frequency || manifest.frequency || "1d";
         state.seriesData = null;
         populateBoards();
         populateSymbols();
@@ -2762,6 +3256,362 @@
         state.error = error instanceof Error ? error.message : String(error);
         state.loading = false;
         render();
+      }
+    }
+
+    async function loadRemoteDataSources() {
+      const data = await requestJson("/api/data-sources", "Data sources");
+      const remoteSources = (data.sources || []).filter((source) => source.bars !== false);
+      if (!remoteSources.length) {
+        throw new Error("No K-line data sources available");
+      }
+      sources = remoteSources.map((source) => ({
+        source_id: source.source_id || "default",
+        source_label: source.source_label || source.source_id || "Cache",
+        asset_class: source.asset_class || "",
+        symbol_total: Number(source.symbol_total || source.total_symbols || source.total || 0) || undefined,
+        cached_task_total: Number(source.cached_task_total || 0) || undefined,
+        frequency: payload.frequency || "multi",
+        frequencies: payload.frequencies || [],
+        adjust: source.adjust || (source.asset_class === "crypto" ? "none" : payload.adjust || ""),
+        symbols: [],
+      }));
+      await loadRemoteSourceTotals();
+      if (!sources.some((source) => source.source_id === state.sourceId)) {
+        state.sourceId = payload.default_source_id && sources.some((source) => source.source_id === payload.default_source_id)
+          ? payload.default_source_id
+          : sources[0]?.source_id || "default";
+      }
+      state.board = "all";
+      state.search = "";
+      state.symbolOffset = 0;
+      state.seriesData = null;
+      searchInput.value = "";
+      populateBoards();
+      populateSymbols();
+      renderDataStatus();
+    }
+
+    async function bootstrapDynamicSelection() {
+      const requestedSymbol = String(payload.default_symbol || state.symbol || "").trim();
+      if (requestedSymbol) {
+        state.symbol = requestedSymbol;
+      }
+      await loadDynamicSymbolsPage({
+        offset: 0,
+        preserveSymbol: Boolean(requestedSymbol),
+        loadBars: false,
+      });
+      if (requestedSymbol) {
+        await ensureExactSymbolAvailable(requestedSymbol);
+      }
+      const requestedFrequency = payload.default_frequency || state.frequency;
+      const selectedSeries = seriesList(selectedItem());
+      state.frequency = selectedSeries.some((entry) => entry.frequency === requestedFrequency)
+        ? requestedFrequency
+        : selectedSeries[0]?.frequency || requestedFrequency || "1d";
+      populateBoards();
+      populateSymbols();
+      renderDataStatus();
+      await loadLatestOrRender();
+    }
+
+    async function ensureExactSymbolAvailable(symbol) {
+      if (!symbol) {
+        return;
+      }
+      if (currentSymbols().some((item) => item.symbol === symbol)) {
+        state.symbol = symbol;
+        return;
+      }
+      const source = currentSource();
+      const params = new URLSearchParams();
+      params.set("source_id", source.source_id || state.sourceId);
+      params.set("q", symbol);
+      params.set("limit", "20");
+      params.set("offset", "0");
+      let incoming = [];
+      try {
+        const page = await requestJson(`/api/kline/symbols?${params.toString()}`, "Symbol");
+        incoming = (page.symbols || []).filter((item) => item.symbol === symbol);
+      } catch (error) {
+        incoming = [];
+      }
+      if (!incoming.length) {
+        incoming = [{
+          symbol,
+          code: String(symbol).split(".")[0] || symbol,
+          name: "",
+          exchange: "",
+          board: "",
+          industry: "",
+          series: [{
+            frequency: payload.default_frequency || state.frequency || "1d",
+            adjust: source.adjust || payload.adjust || "",
+            rows: 0,
+            first_bar: "",
+            last_bar: "",
+            years: [],
+          }],
+        }];
+      }
+      upsertSource({
+        ...source,
+        symbols: mergeSymbolLists(incoming, source.symbols || []),
+      });
+      state.symbol = symbol;
+    }
+
+    async function loadRemoteSourceTotals() {
+      const results = await Promise.allSettled(
+        sources.map((source) => requestJson(`/api/kline/symbols?source_id=${encodeURIComponent(source.source_id)}&limit=1&offset=0`, "Symbol summary"))
+      );
+      sources = sources.map((source, index) => {
+        const result = results[index];
+        if (result.status !== "fulfilled") {
+          return source;
+        }
+        const summary = result.value;
+        const symbolTotal = Number(summary.total || summary.estimated_total || 0) || undefined;
+        if (!symbolTotal) {
+          return source;
+        }
+        return {
+          ...source,
+          symbol_total: symbolTotal,
+        };
+      });
+    }
+
+    async function useManifestSymbolPage({ loadBars = false } = {}) {
+      sources = sources.map((source) => {
+        const manifestSymbols = sourceAllSymbols(source);
+        if (!manifestSymbols.length) {
+          return source;
+        }
+        return {
+          ...source,
+          all_symbols: manifestSymbols,
+          symbols: manifestSymbols,
+          symbol_page: {
+            offset: 0,
+            limit: DATA_STATUS_PAGE_SIZE,
+            has_more: manifestSymbols.length > DATA_STATUS_PAGE_SIZE,
+            next_offset: manifestSymbols.length > DATA_STATUS_PAGE_SIZE ? DATA_STATUS_PAGE_SIZE : null,
+            total: manifestSymbols.length,
+            legacy: true,
+          },
+        };
+      });
+      await loadLegacySymbolsPage({
+        offset: 0,
+        preserveSymbol: Boolean(payload.default_symbol || state.symbol),
+        loadBars,
+      });
+    }
+
+    function legacyFilteredSymbols(source) {
+      return sourceAllSymbols(source).filter(matchesCurrentFilters);
+    }
+
+    async function loadLegacySymbolsPage({ offset = 0, preserveSymbol = true, loadBars = false, append = false } = {}) {
+      const source = currentSource();
+      const allSymbols = sourceAllSymbols(source);
+      const filtered = legacyFilteredSymbols(source);
+      let nextOffset = append ? Math.max(0, offset || (source.symbols || []).length) : Math.max(0, offset);
+      if (!append && preserveSymbol && state.symbol) {
+        const selectedIndex = filtered.findIndex((item) => item.symbol === state.symbol);
+        if (
+          selectedIndex >= 0
+          && (selectedIndex < nextOffset || selectedIndex >= nextOffset + DATA_STATUS_PAGE_SIZE)
+        ) {
+          nextOffset = Math.floor(selectedIndex / DATA_STATUS_PAGE_SIZE) * DATA_STATUS_PAGE_SIZE;
+        }
+      }
+      const pageSymbols = filtered.slice(nextOffset, nextOffset + DATA_STATUS_PAGE_SIZE);
+      const symbols = append ? mergeSymbolLists(source.symbols || [], pageSymbols) : pageSymbols;
+      const nextSource = upsertSource({
+        ...source,
+        all_symbols: allSymbols,
+        symbols,
+        symbol_page: {
+          offset: append ? 0 : nextOffset,
+          limit: DATA_STATUS_PAGE_SIZE,
+          has_more: symbols.length < filtered.length,
+          next_offset: symbols.length < filtered.length ? symbols.length : null,
+          total: filtered.length,
+          legacy: true,
+        },
+      });
+      state.symbolOffset = nextSource.symbol_page.offset;
+      if (!symbols.some((item) => item.symbol === state.symbol)) {
+        if (!(preserveSymbol && state.symbol)) {
+          state.symbol = symbols[0]?.symbol || "";
+        }
+      }
+      const selectedSeries = seriesList(selectedItem());
+      if (!selectedSeries.some((entry) => entry.frequency === state.frequency)) {
+        state.frequency = selectedSeries[0]?.frequency || nextSource.frequency || payload.frequency || state.frequency || "1d";
+      }
+      state.seriesData = null;
+      populateBoards();
+      populateSymbols({
+        preserveSymbolMenuScroll: append,
+        allowMissingSelection: Boolean(preserveSymbol && state.symbol),
+      });
+      renderDataStatus({ preserveScroll: append });
+      if (loadBars) {
+        await loadLatestOrRender();
+      }
+    }
+
+    function loadDynamicSymbolsPage(options) {
+      if (isLegacySymbolSource()) {
+        return loadLegacySymbolsPage(options);
+      }
+      if (currentSource().symbol_page?.provider === "tasks") {
+        return loadTaskSymbolsPage(options);
+      }
+      return loadSymbolsPage(options).catch(() => loadTaskSymbolsPage(options));
+    }
+
+    async function loadMoreSymbols({ loadBars = false } = {}) {
+      const source = currentSource();
+      const page = source.symbol_page || {};
+      if (!dynamicMode || !page.has_more || symbolLoadInFlight) {
+        return;
+      }
+      symbolLoadInFlight = true;
+      renderDataStatus({ preserveScroll: true });
+      renderSymbolMenu({ preserveScroll: true });
+      try {
+        await loadDynamicSymbolsPage({
+          offset: nextSymbolOffset(source),
+          preserveSymbol: true,
+          loadBars,
+          append: true,
+        });
+      } finally {
+        symbolLoadInFlight = false;
+        renderDataStatus({ preserveScroll: true });
+        renderSymbolMenu({ preserveScroll: true });
+      }
+    }
+
+    async function loadSymbolsPage({ offset = 0, preserveSymbol = true, loadBars = false, append = false } = {}) {
+      const source = currentSource();
+      const params = new URLSearchParams();
+      params.set("source_id", source.source_id || state.sourceId);
+      params.set("limit", String(DATA_STATUS_PAGE_SIZE));
+      params.set("offset", String(Math.max(0, offset)));
+      const query = state.search.trim();
+      if (query) {
+        params.set("q", query);
+      }
+      if (state.board && state.board !== "all") {
+        params.set("board", state.board);
+      }
+      const page = await requestJson(`/api/kline/symbols?${params.toString()}`, "Symbol");
+      const incomingSymbols = page.symbols || [];
+      const symbols = append ? mergeSymbolLists(source.symbols || [], incomingSymbols) : incomingSymbols;
+      const nextSource = upsertSource({
+        ...source,
+        ...page,
+        symbols,
+        symbol_page: {
+          offset: append ? 0 : page.offset || 0,
+          limit: page.limit || DATA_STATUS_PAGE_SIZE,
+          has_more: Boolean(page.has_more),
+          next_offset: page.next_offset,
+          page_step: page.limit || DATA_STATUS_PAGE_SIZE,
+          total: page.total || page.estimated_total || undefined,
+          provider: "kline-symbols",
+        },
+      });
+      state.symbolOffset = nextSource.symbol_page.offset;
+      if (!symbols.some((item) => item.symbol === state.symbol)) {
+        if (!(preserveSymbol && state.symbol)) {
+          state.symbol = symbols[0]?.symbol || "";
+        }
+      }
+      const selectedSeries = seriesList(selectedItem());
+      if (!selectedSeries.some((entry) => entry.frequency === state.frequency)) {
+        state.frequency = selectedSeries[0]?.frequency || page.frequency || state.frequency || "1d";
+      }
+      state.seriesData = null;
+      populateBoards();
+      populateSymbols({
+        preserveSymbolMenuScroll: append,
+        allowMissingSelection: Boolean(preserveSymbol && state.symbol),
+      });
+      if (state.drawerOpen) {
+        renderDataStatus({ preserveScroll: append });
+      }
+      if (loadBars) {
+        await loadLatestOrRender();
+      }
+    }
+
+    async function loadTaskSymbolsPage({ offset = 0, preserveSymbol = true, loadBars = false, append = false } = {}) {
+      const source = currentSource();
+      const taskOffset = Math.max(0, offset);
+      const params = new URLSearchParams();
+      params.set("source_id", source.source_id || state.sourceId);
+      params.set("page_size", String(TASK_SYMBOL_PAGE_SIZE));
+      params.set("page", String(Math.floor(taskOffset / TASK_SYMBOL_PAGE_SIZE) + 1));
+      params.set("status", "success");
+      const query = state.search.trim();
+      if (query) {
+        params.set("symbol", query);
+      }
+      const page = await requestJson(`/api/data/tasks?${params.toString()}`, "Task symbols");
+      const tasks = page.tasks || [];
+      const incomingSymbols = taskRowsToSymbols(tasks, source);
+      const symbols = append ? mergeSymbolLists(source.symbols || [], incomingSymbols) : incomingSymbols;
+      const pageTotal = Number(page.total || 0);
+      const frequencies = sortedFrequencies([
+        ...(source.frequencies || []),
+        ...symbols.flatMap((item) => seriesList(item).map((entry) => entry.frequency)),
+      ]);
+      const hasMore = taskOffset + tasks.length < pageTotal;
+      const scanned = taskOffset + tasks.length;
+      const nextSource = upsertSource({
+        ...source,
+        symbol_total: source.symbol_total,
+        cached_task_total: pageTotal || source.cached_task_total,
+        symbols,
+        frequency: frequencies.length === 1 ? frequencies[0] : source.frequency || "multi",
+        frequencies,
+        symbol_page: {
+          offset: append ? 0 : taskOffset,
+          limit: DATA_STATUS_PAGE_SIZE,
+          page_step: TASK_SYMBOL_PAGE_SIZE,
+          has_more: hasMore,
+          next_offset: hasMore ? taskOffset + TASK_SYMBOL_PAGE_SIZE : null,
+          task_total: pageTotal,
+          scanned_tasks: scanned,
+          provider: "tasks",
+        },
+      });
+      state.symbolOffset = nextSource.symbol_page.offset;
+      if (!symbols.some((item) => item.symbol === state.symbol)) {
+        if (!(preserveSymbol && state.symbol)) {
+          state.symbol = symbols[0]?.symbol || "";
+        }
+      }
+      const selectedSeries = seriesList(selectedItem());
+      if (!selectedSeries.some((entry) => entry.frequency === state.frequency)) {
+        state.frequency = selectedSeries[0]?.frequency || frequencies[0] || state.frequency || "1d";
+      }
+      state.seriesData = null;
+      populateBoards();
+      populateSymbols({
+        preserveSymbolMenuScroll: append,
+        allowMissingSelection: Boolean(preserveSymbol && state.symbol),
+      });
+      renderDataStatus({ preserveScroll: append });
+      if (loadBars) {
+        await loadLatestOrRender();
       }
     }
 
@@ -2827,11 +3677,11 @@
     function loadLatestOrRender() {
       renderDataStatus();
       if (dynamicMode) {
-        loadCurrentBars({ anchor: "latest" });
-      } else {
-        setWindowToLatest(currentSeries(selectedItem()));
-        render();
+        return loadCurrentBars({ anchor: "latest" });
       }
+      setWindowToLatest(currentSeries(selectedItem()));
+      render();
+      return Promise.resolve();
     }
 
     function navigateToGlobalOffset(targetWindowOffset) {
@@ -2880,17 +3730,76 @@
 
     boardSelect.addEventListener("change", () => {
       state.board = boardSelect.value;
+      if (dynamicMode) {
+        loadDynamicSymbolsPage({ offset: 0, preserveSymbol: false, loadBars: true });
+        return;
+      }
       populateSymbols();
       loadLatestOrRender();
     });
+    symbolTrigger.addEventListener("click", () => toggleSymbolMenu());
+    symbolTrigger.addEventListener("keydown", (event) => {
+      if (!["ArrowDown", "Enter", " "].includes(event.key)) {
+        return;
+      }
+      event.preventDefault();
+      toggleSymbolMenu(true);
+      const activeOption = symbolOptions.querySelector(".symbol-option.active") || symbolOptions.querySelector("button.symbol-option");
+      if (activeOption) {
+        activeOption.focus();
+      }
+    });
+    symbolOptions.addEventListener("click", (event) => {
+      const option = event.target.closest("button[data-symbol]");
+      if (!option) {
+        return;
+      }
+      toggleSymbolMenu(false);
+      chooseSymbol(option.dataset.symbol);
+    });
+    symbolOptions.addEventListener("scroll", maybeLoadMoreFromSymbolMenu);
+    symbolOptions.addEventListener("keydown", (event) => {
+      const options = Array.from(symbolOptions.querySelectorAll("button.symbol-option"));
+      const index = options.indexOf(document.activeElement);
+      if (event.key === "Escape") {
+        toggleSymbolMenu(false);
+        symbolTrigger.focus();
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        (options[index + 1] || options[0])?.focus();
+        maybeLoadMoreFromSymbolMenu();
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        (options[index - 1] || options[options.length - 1])?.focus();
+      }
+    });
+    document.addEventListener("click", (event) => {
+      if (!symbolCombobox.contains(event.target)) {
+        toggleSymbolMenu(false);
+      }
+    });
     symbolSelect.addEventListener("change", () => {
-      state.symbol = symbolSelect.value;
-      state.seriesData = null;
-      populateFrequencies();
-      loadLatestOrRender();
+      if (symbolSelect.value === LOAD_MORE_OPTION_VALUE) {
+        symbolSelect.value = state.symbol;
+        loadMoreSymbols({ loadBars: false });
+        return;
+      }
+      chooseSymbol(symbolSelect.value);
     });
     searchInput.addEventListener("input", () => {
       state.search = searchInput.value;
+      if (dynamicMode) {
+        window.clearTimeout(symbolSearchTimer);
+        symbolSearchTimer = window.setTimeout(
+          () => loadDynamicSymbolsPage({ offset: 0, preserveSymbol: false, loadBars: true }),
+          180
+        );
+        return;
+      }
       populateSymbols();
       loadLatestOrRender();
     });
@@ -3023,6 +3932,36 @@
       }
       switchSource(button.dataset.source);
     });
+    dataStatusPager.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-status-page]");
+      if (!button) {
+        return;
+      }
+      if (dynamicMode) {
+        if (button.dataset.statusPage === "more") {
+          loadMoreSymbols({ loadBars: false });
+        }
+        return;
+      }
+      const pages = dataStatusPageCount(currentSymbols());
+      state.dataStatusPage = button.dataset.statusPage === "previous"
+        ? Math.max(1, state.dataStatusPage - 1)
+        : Math.min(pages, state.dataStatusPage + 1);
+      renderDataStatus();
+    });
+    dataStatusList.addEventListener("scroll", () => {
+      if (!dynamicMode || !state.drawerOpen || symbolLoadInFlight) {
+        return;
+      }
+      const page = currentSource().symbol_page || {};
+      if (!page.has_more) {
+        return;
+      }
+      const distanceToBottom = dataStatusList.scrollHeight - dataStatusList.scrollTop - dataStatusList.clientHeight;
+      if (distanceToBottom < 160) {
+        loadMoreSymbols({ loadBars: false });
+      }
+    });
     dataStatusList.addEventListener("click", (event) => {
       const row = event.target.closest("button[data-source][data-symbol][data-frequency]");
       if (!row) {
@@ -3057,8 +3996,11 @@
       const symbols = currentSymbols();
       const frequencies = source.frequencies || payload.frequencies || [payload.frequency];
       const mode = dynamicMode ? "dynamic" : "static";
+      const count = sourceSymbolCount(source);
+      const adjust = source.adjust || payload.adjust || "";
+      const countLabel = dynamicMode ? symbolLoadLabel(source) : `${count} symbols`;
       const panelCount = indicatorState.panels?.length || 0;
-      datasetMeta.textContent = `Source: ${source.source_label || source.source_id} | ${symbols.length} symbols | ${frequencies.join(", ")} | ${payload.adjust} | ${mode} | ${panelCount} indicator panels`;
+      datasetMeta.textContent = `Source: ${source.source_label || source.source_id} | ${countLabel} | ${frequencies.join(", ")}${adjust ? ` | ${adjust}` : ""} | ${mode} | ${panelCount} indicator panels`;
     }
 
     ensureWindowOption();

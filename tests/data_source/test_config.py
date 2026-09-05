@@ -68,6 +68,12 @@ def test_server_config_defaults_scheduler_poll_to_one_second(tmp_path: Path):
     config = DataSourceServerConfig(sources=[_spec(tmp_path)])
 
     assert config.scheduler_poll_seconds == 1.0
+    assert config.task_summary_refresh_seconds == 30.0
+
+
+def test_server_config_rejects_non_positive_task_summary_refresh(tmp_path: Path):
+    with pytest.raises(ValueError, match="task_summary_refresh_seconds"):
+        DataSourceServerConfig(sources=[_spec(tmp_path)], task_summary_refresh_seconds=0)
 
 
 def test_server_config_normalizes_api_token(tmp_path: Path):
@@ -106,6 +112,54 @@ def test_build_default_source_specs_uses_expected_source_metadata(tmp_path: Path
     assert specs[1].adjust == "qfq"
     assert specs[1].catalog_source == "akshare"
     assert specs[1].universe_path == universe
+
+
+def test_build_default_source_specs_supports_universe_csv_catalog(tmp_path: Path):
+    a_share_root = tmp_path / "a_share" / "bars"
+    universe = tmp_path / "a_share.csv"
+    a_share_root.mkdir(parents=True)
+    universe.write_text("symbol,name\n000001.SZ,bank\n", encoding="utf-8")
+
+    specs = build_default_source_specs(
+        bitget_bars_root=tmp_path / "bitget" / "bars",
+        bitget_metadata_path=tmp_path / "bitget.sqlite",
+        a_share_bars_root=a_share_root,
+        a_share_metadata_path=tmp_path / "a_share.sqlite",
+        include_bitget=False,
+        include_a_share=True,
+        a_share_universe=universe,
+        a_share_catalog_source="universe_csv",
+    )
+
+    assert len(specs) == 1
+    assert specs[0].catalog_source == "universe_csv"
+    assert specs[0].universe_path == universe
+
+
+def test_build_default_source_specs_rejects_invalid_a_share_catalog(tmp_path: Path):
+    a_share_root = tmp_path / "a_share" / "bars"
+    a_share_root.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="a_share_catalog_source must be one of"):
+        build_default_source_specs(
+            bitget_bars_root=tmp_path / "bitget" / "bars",
+            bitget_metadata_path=tmp_path / "bitget.sqlite",
+            a_share_bars_root=a_share_root,
+            a_share_metadata_path=tmp_path / "a_share.sqlite",
+            include_bitget=False,
+            a_share_catalog_source="custom",
+        )
+
+    with pytest.raises(ValueError, match="a_share_universe is required"):
+        build_default_source_specs(
+            bitget_bars_root=tmp_path / "bitget" / "bars",
+            bitget_metadata_path=tmp_path / "bitget.sqlite",
+            a_share_bars_root=a_share_root,
+            a_share_metadata_path=tmp_path / "a_share.sqlite",
+            include_bitget=False,
+            a_share_catalog_source="universe_csv",
+            a_share_universe=tmp_path / "missing.csv",
+        )
 
 
 def test_build_default_source_specs_includes_both_sources_by_default(tmp_path: Path):

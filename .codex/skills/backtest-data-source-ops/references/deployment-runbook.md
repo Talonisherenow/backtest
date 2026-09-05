@@ -41,23 +41,36 @@ Common startup flags:
   exist on this machine. The server exits at startup otherwise.
 - `--bitget-bars-root` / `--bitget-metadata` / `--a-share-bars-root` /
   `--a-share-metadata` to point at non-default paths.
+- `--a-share-catalog-source akshare|universe_csv` selects how A-share
+  instrument sync loads the catalog. Default is live `akshare`. Use
+  `universe_csv` only for offline CSV import, and pass `--a-share-universe`
+  to an existing CSV with a `symbol` column.
+- `--a-share-universe` still supplies symbol names for K-line labeling when the
+  file exists; it is required when `--a-share-catalog-source=universe_csv`.
 - `--scheduler` is enabled by default. `--scheduler-poll-seconds` defaults to
   `1.0`; keep it at one second when users need second-level schedule execution.
 - `--schedule-db` stores schedule definitions and run history separately from
   crawl-task metadata.
 
-After deploying scheduler/workbench API changes, verify the source loopback
-contract before checking the remote workbench:
+After deploying instrument-catalog or scheduler changes, verify the source
+loopback contract before checking the remote workbench:
 
 ```bash
 curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" \
   http://127.0.0.1:8768/api/data/schedule-options | \
   rg "execution_delay_units|range_units|seconds"
+curl -sS -H "Authorization: Bearer $BACKTEST_DATA_SOURCE_TOKEN" \
+  http://127.0.0.1:8768/api/instrument-sources
 ```
 
 The updated schedule contract exposes second interval units, execution delay
 units, and range units for minutes/hours/days. If the probe does not show those
 fields, the process is still serving older code.
+
+Expect A-share `provider_type=akshare` for live listings, or `universe_csv`
+only when intentionally importing a local CSV. If the probe still shows an old
+dated CSV provider after a live deploy, the process is serving older code or
+was started with `--a-share-catalog-source universe_csv`.
 
 ### macOS LaunchAgents
 
@@ -77,6 +90,19 @@ launchctl load -w ~/Library/LaunchAgents/com.backtest.data-source.plist
 tail -f /usr/local/var/log/backtest-data-source.err.log
 tail -f /usr/local/var/log/frpc.log
 ```
+
+Crawl-task retention: keep about 3 days of `crawl_tasks` rows. Manual cleanup:
+
+```bash
+# Prefer stopping data-source first if using --vacuum
+launchctl unload ~/Library/LaunchAgents/com.backtest.data-source.plist
+VACUUM_FLAG=--vacuum bash scripts/cleanup-crawl-tasks.sh
+launchctl load -w ~/Library/LaunchAgents/com.backtest.data-source.plist
+```
+
+Daily LaunchAgent `com.backtest.cleanup-tasks` runs `scripts/cleanup-crawl-tasks.sh`
+at 04:15 local time with `--retain-days 3` and `--no-vacuum` (safe while the
+API is up). Logs: `/usr/local/var/log/backtest-cleanup-tasks.{out,err}.log`.
 
 ## VPS
 

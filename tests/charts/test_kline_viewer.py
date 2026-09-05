@@ -310,6 +310,9 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "bars.map((bar) => formatBarDateTime(bar.date, series?.frequency || state.frequency))" in html
     assert "loaded_rows" in html
     assert "status-symbol-group" in html
+    assert 'id="dataStatusPager"' in html
+    assert "DATA_STATUS_PAGE_SIZE = 50" in html
+    assert "symbols.slice(start, start + DATA_STATUS_PAGE_SIZE)" in html
     assert "sourceButtons" in html
     assert "currentSource" in html
     assert "Source" in html
@@ -320,7 +323,7 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert 'id="customIndicatorForm"' in html
     assert 'id="customIndicatorFormulaInput"' in html
     assert 'id="customIndicatorTemplates"' in html
-    assert 'id="customIndicatorList"' in html
+    assert 'id="indicatorPanelList"' in html
     assert "backtest.kline.customIndicators.v1" in html
     assert "CUSTOM_INDICATOR_TEMPLATES" in html
     assert "MACD Spread" in html
@@ -344,7 +347,18 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert 'mode": "dynamic"' not in html
     assert '"mode":"dynamic"' in html
     assert "loadManifest" in html
-    assert 'apiUrl("/api/kline/manifest")' in html
+    assert '"/api/kline/manifest?symbols=0"' in html
+    assert "loadSymbolsPage" in html
+    assert "loadRemoteDataSources" in html
+    assert 'requestJson("/api/data-sources", "Data sources")' in html
+    assert "loadTaskSymbolsPage" in html
+    assert "requestJson(`/api/data/tasks?${params.toString()}`, \"Task symbols\")" in html
+    assert "useManifestSymbolPage" in html
+    assert "loadLegacySymbolsPage" in html
+    assert "source.all_symbols" in html
+    assert "legacy: true" in html
+    assert "await useManifestSymbolPage({ loadBars: true })" in html
+    assert 'requestJson(`/api/kline/symbols?${params.toString()}`, "Symbol")' in html
     assert "apiUrl(`/api/kline/bars?${params.toString()}`)" in html
     assert "olderPageButton" in html
     assert "newerPageButton" in html
@@ -367,10 +381,51 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert "renderGlobalOffset" in html
     assert "navigateToGlobalOffset" in html
     assert "windowSlider.max = String(globalMaxStart)" in html
-    assert "Loaded" not in html
+    assert "LOAD_MORE_OPTION_VALUE" in html
+    assert "mergeSymbolLists" in html
+    assert "loadMoreSymbols" in html
+    assert "Scroll to load more" in html
+    assert "symbolLoadLabel" in html
+    assert "loadRemoteSourceTotals" in html
+    assert 'requestJson(`/api/kline/symbols?source_id=${encodeURIComponent(source.source_id)}&limit=1&offset=0`, "Symbol summary")' in html
+    assert 'id="symbolOptions"' in html
+    assert 'symbolOptions.addEventListener("scroll"' in html
+    assert "toggleSymbolMenu" in html
     assert "saveCustomIndicator" in html
     assert "deleteCustomIndicator" in html
     assert "createCustomIndicator" in html
+
+
+def test_render_kline_viewer_honors_dynamic_default_selection():
+    html = render_kline_viewer_html(
+        {
+            "mode": "dynamic",
+            "default_source_id": "a_share",
+            "default_symbol": "000001.SZ",
+            "default_frequency": "1d",
+        }
+    )
+
+    assert '"default_source_id":"a_share"' in html
+    assert '"default_symbol":"000001.SZ"' in html
+    assert '"default_frequency":"1d"' in html
+    assert 'sourceId: payload.default_source_id || sources[0]?.source_id || "default"' in html
+    assert 'symbol: payload.default_symbol || sources[0]?.symbols?.[0]?.symbol || ""' in html
+    assert 'frequency: payload.default_frequency || sources[0]?.symbols?.[0]?.series?.[0]?.frequency || payload.frequency || "1d"' in html
+    assert "async function bootstrapDynamicSelection()" in html
+    assert "async function ensureExactSymbolAvailable(symbol)" in html
+    assert "await bootstrapDynamicSelection();" in html
+    assert "preserveSymbol: Boolean(requestedSymbol)" in html
+    assert "allowMissingSelection: Boolean(preserveSymbol && state.symbol)" in html
+    assert 'params.set("q", symbol)' in html
+    assert "const requestedSymbol = payload.default_symbol || state.symbol;" in html
+    assert "const requestedFrequency = payload.default_frequency || state.frequency;" in html
+    # Initial dynamic bootstrap must resolve URL/default symbol instead of forcing page 0.
+    assert "await loadRemoteDataSources();\n            await bootstrapDynamicSelection();" in html
+    assert (
+        "await loadRemoteDataSources();\n"
+        "            await loadDynamicSymbolsPage({ offset: 0, preserveSymbol: false, loadBars: true });"
+    ) not in html
 
 
 def test_render_kline_viewer_supports_remote_data_api_base_url():
@@ -388,7 +443,10 @@ def test_render_kline_viewer_supports_remote_data_api_base_url():
     assert "function apiUrl(path)" in html
     assert "function apiRequestOptions()" in html
     assert '"Authorization", `Bearer ${payload.data_api_token}`' in html
-    assert 'fetch(apiUrl("/api/kline/manifest"), apiRequestOptions())' in html
+    assert "function requestJson(path, label)" in html
+    assert "const manifest = await requestJson(manifestPath, \"Manifest\")" in html
+    assert "requestJson(`/api/kline/symbols?${params.toString()}`, \"Symbol\")" in html
+    assert "requestJson(`/api/data/tasks?${params.toString()}`, \"Task symbols\")" in html
     assert "fetch(apiUrl(`/api/kline/bars?${params.toString()}`), apiRequestOptions())" in html
 
 
@@ -402,6 +460,7 @@ def test_render_kline_viewer_supports_workbench_home_link():
     assert 'class="home-link" id="workbenchHomeLink"' in html
     assert 'class="data-status-button" id="dataStatusButton"' in html
     assert 'id="dataStatusStripMeta"' in html
+    assert 'id="dataStatusPager"' in html
     assert 'id="frequencyButtons" aria-label="Frequency"></div>' in html
     assert 'class="toolbar-button data-status-control" id="dataStatusButton"' not in html
     assert 'class="status-action"' not in html
@@ -415,8 +474,11 @@ def test_kline_server_supports_legacy_and_kline_api_manifest_routes(monkeypatch)
         def __init__(self, **kwargs):
             pass
 
-        def manifest(self, *, default_window_size):
-            return {"window": default_window_size}
+        def manifest(self, *, default_window_size, include_symbols=True):
+            return {"window": default_window_size, "include_symbols": include_symbols}
+
+        def symbols(self, **kwargs):
+            return {"limit": kwargs["limit"], "source_id": kwargs["source_id"]}
 
         def bars(self, **kwargs):
             return {"symbol": kwargs["symbol"], "frequency": kwargs["frequency"]}
@@ -445,7 +507,25 @@ def test_kline_server_supports_legacy_and_kline_api_manifest_routes(monkeypatch)
 
         handler.do_GET()
 
-        assert sent["payload"] == {"window": 123}
+        assert sent["payload"] == {"window": 123, "include_symbols": True}
+
+    sent = {}
+    handler = object.__new__(handler_class)
+    handler.path = "/api/kline/manifest?symbols=0"
+    handler._send_json = lambda payload, status=None: sent.update(payload=payload)
+
+    handler.do_GET()
+
+    assert sent["payload"] == {"window": 123, "include_symbols": False}
+
+    sent = {}
+    handler = object.__new__(handler_class)
+    handler.path = "/api/kline/symbols?source_id=bitget&limit=25"
+    handler._send_json = lambda payload, status=None: sent.update(payload=payload)
+
+    handler.do_GET()
+
+    assert sent["payload"] == {"limit": 25, "source_id": "bitget"}
 
     for path in [
         "/api/bars?symbol=BTC%2FUSDT&frequency=1d",

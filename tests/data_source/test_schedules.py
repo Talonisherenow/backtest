@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -289,6 +290,35 @@ def test_job_template_compiles_to_existing_data_job_payload(tmp_path: Path):
     assert payload["retry"]["max_attempts"] == 5
 
 
+def test_target_symbols_strip_crypto_contract_suffixes_and_skip_unsupported(tmp_path: Path):
+    schedule = DataScheduleConfig.model_validate(
+        _schedule_payload(
+            name="bitget-list-refresh",
+            job={
+                "source_id": "bitget",
+                "symbols": [],
+                "target": {"mode": "tag", "tag_id": "bitget", "resolution": "dynamic"},
+                "frequencies": ["1h"],
+                "date_range": {"type": "last_n_days", "days": 7},
+            },
+        )
+    )
+
+    payload = build_job_payload(
+        schedule,
+        _server_config(tmp_path),
+        now=datetime.fromisoformat("2026-05-18T12:00:00+08:00"),
+        resolve_symbols=lambda *_: [
+            "BTC/USDT:USDT",
+            "eth/usdt:usdt",
+            "龙虾/USDT:USDT",
+            "BITGET:XRP/USDT:USDT",
+        ],
+    )
+
+    assert payload["symbols"] == ["BTC/USDT", "ETH/USDT", "XRP/USDT"]
+
+
 def test_job_template_accepts_intraday_relative_range(tmp_path: Path):
     schedule = DataScheduleConfig.model_validate(
         _schedule_payload(
@@ -427,6 +457,74 @@ def test_schedule_store_updates_deletes_and_records_runs(tmp_path: Path):
     store.delete(snapshot.schedule_id)
     with pytest.raises(ValueError, match="Unknown schedule"):
         store.get(snapshot.schedule_id)
+
+
+def test_schedule_store_runs_limit_returns_newest_first(tmp_path: Path):
+    store = DataSourceScheduleStore(
+        tmp_path / "schedules.sqlite",
+        now=lambda: datetime.fromisoformat("2026-05-18T09:00:00+08:00"),
+    )
+    snapshot = store.create(
+        DataScheduleConfig.model_validate(_schedule_payload()),
+        next_run_at=datetime.fromisoformat("2026-05-18T10:00:00+08:00"),
+    )
+    for index in range(5):
+        store.record_run(
+            schedule_id=snapshot.schedule_id,
+            due_at=datetime.fromisoformat(f"2026-05-18T{10 + index:02d}:00:00+08:00"),
+            triggered_at=datetime.fromisoformat(f"2026-05-18T{10 + index:02d}:00:02+08:00"),
+            status="submitted",
+            job_id=f"job-{index}",
+            error=None,
+        )
+
+    limited = store.runs(snapshot.schedule_id, limit=2)
+
+    assert [run.job_id for run in limited] == ["job-4", "job-3"]
+    assert len(store.runs(snapshot.schedule_id)) == 5
+
+
+def test_schedule_snapshot_to_dict_can_omit_legacy_symbols_for_tag_targets():
+    config = DataScheduleConfig.model_validate(
+        {
+            "name": "ashare-schedule",
+            "trigger": {
+                "type": "daily",
+                "time": "15:00:00",
+                "timezone": "Asia/Shanghai",
+            },
+            "job": {
+                "source_id": "a_share",
+                "symbols": [f"{index:06d}.SZ" for index in range(20)],
+                "target": {"mode": "tag", "tag_id": "a_share", "resolution": "dynamic"},
+                "frequencies": ["1d"],
+                "date_range": {"type": "last_n_days", "days": 7},
+            },
+        }
+    )
+    from backtest.data_source.schedules import DataScheduleSnapshot
+
+    snapshot = DataScheduleSnapshot(
+        schedule_id="sched-1",
+        name=config.name,
+        config=config,
+        enabled=True,
+        status="enabled",
+        run_count=0,
+        next_run_at=None,
+        last_run_at=None,
+        last_job_id=None,
+        last_error=None,
+        created_at=datetime.fromisoformat("2026-05-18T09:00:00+08:00"),
+        updated_at=datetime.fromisoformat("2026-05-18T09:00:00+08:00"),
+    )
+
+    compact = snapshot.to_dict(compact=True)
+    full = snapshot.to_dict()
+
+    assert compact["config"]["job"]["symbols"] == []
+    assert compact["config"]["job"]["target"]["tag_id"] == "a_share"
+    assert len(full["config"]["job"]["symbols"]) == 20
 
 
 def test_schedule_service_create_update_enable_disable_and_run_now(tmp_path: Path):
@@ -621,3 +719,25 @@ def test_scheduler_tick_skips_when_previous_job_is_still_running(tmp_path: Path)
     assert updated.next_run_at is not None
     assert updated.next_run_at.isoformat() == "2026-05-18T10:00:00+08:00"
     assert service.runs(snapshot.schedule_id)["runs"][0]["status"] == "skipped"
+
+
+def test_scheduler_loop_survives_tick_exception():
+    class FlakyService:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.recovered = Event()
+
+        def tick(self) -> None:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary scheduler storage error")
+            self.recovered.set()
+
+    service = FlakyService()
+    scheduler = DataSourceScheduler(service=service, poll_seconds=0.01)
+
+    scheduler.start()
+    assert service.recovered.wait(timeout=1)
+    scheduler.stop()
+
+    assert service.calls >= 2
