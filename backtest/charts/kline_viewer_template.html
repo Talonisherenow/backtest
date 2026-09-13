@@ -600,9 +600,10 @@
     }
     .top-chart-hint { display: none; }
     .indicator-stack-shell {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      background: #fbfcfd;
+      border: none;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
       overflow: hidden;
     }
     .indicator-stack-header {
@@ -613,6 +614,49 @@
       padding: 8px 10px;
       border-bottom: 1px solid var(--line);
       background: #fbfcfd;
+    }
+    .indicator-stack-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .custom-indicator-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.35);
+    }
+    .custom-indicator-modal-backdrop[hidden] {
+      display: none;
+    }
+    .custom-indicator-modal {
+      width: min(720px, 100%);
+      max-height: min(80vh, 720px);
+      overflow: auto;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+      padding: 16px;
+    }
+    .custom-indicator-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .custom-indicator-modal .custom-indicator-form {
+      display: grid;
+      margin-top: 12px;
+    }
+    .custom-indicator-modal .custom-indicator-templates {
+      margin-top: 0;
     }
     .indicator-stack-title {
       display: grid;
@@ -1061,44 +1105,47 @@
   <section class="summary" id="summary"></section>
   <main>
     <div class="chart-shell">
+      <section class="indicator-stack-shell" aria-label="Indicator stack">
+        <div class="indicator-stack-header">
+          <div class="indicator-stack-title">
+            <strong>指标堆栈</strong>
+            <span>指标与下方 K 线、成交量共用同一时间轴和十字线；在此添加或切换 pane。</span>
+          </div>
+          <div class="indicator-stack-actions">
+            <button type="button" class="toolbar-button" id="openCustomIndicatorModalButton">Custom Indicators</button>
+            <button type="button" class="toolbar-button" id="addIndicatorPanelButton">Add Indicator Panel</button>
+          </div>
+        </div>
+        <div class="indicator-panel-list" id="indicatorPanelList"></div>
+      </section>
       <div id="topChart"></div>
     </div>
-    <section class="indicator-stack-shell" aria-label="Indicator stack">
-      <section class="custom-indicator-panel compact" aria-label="Custom indicators">
-        <div class="custom-indicator-header">
-          <div class="custom-indicator-title">
-            <strong>自定义指标</strong>
-            <span>用收盘价、成交量或已有指标写公式，保存后即可在底部指标区下拉选择并展示。</span>
-          </div>
-          <div class="custom-indicator-actions">
-            <button type="button" class="toolbar-button" id="toggleCustomIndicatorForm">Add Custom Indicator</button>
-          </div>
-        </div>
-        <div class="custom-indicator-form" id="customIndicatorForm">
-          <label>名称
-            <input id="customIndicatorNameInput" type="text" maxlength="24" autocomplete="off" placeholder="例如：MACD Spread">
-          </label>
-          <label><span class="formula-label">公式 <span class="formula-help" id="customFormulaHelp" aria-label="公式帮助">i</span></span>
-            <textarea id="customIndicatorFormulaInput" spellcheck="false" placeholder="支持单行公式，或多行 alias = formula&#10;例如：spread = macd.dif - macd.dea&#10;signal = ema(&quot;spread&quot;, 5)"></textarea>
-          </label>
-          <div class="custom-indicator-actions">
-            <button type="button" class="toolbar-button" id="saveCustomIndicatorButton">Save</button>
-            <button type="button" class="toolbar-button" id="cancelCustomIndicatorButton">Cancel</button>
-          </div>
-        </div>
-        <div class="custom-indicator-feedback" id="customIndicatorFeedback" hidden></div>
-        <div class="custom-indicator-templates" id="customIndicatorTemplates"></div>
-      </section>
-      <div class="indicator-stack-header">
-        <div class="indicator-stack-title">
-          <strong>指标堆栈</strong>
-          <span>默认指标和自定义指标会在下方持续叠加，滚动区域单独查看。</span>
-        </div>
-        <button type="button" class="toolbar-button" id="addIndicatorPanelButton">Add Indicator Panel</button>
-      </div>
-      <div class="indicator-panel-list" id="indicatorPanelList"></div>
-    </section>
   </main>
+  <div class="custom-indicator-modal-backdrop" id="customIndicatorModalBackdrop" hidden>
+    <div class="custom-indicator-modal" role="dialog" aria-modal="true" aria-labelledby="customIndicatorModalTitle">
+      <div class="custom-indicator-modal-header">
+        <div class="custom-indicator-title">
+          <strong id="customIndicatorModalTitle">自定义指标</strong>
+          <span>点模板填入公式，或自行编写；保存后可在指标面板下拉中选择。</span>
+        </div>
+        <button type="button" class="toolbar-button" id="closeCustomIndicatorModalButton">Close</button>
+      </div>
+      <div class="custom-indicator-templates" id="customIndicatorTemplates"></div>
+      <div class="custom-indicator-form open" id="customIndicatorForm">
+        <label>名称
+          <input id="customIndicatorNameInput" type="text" maxlength="24" autocomplete="off" placeholder="例如：MACD Spread">
+        </label>
+        <label><span class="formula-label">公式 <span class="formula-help" id="customFormulaHelp" aria-label="公式帮助">i</span></span>
+          <textarea id="customIndicatorFormulaInput" spellcheck="false" placeholder="支持单行公式，或多行 alias = formula&#10;例如：spread = macd.dif - macd.dea&#10;signal = ema(&quot;spread&quot;, 5)"></textarea>
+        </label>
+        <div class="custom-indicator-actions">
+          <button type="button" class="toolbar-button" id="saveCustomIndicatorButton">Save</button>
+          <button type="button" class="toolbar-button" id="cancelCustomIndicatorButton">Cancel</button>
+        </div>
+      </div>
+      <div class="custom-indicator-feedback" id="customIndicatorFeedback" hidden></div>
+    </div>
+  </div>
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
   <aside class="data-drawer" id="dataStatusDrawer" aria-label="Data status">
     <div class="drawer-header">
@@ -1179,7 +1226,9 @@
     const chart = document.getElementById("topChart");
     const indicatorPanelList = document.getElementById("indicatorPanelList");
     const addIndicatorPanelButton = document.getElementById("addIndicatorPanelButton");
-    const toggleCustomIndicatorFormButton = document.getElementById("toggleCustomIndicatorForm");
+    const openCustomIndicatorModalButton = document.getElementById("openCustomIndicatorModalButton");
+    const closeCustomIndicatorModalButton = document.getElementById("closeCustomIndicatorModalButton");
+    const customIndicatorModalBackdrop = document.getElementById("customIndicatorModalBackdrop");
     const customIndicatorForm = document.getElementById("customIndicatorForm");
     const customIndicatorNameInput = document.getElementById("customIndicatorNameInput");
     const customIndicatorFormulaInput = document.getElementById("customIndicatorFormulaInput");
@@ -2263,16 +2312,29 @@
       customIndicatorFeedback.className = `custom-indicator-feedback${kind === "error" ? " error" : ""}`;
     }
 
-    function toggleCustomIndicatorForm(open) {
+    function clearCustomIndicatorForm() {
+      customIndicatorNameInput.value = "";
+      customIndicatorFormulaInput.value = "";
+      setCustomIndicatorFeedback("");
+    }
+
+    function toggleCustomIndicatorModal(open) {
       const shouldOpen = Boolean(open);
-      customIndicatorForm.classList.toggle("open", shouldOpen);
+      customIndicatorModalBackdrop.hidden = !shouldOpen;
       if (!shouldOpen) {
-        customIndicatorNameInput.value = "";
-        customIndicatorFormulaInput.value = "";
-        setCustomIndicatorFeedback("");
-      } else {
-        customIndicatorNameInput.focus();
+        clearCustomIndicatorForm();
+        return;
       }
+      renderCustomIndicatorTemplates();
+      customIndicatorNameInput.focus();
+    }
+
+    function toggleCustomIndicatorForm(open) {
+      if (open) {
+        toggleCustomIndicatorModal(true);
+        return;
+      }
+      clearCustomIndicatorForm();
     }
 
     function customDefByTemplate(template) {
@@ -2284,8 +2346,7 @@
 
     function renderCustomIndicatorTemplates() {
       customIndicatorTemplates.innerHTML = CUSTOM_INDICATOR_TEMPLATES.map((template) => {
-        const active = customDefByTemplate(template) ? " active" : "";
-        return `<button type="button" class="template-chip${active}" data-indicator-template="${escapeHtml(template.id)}" title="${escapeHtml(template.formula)}">${escapeHtml(template.name)}</button>`;
+        return `<button type="button" class="template-chip" data-indicator-template="${escapeHtml(template.id)}" title="${escapeHtml(template.formula)}">${escapeHtml(template.name)}</button>`;
       }).join("");
     }
 
@@ -2635,7 +2696,181 @@
       return [min - pad, max + pad];
     }
 
-    function renderTopChart(bars, series) {
+    function stackedPaneDomains(panelCount) {
+      const gap = 0.015;
+      if (panelCount <= 0) {
+        return {
+          price: [0.30, 1],
+          volume: [0, 0.22],
+          indicators: [],
+        };
+      }
+      const indicatorTotal = Math.min(0.46, Math.max(0.14, 0.13 * panelCount + 0.02 * Math.max(0, panelCount - 1)));
+      const usable = indicatorTotal - gap * Math.max(0, panelCount - 1);
+      const each = usable / panelCount;
+      // Build bottom-up domains, then reverse so panels[0] sits just under volume.
+      const indicatorsBottomUp = [];
+      let cursor = 0;
+      for (let index = 0; index < panelCount; index += 1) {
+        indicatorsBottomUp.push([cursor, cursor + each]);
+        cursor += each + gap;
+      }
+      const indicators = indicatorsBottomUp.reverse();
+      const volumeShare = 0.13;
+      const volume = [cursor, cursor + volumeShare];
+      cursor += volumeShare + gap;
+      return {
+        price: [cursor, 1],
+        volume,
+        indicators,
+      };
+    }
+
+    function syncMainChartHeight(panelCount) {
+      const height = Math.min(960, Math.max(560, 480 + panelCount * 150));
+      chart.style.height = `${height}px`;
+    }
+
+    function rightAxisTickFont() {
+      return { size: 11, color: "#546e7a", family: "ui-sans-serif, system-ui, sans-serif" };
+    }
+
+    function priceAxisStyle(domain) {
+      return {
+        domain,
+        showgrid: true,
+        gridcolor: "#edf1f5",
+        side: "right",
+        tickfont: rightAxisTickFont(),
+        tickformat: ".2f",
+        hoverformat: ".2f",
+        exponentformat: "none",
+        showexponent: "none",
+        separatethousands: false,
+        automargin: true,
+        nticks: 8,
+      };
+    }
+
+    function volumeAxisStyle(domain) {
+      return {
+        domain,
+        showgrid: true,
+        gridcolor: "#edf1f5",
+        side: "right",
+        tickfont: rightAxisTickFont(),
+        tickformat: "~s",
+        hoverformat: ".3~s",
+        exponentformat: "none",
+        showexponent: "none",
+        automargin: true,
+        nticks: 4,
+      };
+    }
+
+    function indicatorAxisStyle(domain) {
+      return {
+        domain,
+        showgrid: true,
+        gridcolor: "#edf1f5",
+        side: "right",
+        tickfont: rightAxisTickFont(),
+        tickformat: ".2f",
+        hoverformat: ".2f",
+        exponentformat: "none",
+        showexponent: "none",
+        separatethousands: false,
+        automargin: true,
+        nticks: 4,
+      };
+    }
+
+    function axisNameForPane(index) {
+      return index <= 0 ? "yaxis" : `yaxis${index + 1}`;
+    }
+
+    function axisRefForPane(index) {
+      return index <= 0 ? "y" : `y${index + 1}`;
+    }
+
+    function refreshIndicatorPanelValues() {
+      indicatorPanelList.querySelectorAll(".indicator-panel").forEach((panel) => {
+        const index = Number(panel.dataset.panelIndex);
+        const indicatorId = indicatorState.panels[index];
+        const valuesNode = panel.querySelector(".indicator-panel-values");
+        if (!valuesNode || !indicatorId) {
+          return;
+        }
+        valuesNode.innerHTML = renderIndicatorPanelValues(indicatorId);
+      });
+    }
+
+    function bindMainChartHover(bars) {
+      if (!chart || typeof chart.on !== "function") {
+        return;
+      }
+      if (typeof chart.removeAllListeners === "function") {
+        chart.removeAllListeners("plotly_hover");
+        chart.removeAllListeners("plotly_unhover");
+      }
+      chart.on("plotly_hover", (event) => {
+        const point = event?.points?.[0];
+        if (!point || !bars.length) {
+          return;
+        }
+        let index = typeof point.pointIndex === "number" ? point.pointIndex : -1;
+        if (index < 0 && point.x !== undefined) {
+          const target = String(point.x);
+          const item = selectedItem();
+          const frequency = (item && activeSeries(item)?.frequency) || state.frequency;
+          index = bars.findIndex((bar) => formatBarDateTime(bar.date, frequency) === target);
+        }
+        if (index < 0) {
+          return;
+        }
+        const { prevValues } = computeIndicatorValues(bars, index);
+        indicatorState._prevValues = prevValues;
+        refreshIndicatorPanelValues();
+      });
+      chart.on("plotly_unhover", () => {
+        if (!bars.length) {
+          return;
+        }
+        const { prevValues } = computeIndicatorValues(bars);
+        indicatorState._prevValues = prevValues;
+        refreshIndicatorPanelValues();
+      });
+    }
+
+    function renderIndicatorPanelControls() {
+      normalizeIndicatorPanels();
+      if (!indicatorState.panels.length) {
+        indicatorPanelList.innerHTML = '<div class="indicator-empty">还没有选择指标面板。点击 Add Indicator Panel 添加。</div>';
+        return;
+      }
+      indicatorPanelList.innerHTML = indicatorState.panels.map((indicatorId, index) => {
+        const def = indicatorDef(indicatorId);
+        const options = subplotIndicatorIds().map((id) => {
+          const item = indicatorDef(id);
+          return `<option value="${escapeHtml(id)}"${id === indicatorId ? " selected" : ""}>${escapeHtml(item.name)}</option>`;
+        }).join("");
+        return `<section class="indicator-panel" data-panel-index="${index}">
+          <div class="indicator-panel-header">
+            <div class="indicator-panel-controls">
+              <select class="indicator-panel-select" data-panel-select="${index}" aria-label="指标面板">${options}</select>
+              <button type="button" class="toolbar-button" data-remove-panel="${index}">Remove</button>
+            </div>
+            <div class="indicator-panel-values">${renderIndicatorPanelValues(def.id)}</div>
+          </div>
+        </section>`;
+      }).join("");
+    }
+
+    function renderMainChart(bars, series) {
+      normalizeIndicatorPanels();
+      const panelCount = indicatorState.panels.length;
+      syncMainChartHeight(panelCount);
+      const domains = stackedPaneDomains(panelCount);
       const x = bars.map((bar) => formatBarDateTime(bar.date, series?.frequency || state.frequency));
       const upColor = "#d32f2f";
       const downColor = "#00897b";
@@ -2714,17 +2949,18 @@
         },
       ];
       const layout = {
-        margin: { l: 56, r: 24, t: 32, b: 28 },
+        margin: { l: 72, r: 56, t: 36, b: 36 },
         showlegend: true,
         legend: {
           orientation: "h",
           x: 0,
-          y: 1.08,
+          y: 1.02,
           xanchor: "left",
           yanchor: "bottom",
           font: { size: 10 },
         },
         hovermode: "x unified",
+        spikedistance: -1,
         plot_bgcolor: "#ffffff",
         paper_bgcolor: "#ffffff",
         xaxis: {
@@ -2734,24 +2970,48 @@
           type: "category",
           nticks: 9,
           showticklabels: true,
+          showspikes: true,
+          spikemode: "across+toaxis",
+          spikesnap: "cursor",
+          spikedash: "dash",
+          spikecolor: "#90a4ae",
+          spikethickness: 1,
+          tickfont: rightAxisTickFont(),
         },
-        yaxis: {
-          domain: [0.34, 1],
-          showgrid: true,
-          gridcolor: "#edf1f5",
-          tickformat: ".2f",
-          side: "right",
-        },
-        yaxis2: {
-          domain: [0, 0.22],
-          showgrid: true,
-          gridcolor: "#edf1f5",
-          side: "right",
-          tickfont: { size: 9 },
-        },
+        yaxis: priceAxisStyle(domains.price),
+        yaxis2: volumeAxisStyle(domains.volume),
         bargap: 0,
+        annotations: [],
       };
-      return Plotly.newPlot(chart, traces, layout, { responsive: true, displaylogo: false });
+
+      indicatorState.panels.forEach((indicatorId, index) => {
+        const axisIndex = index + 2;
+        const yAxisKey = axisNameForPane(axisIndex);
+        const yRef = axisRefForPane(axisIndex);
+        const indicatorInfo = indicatorDef(indicatorId);
+        ensureIndicatorVisibility(indicatorInfo);
+        const indicatorSeries = indicatorState.seriesMap[indicatorId] || {};
+        const vis = indicatorState.visibleLines[indicatorId] || {};
+        const domain = domains.indicators[index];
+        layout[yAxisKey] = indicatorAxisStyle(domain);
+        layout.annotations.push({
+          text: indicatorInfo.name,
+          xref: "paper",
+          yref: "paper",
+          x: -0.012,
+          y: (domain[0] + domain[1]) / 2,
+          xanchor: "right",
+          yanchor: "middle",
+          showarrow: false,
+          textangle: -90,
+          font: { size: 11, color: "#546e7a" },
+        });
+        addIndicatorTraces(indicatorId, indicatorInfo, indicatorSeries, vis, x, yRef, traces, layout, yAxisKey, bars);
+      });
+
+      return Plotly.newPlot(chart, traces, layout, { responsive: true, displaylogo: false }).then(() => {
+        bindMainChartHover(bars);
+      });
     }
 
     function addIndicatorTraces(indicator, indicatorInfo, indicatorSeries, vis, x, yRef, traces, layout, yAxisKey, bars) {
@@ -2827,60 +3087,12 @@
       });
     }
 
-    function renderIndicatorPanels(bars, series) {
-      normalizeIndicatorPanels();
-      if (!indicatorState.panels.length) {
-        indicatorPanelList.innerHTML = '<div class="indicator-empty">还没有选择指标面板。</div>';
-        return;
-      }
-      indicatorPanelList.innerHTML = indicatorState.panels.map((indicatorId, index) => {
-        const def = indicatorDef(indicatorId);
-        const options = subplotIndicatorIds().map((id) => {
-          const item = indicatorDef(id);
-          return `<option value="${escapeHtml(id)}"${id === indicatorId ? " selected" : ""}>${escapeHtml(item.name)}</option>`;
-        }).join("");
-        return `<section class="indicator-panel" data-panel-index="${index}">
-          <div class="indicator-panel-header">
-            <div class="indicator-panel-controls">
-              <select class="indicator-panel-select" data-panel-select="${index}" aria-label="指标面板">${options}</select>
-              <button type="button" class="toolbar-button" data-remove-panel="${index}">Remove</button>
-            </div>
-            <div class="indicator-panel-values">${renderIndicatorPanelValues(def.id)}</div>
-          </div>
-          <div class="indicator-chart" id="indicatorChart${index}"></div>
-        </section>`;
-      }).join("");
+    function renderTopChart(bars, series) {
+      return renderMainChart(bars, series);
+    }
 
-      const x = bars.map((bar) => formatBarDateTime(bar.date, series?.frequency || state.frequency));
-      indicatorState.panels.forEach((indicatorId, index) => {
-        const indicatorInfo = indicatorDef(indicatorId);
-        ensureIndicatorVisibility(indicatorInfo);
-        const indicatorSeries = indicatorState.seriesMap[indicatorId] || {};
-        const vis = indicatorState.visibleLines[indicatorId] || {};
-        const traces = [];
-        const layout = {
-          margin: { l: 56, r: 24, t: 18, b: 28 },
-          hovermode: "x unified",
-          plot_bgcolor: "#ffffff",
-          paper_bgcolor: "#ffffff",
-          xaxis: {
-            showgrid: true,
-            gridcolor: "#edf1f5",
-            type: "category",
-            nticks: 8,
-          },
-          yaxis: {
-            showgrid: true,
-            gridcolor: "#edf1f5",
-            side: "right",
-            tickfont: { size: 9 },
-          },
-          showlegend: false,
-          bargap: 0,
-        };
-        addIndicatorTraces(indicatorId, indicatorInfo, indicatorSeries, vis, x, "y", traces, layout, "yaxis", bars);
-        Plotly.newPlot(document.getElementById(`indicatorChart${index}`), traces, layout, { responsive: true, displaylogo: false });
-      });
+    function renderIndicatorPanels(bars, series) {
+      renderIndicatorPanelControls();
     }
 
     function render() {
@@ -3034,14 +3246,18 @@
       }
     }
 
-    function createCustomIndicator({ name, formula, appendPanel = true }) {
+    function createCustomIndicator({ name, formula, appendPanel = true, id = null, silent = false }) {
       if (!name || !formula) {
-        setCustomIndicatorFeedback("请先填写名称和公式。", "error");
+        if (!silent) {
+          setCustomIndicatorFeedback("请先填写名称和公式。", "error");
+        }
         return false;
       }
       const duplicate = indicatorState.customDefs.find((def) => def.name.toLowerCase() === name.toLowerCase());
       if (duplicate) {
-        setCustomIndicatorFeedback(`已存在同名指标：${name}`, "error");
+        if (!silent) {
+          setCustomIndicatorFeedback(`已存在同名指标：${name}`, "error");
+        }
         return false;
       }
       try {
@@ -3050,7 +3266,7 @@
           compileCustomFormula(line.expression);
         });
         const def = normalizeCustomIndicatorDef({
-          id: `${CUSTOM_INDICATOR_ID_PREFIX}${slugifyIndicatorName(name)}-${Date.now()}`,
+          id: id || `${CUSTOM_INDICATOR_ID_PREFIX}${slugifyIndicatorName(name)}-${Date.now()}`,
           name,
           formula,
           lines: parsedLines,
@@ -3064,12 +3280,16 @@
           indicatorState.panels.push(def.id);
         }
         saveCustomIndicatorDefs();
-        renderCustomIndicatorTemplates();
-        setCustomIndicatorFeedback("");
-        render();
+        if (!silent) {
+          renderCustomIndicatorTemplates();
+          setCustomIndicatorFeedback("");
+          render();
+        }
         return true;
       } catch (error) {
-        setCustomIndicatorFeedback(error instanceof Error ? error.message : String(error), "error");
+        if (!silent) {
+          setCustomIndicatorFeedback(error instanceof Error ? error.message : String(error), "error");
+        }
         return false;
       }
     }
@@ -3079,7 +3299,7 @@
       const formula = customIndicatorFormulaInput.value.trim();
       const created = createCustomIndicator({ name, formula, appendPanel: true });
       if (created) {
-        toggleCustomIndicatorForm(false);
+        toggleCustomIndicatorModal(false);
       }
     }
 
@@ -3098,24 +3318,45 @@
       render();
     }
 
+    function seededCustomIndicatorId(template) {
+      return `${CUSTOM_INDICATOR_ID_PREFIX}seed-${template.id}`;
+    }
+
+    function ensureSeededCustomIndicators() {
+      let changed = false;
+      CUSTOM_INDICATOR_TEMPLATES.forEach((template) => {
+        if (customDefByTemplate(template)) {
+          return;
+        }
+        const seededId = seededCustomIndicatorId(template);
+        if (indicatorState.customDefs.some((def) => def.id === seededId)) {
+          return;
+        }
+        const created = createCustomIndicator({
+          name: template.name,
+          formula: template.formula,
+          appendPanel: false,
+          id: seededId,
+          silent: true,
+        });
+        if (created) {
+          changed = true;
+        }
+      });
+      if (changed) {
+        saveCustomIndicatorDefs();
+      }
+    }
+
     function applyCustomIndicatorTemplate(templateId) {
       const template = CUSTOM_INDICATOR_TEMPLATES.find((entry) => entry.id === templateId);
       if (!template) {
         return;
       }
-      const existing = customDefByTemplate(template);
-      if (existing) {
-        deleteCustomIndicator(existing.id);
-      } else {
-        const created = createCustomIndicator({
-          name: template.name,
-          formula: template.formula,
-          appendPanel: true,
-        });
-        if (created) {
-          toggleCustomIndicatorForm(false);
-        }
-      }
+      customIndicatorNameInput.value = template.name;
+      customIndicatorFormulaInput.value = template.formula;
+      setCustomIndicatorFeedback("");
+      customIndicatorFormulaInput.focus();
     }
 
     function switchSource(sourceId) {
@@ -3861,10 +4102,19 @@
         jumpToTime();
       }
     });
-    toggleCustomIndicatorFormButton.addEventListener("click", () => {
-      toggleCustomIndicatorForm(!customIndicatorForm.classList.contains("open"));
+    openCustomIndicatorModalButton.addEventListener("click", () => toggleCustomIndicatorModal(true));
+    closeCustomIndicatorModalButton.addEventListener("click", () => toggleCustomIndicatorModal(false));
+    customIndicatorModalBackdrop.addEventListener("click", (event) => {
+      if (event.target === customIndicatorModalBackdrop) {
+        toggleCustomIndicatorModal(false);
+      }
     });
-    cancelCustomIndicatorButton.addEventListener("click", () => toggleCustomIndicatorForm(false));
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !customIndicatorModalBackdrop.hidden) {
+        toggleCustomIndicatorModal(false);
+      }
+    });
+    cancelCustomIndicatorButton.addEventListener("click", () => toggleCustomIndicatorModal(false));
     saveCustomIndicatorButton.addEventListener("click", saveCustomIndicator);
     customIndicatorFormulaInput.addEventListener("keydown", (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -4005,6 +4255,7 @@
 
     ensureWindowOption();
     ensureWindowOverlapOption();
+    ensureSeededCustomIndicators();
     renderCustomIndicatorTemplates();
     updateDatasetMeta();
     renderSourceButtons();
