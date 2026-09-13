@@ -107,18 +107,21 @@ def _filter_orders(orders: pd.DataFrame, symbol: str, case_id: str | None) -> pd
         frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0.0)
     frame = frame.sort_values(["date", "_source_order"]).reset_index(drop=True)
     frame["order_id"] = frame["_source_order"].map(lambda value: f"order-{int(value):06d}")
-    return _attach_order_metrics(frame)[
-        [
-            "order_id",
-            *ORDER_COLUMNS,
-            "notional",
-            "fee_total",
-            "cash_flow",
-            "position_after",
-            "realized_pnl",
-            "realized_return",
-        ]
+    enriched = _attach_order_metrics(frame)
+    output_columns = [
+        "order_id",
+        *ORDER_COLUMNS,
+        "notional",
+        "fee_total",
+        "cash_flow",
+        "position_after",
+        "realized_pnl",
+        "realized_return",
     ]
+    for optional_column in ("signal_id", "signal_label", "signal_date"):
+        if optional_column in enriched.columns:
+            output_columns.append(optional_column)
+    return enriched[output_columns]
 
 
 def _filter_equity(equity_curve: pd.DataFrame, case_id: str | None) -> pd.DataFrame:
@@ -254,6 +257,10 @@ def _bar_to_json(row: pd.Series) -> dict[str, Any]:
 def _order_to_json(row: pd.Series) -> dict[str, Any]:
     side = str(row["side"])
     price = float(row["price"])
+    signal_id = "" if "signal_id" not in row.index or pd.isna(row["signal_id"]) else str(row["signal_id"])
+    signal_label = "" if "signal_label" not in row.index or pd.isna(row["signal_label"]) else str(row["signal_label"])
+    signal_date = "" if "signal_date" not in row.index or pd.isna(row["signal_date"]) else str(row["signal_date"])
+    marker_prefix = signal_id or side[:1].upper()
     return {
         "date": _date_to_json(row["date"]),
         "order_id": str(row["order_id"]),
@@ -274,7 +281,10 @@ def _order_to_json(row: pd.Series) -> dict[str, Any]:
         "position_after": float(row["position_after"]),
         "realized_pnl": float(row["realized_pnl"]),
         "realized_return": float(row["realized_return"]),
-        "label": f"{side[:1].upper()} {price:.3f}",
+        "signal_id": signal_id,
+        "signal_label": signal_label,
+        "signal_date": signal_date,
+        "label": f"{marker_prefix} {price:.3f}",
     }
 
 
@@ -455,6 +465,7 @@ _STATIC_ORDER_KLINE_VIEWER_TEMPLATE = """<!doctype html>
             <tr>
               <th>Date</th>
               <th>Side</th>
+              <th>Signal</th>
               <th>Shares</th>
               <th>Price</th>
               <th>Net PnL</th>
@@ -507,7 +518,9 @@ _STATIC_ORDER_KLINE_VIEWER_TEMPLATE = """<!doctype html>
     const orderLabel = (prefix, order) => order.label || `${prefix} ${fmtNumber(order.price, 3)}`;
     const orderHover = (order) => [
       `${order.side.toUpperCase()} ${order.symbol || payload.symbol}`,
-      `date: ${order.date}`,
+      order.signal_label ? `signal: ${order.signal_label}` : "",
+      order.signal_date ? `signal date: ${order.signal_date}` : "",
+      `exec date: ${order.date}`,
       `shares: ${fmtNumber(order.filled_shares, 0)}`,
       `price: ${fmtNumber(order.price, 3)}`,
       `fee: ${fmtNumber(order.fee_total, 2)}`,
@@ -651,6 +664,7 @@ _STATIC_ORDER_KLINE_VIEWER_TEMPLATE = """<!doctype html>
       `<tr>
         <td>${order.date}</td>
         <td class="${order.side === "buy" ? "buy" : "sell"}">${order.side}</td>
+        <td>${order.signal_label || order.signal_id || ""}</td>
         <td>${fmtNumber(order.filled_shares, 0)}</td>
         <td>${fmtNumber(order.price, 3)}</td>
         <td>${fmtNumber(order.fee_total, 2)}</td>
@@ -995,6 +1009,7 @@ HTML_TEMPLATE = """<!doctype html>
             <tr>
               <th>Date</th>
               <th>Side</th>
+              <th>Signal</th>
               <th>Shares</th>
               <th>Price</th>
               <th>Net PnL</th>
@@ -1291,7 +1306,9 @@ HTML_TEMPLATE = """<!doctype html>
     const orderLabel = (prefix, order) => order.label || `${prefix} ${fmtNumber(order.price, 3)}`;
     const orderHover = (order) => [
       `${String(order.side || "").toUpperCase()} ${order.symbol || state.symbol || ""}`,
-      `date: ${order.date}`,
+      order.signal_label ? `signal: ${order.signal_label}` : "",
+      order.signal_date ? `signal date: ${order.signal_date}` : "",
+      `exec date: ${order.date}`,
       `shares: ${fmtNumber(order.filled_shares, 0)}`,
       `price: ${fmtNumber(order.price, 3)}`,
       `fee: ${fmtNumber(order.fee_total, 2)}`,
@@ -1346,13 +1363,14 @@ HTML_TEMPLATE = """<!doctype html>
         ? `${windowOrders.length} orders in ${windowBars[0].date} to ${windowBars[windowBars.length - 1].date}`
         : "No visible window";
       if (!windowOrders.length) {
-        orderRows.innerHTML = `<tr><td class="empty-cell" colspan="8">No orders in current window</td></tr>`;
+        orderRows.innerHTML = `<tr><td class="empty-cell" colspan="9">No orders in current window</td></tr>`;
         return;
       }
       orderRows.innerHTML = windowOrders.map((order) => (
         `<tr data-order-id="${escapeHtml(order.order_id || "")}" data-symbol="${escapeHtml(order.symbol || state.symbol || "")}" class="${order.order_id === state.activeOrderId ? "order-row-active" : ""}">
           <td>${escapeHtml(order.date)}</td>
           <td class="${order.side === "buy" ? "buy" : "sell"}">${escapeHtml(order.side)}</td>
+          <td>${escapeHtml(order.signal_label || order.signal_id || "")}</td>
           <td>${fmtNumber(order.filled_shares, 0)}</td>
           <td>${fmtNumber(order.price, 3)}</td>
           <td class="${order.realized_pnl > 0 ? "buy" : order.realized_pnl < 0 ? "sell" : ""}">${order.realized_pnl ? fmtSigned(order.realized_pnl) : ""}</td>

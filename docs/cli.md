@@ -112,7 +112,7 @@ Serve the Strategy Results viewer and the K-line viewer from one local process:
 
 ```bash
 backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --a-share-bars-root data/bars \
   --bitget-bars-root data/crypto/bitget/bars \
   --host 127.0.0.1 \
@@ -143,7 +143,7 @@ Serve only the dynamic Strategy Results viewer:
 
 ```bash
 backtest chart serve-results \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --bars-root data/bars \
   --host 127.0.0.1 \
   --port 8766
@@ -299,7 +299,7 @@ Build a static Strategy Results catalog from one or more summary CSV files:
 
 ```bash
 backtest chart strategy-results \
-  --summary runs/ten_buy_signals/new_runtime_native_20260510/summary.csv \
+  --summary runs/strategy-results/summary.csv \
   --output runs/charts/strategy_results_index.html
 ```
 

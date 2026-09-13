@@ -29,7 +29,7 @@ In scope:
 
 Out of scope:
 
-- Rewriting十大买讯 rules
+- Rewriting示例策略 rules
 - Live trading adapters
 - Tick-level simulation
 - Multi-account or multi-strategy runtime

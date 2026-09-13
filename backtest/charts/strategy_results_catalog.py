@@ -72,7 +72,7 @@ def _summary_frame_to_records(frame: pd.DataFrame) -> list[dict[str, Any]]:
                 "strategy_id": strategy_id,
                 "strategy_slug": slug,
                 "strategy_name": _title_from_slug(slug),
-                "source_type": "ten_buy_signal" if signal_id is not None or raw_signal_slug else "summary",
+                "source_type": "signal_case" if signal_id is not None or raw_signal_slug else "summary",
                 "implementation": f"signal_slug:{raw_signal_slug}" if raw_signal_slug else "",
                 "run_group": _text(_pick(row, "run_group")) or "summary",
                 "holding_days": holding_days,
@@ -214,7 +214,7 @@ def _pick(row: pd.Series, *columns: str) -> Any:
 def _strategy_id(signal_id: int | None, raw_signal_slug: str, case_id: str, slug: str) -> str:
     if signal_id is not None:
         return f"signal_{signal_id:02d}"
-    match = re.search(r"buy_signal_(\d+)", case_id)
+    match = re.search(r"(?:^|_)signal_(\d+)", case_id)
     if match:
         return f"signal_{int(match.group(1)):02d}"
     match = re.match(r"^(\d+)[_-]", raw_signal_slug)
@@ -233,7 +233,7 @@ def _strategy_slug(raw_signal_slug: str, case_id: str) -> str:
     slug = raw_signal_slug.strip()
     if slug:
         return re.sub(r"^\d+[_-]", "", slug)
-    match = re.match(r"buy_signal_\d+_(.+?)_hold_\d+$", case_id)
+    match = re.match(r"(?:^|_)signal_\d+_(.+?)_hold_\d+$", case_id)
     if match:
         return match.group(1)
     return re.sub(r"_hold_\d+$", "", case_id)

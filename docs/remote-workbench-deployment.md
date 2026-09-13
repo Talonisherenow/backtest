@@ -270,7 +270,7 @@ curl -sS \
 export BACKTEST_DATA_API_TOKEN="CHANGE_ME_BACKTEST_API_TOKEN"
 
 uv run backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --data-api-base-url https://data.example.com \
   --host 127.0.0.1 \
   --port 8767
@@ -282,7 +282,7 @@ uv run backtest chart serve-workbench \
 export BACKTEST_DATA_API_TOKEN="CHANGE_ME_BACKTEST_API_TOKEN"
 
 uv run backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --data-api-base-url http://124.220.8.47 \
   --host 127.0.0.1 \
   --port 8767

@@ -274,6 +274,9 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "title: {" not in html
     assert 'yanchor: "bottom"' in html
     assert 'tickformat: ".2f"' in html
+    assert "function priceAxisStyle(domain)" in html
+    assert "function rightAxisTickFont()" in html
+    assert "hoverformat: \".2f\"" in html
     assert "frequencyButtons" in html
     assert "dataStatusDrawer" in html
     assert "toggleDataStatus" in html
@@ -319,6 +322,39 @@ def test_write_kline_viewer_embeds_payload_for_file_url_usage(tmp_path: Path):
     assert "rangeButtons" not in html
     assert "60D" not in html
     assert '|| "Unclassified"' in html
+    assert 'id="openCustomIndicatorModalButton"' in html
+    assert 'id="customIndicatorModalBackdrop"' in html
+    assert 'id="customIndicatorForm"' in html
+    assert 'id="customIndicatorFormulaInput"' in html
+    assert 'id="customIndicatorTemplates"' in html
+    assert 'id="toggleCustomIndicatorForm"' not in html
+    assert 'id="indicatorPanelList"' in html
+    assert "backtest.kline.customIndicators.v1" in html
+    assert "toggleCustomIndicatorModal" in html
+    assert "CUSTOM_INDICATOR_TEMPLATES" in html
+    assert "MACD Spread" in html
+    assert "Volume Ratio" in html
+    assert "parseCustomIndicatorLines" in html
+    assert "renderCustomIndicatorTemplates" in html
+    assert "applyCustomIndicatorTemplate" in html
+    assert "ensureSeededCustomIndicators" in html
+    assert "seededCustomIndicatorId" in html
+    assert "seed-${template.id}" in html
+    assert "buildCustomIndicatorSeries" in html
+    assert "subplotIndicatorIds()" in html
+    assert "function renderMainChart(bars, series)" in html
+    assert "function stackedPaneDomains(panelCount)" in html
+    assert "indicatorsBottomUp.reverse()" in html
+    assert "function bindMainChartHover(bars)" in html
+    assert 'hovermode: "x unified"' in html
+    assert 'spikemode: "across+toaxis"' in html
+    assert 'id="indicatorChart' not in html
+    assert "Add Indicator Panel" in html
+    assert "data-panel-select" in html
+    assert "data-remove-panel" in html
+    assert "共用同一时间轴和十字线" in html
+    assert 'class="chart-shell"' in html
+    assert html.index('class="indicator-stack-shell"') < html.index('id="topChart"')
 
 
 def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
@@ -377,6 +413,9 @@ def test_write_kline_viewer_supports_dynamic_api_mode(tmp_path: Path):
     assert 'id="symbolOptions"' in html
     assert 'symbolOptions.addEventListener("scroll"' in html
     assert "toggleSymbolMenu" in html
+    assert "saveCustomIndicator" in html
+    assert "deleteCustomIndicator" in html
+    assert "createCustomIndicator" in html
 
 
 def test_render_kline_viewer_honors_dynamic_default_selection():

@@ -110,7 +110,7 @@ uv run pytest tests/charts/test_order_kline_viewer.py tests/charts/test_strategy
 
 - [x] **Step 1: Generate both files**
 
-Use `runs/ten_buy_signals/new_runtime_native_20260510/orders.csv`, `equity_curve.csv`, and cached daily bars for symbols in `case_id="signal_02_hold_20"`.
+Use `runs/strategy-results/orders.csv`, `equity_curve.csv`, and cached daily bars for symbols in `case_id="signal_02_hold_20"`.
 
 - [x] **Step 2: Browser verify**
 

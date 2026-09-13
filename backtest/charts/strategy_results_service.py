@@ -46,7 +46,8 @@ class StrategyResultsService:
         orders = _read_table(run_dir / "orders")
         equity = _read_table(run_dir / "equity_curve")
         case_orders = _filter_case(orders, case_id)
-        bars = self._bars_for_symbols(_symbols_for_case(case_orders))
+        symbols = _symbols_for_case(case_orders)
+        bars = self._bars_for_symbols(symbols)
         title = _case_title(case_orders, case_id, suffix="Strategy Account Viewer")
         payload = build_strategy_account_payload(
             bars=bars,
@@ -65,7 +66,8 @@ class StrategyResultsService:
         orders = _read_table(run_dir / "orders")
         equity = _read_table(run_dir / "equity_curve")
         case_orders = _filter_case(orders, case_id)
-        bars = self._bars_for_symbols(_symbols_for_case(case_orders))
+        symbols = _symbols_for_case(case_orders)
+        bars = self._bars_for_symbols(symbols)
         title = _case_title(case_orders, case_id, suffix="Strategy Order Drilldown")
         payload = build_strategy_order_drilldown_payload(
             bars=bars,
