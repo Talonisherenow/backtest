@@ -8,7 +8,6 @@ import pandas as pd
 from backtest.charts.strategy_account_viewer import build_strategy_account_payload
 from backtest.charts.strategy_order_drilldown_viewer import build_strategy_order_drilldown_payload
 from backtest.charts.strategy_results_catalog import build_strategy_results_catalog_payload
-from backtest.charts.ten_signal_attribution import attribute_ten_signal_orders
 from backtest.core.symbols import normalize_symbol
 
 
@@ -49,7 +48,6 @@ class StrategyResultsService:
         case_orders = _filter_case(orders, case_id)
         symbols = _symbols_for_case(case_orders)
         bars = self._bars_for_symbols(symbols)
-        orders = self._attribute_orders_if_possible(orders=orders, bars=bars, symbols=symbols)
         title = _case_title(case_orders, case_id, suffix="Strategy Account Viewer")
         payload = build_strategy_account_payload(
             bars=bars,
@@ -70,7 +68,6 @@ class StrategyResultsService:
         case_orders = _filter_case(orders, case_id)
         symbols = _symbols_for_case(case_orders)
         bars = self._bars_for_symbols(symbols)
-        orders = self._attribute_orders_if_possible(orders=orders, bars=bars, symbols=symbols)
         title = _case_title(case_orders, case_id, suffix="Strategy Order Drilldown")
         payload = build_strategy_order_drilldown_payload(
             bars=bars,
@@ -111,20 +108,6 @@ class StrategyResultsService:
         if case_id not in self._case_sources:
             raise ValueError(f"Unknown strategy result case_id: {case_id}")
         return self._case_sources[case_id]
-
-    def _attribute_orders_if_possible(
-        self,
-        *,
-        orders: pd.DataFrame,
-        bars: pd.DataFrame,
-        symbols: list[str],
-    ) -> pd.DataFrame:
-        if orders.empty or bars.empty:
-            return orders
-        try:
-            return attribute_ten_signal_orders(bars=bars, orders=orders, stock_pool=symbols)
-        except Exception:
-            return orders
 
     def _bars_for_symbols(self, symbols: list[str]) -> pd.DataFrame:
         frames: list[pd.DataFrame] = []

@@ -40,7 +40,7 @@ git diff --name-status main
 
 ## Change Summary
 
-本轮主要新增的是策略规划、回测 runtime、十大买讯迁移和动态可视化工作台。
+本轮主要新增的是策略规划、回测 runtime、示例策略迁移和动态可视化工作台。
 
 ### 1. Strategy Planning
 
@@ -97,11 +97,11 @@ backtest/runtime/adapters.py
 
 ### 3. Ten Buy Signals
 
-十大买讯仍保留原策略公式和固定持有期包装，但现在能通过新 runtime 的兼容路径进入
+示例策略仍保留原策略公式和固定持有期包装，但现在能通过新 runtime 的兼容路径进入
 回测，并产出聚合结果：
 
 ```text
-runs/ten_buy_signals/new_runtime_native_20260510/
+runs/strategy-results/
 ```
 
 主要结果文件：
@@ -168,7 +168,7 @@ backtest chart serve-workbench
 
 ```bash
 uv run backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --a-share-bars-root data/bars \
   --bitget-bars-root data/crypto/bitget/bars \
   --host 127.0.0.1 \
@@ -185,7 +185,7 @@ http://127.0.0.1:8767/
 
 ```bash
 uv run backtest chart serve-results \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --bars-root data/bars \
   --host 127.0.0.1 \
   --port 8766
@@ -252,7 +252,7 @@ uv.lock
 
 ```text
 runs/charts/
-runs/ten_buy_signals/
+runs/strategy-results/
 runs/crypto_market_data/
 data/crypto/
 .superpowers/
@@ -265,7 +265,7 @@ data/crypto/
 
 - 合入前 merge/rebase 当前 `main`，处理 crypto market data 与 K-line service 重叠。
 - 根据 merge 结果再次跑完整测试。
-- 如果要把十大买讯完全原生化，下一步应把固定规则改成 `SignalGenerator`，再由
+- 如果要把示例策略完全原生化，下一步应把固定规则改成 `SignalGenerator`，再由
   `PortfolioAllocator` 统一决定仓位。
 - `backtest run --config ...` 的直接缓存行情加载仍是 wiring point；当前完整回测通过
   程序化 `BacktestRunner` 路径验证。

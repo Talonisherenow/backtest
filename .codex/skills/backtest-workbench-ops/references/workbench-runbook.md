@@ -4,7 +4,7 @@
 
 ```bash
 uv run backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --a-share-bars-root data/bars \
   --bitget-bars-root data/crypto/bitget/bars \
   --host 127.0.0.1 \
@@ -16,7 +16,7 @@ uv run backtest chart serve-workbench \
 ```bash
 export BACKTEST_DATA_API_TOKEN="..."
 uv run backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --data-api-base-url https://data.example.com \
   --host 127.0.0.1 \
   --port 8767
@@ -50,7 +50,7 @@ command line:
 
 ```bash
 zsh -lc 'uv run backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --data-api-base-url https://data.example.com \
   --host 127.0.0.1 \
   --port 8767'

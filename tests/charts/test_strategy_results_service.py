@@ -12,7 +12,7 @@ def _write_run(root: Path) -> None:
         "\n".join(
             [
                 "case,signal_id,signal_slug,holding_days,backend,planning_mode,symbols,bars,total_return,max_drawdown,sharpe_ratio,orders,filled_orders,rejected_orders",
-                "buy_signal_02_rising_price_pullback_hold_20,2,02_rising_price_pullback,20,native_simulation,batch,1,2,0.052,-0.083,0.42,2,2,0",
+                "strategy_02_rising_price_pullback_hold_20,2,02_rising_price_pullback,20,native_simulation,batch,1,2,0.052,-0.083,0.42,2,2,0",
             ]
         ),
         encoding="utf-8",
@@ -21,8 +21,8 @@ def _write_run(root: Path) -> None:
         {
             "case_id": ["signal_02_hold_20", "signal_02_hold_20"],
             "case": [
-                "buy_signal_02_rising_price_pullback_hold_20",
-                "buy_signal_02_rising_price_pullback_hold_20",
+                "strategy_02_rising_price_pullback_hold_20",
+                "strategy_02_rising_price_pullback_hold_20",
             ],
             "signal_id": [2, 2],
             "holding_days": [20, 20],

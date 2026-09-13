@@ -40,7 +40,7 @@
   -> 写出 summary.csv / orders.csv / equity_curve.csv / trades.csv / targets.csv / signals.csv
 
 启动结果服务
-  -> backtest chart serve-workbench --results-root runs/ten_buy_signals/new_runtime_native_20260510
+  -> backtest chart serve-workbench --results-root runs/strategy-results
 
 打开页面
   -> http://127.0.0.1:8767/strategy-results
@@ -137,7 +137,7 @@ Account viewer 和 drilldown viewer 仍复用已有 HTML 渲染函数，但由�
 
 ```bash
 backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --a-share-bars-root data/bars \
   --bitget-bars-root data/crypto/bitget/bars \
   --host 127.0.0.1 \
@@ -148,7 +148,7 @@ backtest chart serve-workbench \
 
 ```bash
 backtest chart serve-results \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --bars-root data/bars \
   --host 127.0.0.1 \
   --port 8766

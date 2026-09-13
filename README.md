@@ -23,7 +23,7 @@ Start the combined local workbench:
 
 ```bash
 uv run backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --a-share-bars-root data/bars \
   --bitget-bars-root data/crypto/bitget/bars \
   --host 127.0.0.1 \
@@ -84,7 +84,7 @@ The current branch contains a new-runtime integration path for the "ten buy
 signals" strategy family. The first migrated result batch lives at:
 
 ```text
-runs/ten_buy_signals/new_runtime_native_20260510/
+runs/strategy-results/
 ```
 
 Expected aggregate files:
@@ -137,7 +137,7 @@ Serve only the dynamic strategy results viewer:
 
 ```bash
 uv run backtest chart serve-results \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --bars-root data/bars \
   --host 127.0.0.1 \
   --port 8766

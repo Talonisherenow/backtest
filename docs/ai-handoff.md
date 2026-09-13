@@ -54,9 +54,6 @@ Future TradingRuntime
 - 内置指标和自定义指标扩展；
 - 结构化回测报告；
 - 可复用 K 线查看器；
-- 十大买讯策略、固定持有期退出、30 个回测 case 和可视化结果页；
-- 十大买讯新 runtime 聚合结果，位置为
-  `runs/ten_buy_signals/new_runtime_native_20260510/`；
 - 动态 Strategy Results、Strategy Account Viewer 和 Order Drilldown 视图；
 - 动态 K-line viewer 服务；
 - 统一 Chart Workbench 服务，入口为 `backtest chart serve-workbench`；
@@ -213,8 +210,8 @@ backtest/execution/    执行基础设施，目前有 SQLite OrderLedger
 backtest/metrics/      内置指标、自定义指标 registry、结果上下文
 backtest/reports/      manifest、结构化报告、HTML report
 backtest/charts/       K 线查看器
-strategies/            项目外部策略文件，目前包含十大买讯
-configs/               示例和批量回测配置
+strategies/            项目外部策略文件目录（当前可为空，待新策略接入）
+configs/               示例配置与 data jobs
 data/                  股票池、metadata.sqlite、Parquet 行情缓存
 runs/                  回测、图表和 dashboard 输出
 tests/                 单元和端到端测试
@@ -235,9 +232,6 @@ docs/superpowers/specs/2026-05-07-universal-trading-architecture-design.md 通�
 docs/superpowers/plans/2026-05-07-universal-trading-architecture.md 通用交易架构第一阶段执行计划
 docs/superpowers/specs/2026-05-10-strategy-planning-architecture-design.md 策略规划架构设计
 docs/superpowers/specs/2026-05-10-backtest-runtime-dual-backend-design.md 新 runtime 双后端设计
-docs/0504-十大买讯对应的量化公式.md              原始十大买讯公式
-docs/ten-buy-signals-implementation.md           十大买讯公式到代码的映射
-docs/2026-05-05-ten-buy-signals-backtest-handoff.md 本轮回测能力交接
 ```
 
 ## 数据和缓存能力
@@ -655,7 +649,7 @@ GUI、dashboard 或分析脚本应读取 JSON/Parquet，不要解析 `report.htm
 
 ```bash
 backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
+  --results-root runs/strategy-results \
   --a-share-bars-root data/bars \
   --bitget-bars-root data/crypto/bitget/bars \
   --host 127.0.0.1 \
@@ -711,165 +705,11 @@ K-line viewer 能力：
 
 静态 K 线 HTML 仍可通过 `backtest chart viewer` 生成，但现在主要作为调试或快照工具。
 
-## 十大买讯能力
+## 策略案例状态
 
-原始公式：
-
-```text
-docs/0504-十大买讯对应的量化公式.md
-```
-
-公式到代码说明：
-
-```text
-docs/ten-buy-signals-implementation.md
-```
-
-策略实现：
-
-```text
-strategies/ten_buy_signals.py
-tests/strategies/test_ten_buy_signals.py
-```
-
-基础函数：
-
-```text
-generate_buy_signal_01
-...
-generate_buy_signal_10
-```
-
-固定持有退出包装函数：
-
-```text
-generate_buy_signal_01_hold_1
-generate_buy_signal_01_hold_5
-generate_buy_signal_01_hold_20
-...
-generate_buy_signal_10_hold_1
-generate_buy_signal_10_hold_5
-generate_buy_signal_10_hold_20
-```
-
-固定持有退出语义：
-
-```text
-买讯信号日 S
-下一交易日 B 以 next_open 买入
-持有 N 个交易日，B 算第 1 天
-第 N 个持有交易日 H 生成 target_weight = 0
-H 的下一交易日以 next_open 卖出
-```
-
-重叠入场会被忽略，以避免同一股票尚未退出时再次进入。
-
-注意：
-
-- 买讯 09 当前用样本池前两个股票近似“板块龙头同步走强”，还不是真实行业/概念板块联动；
-- 买讯 10 在本轮 100 支、300 日样本中没有触发，不代表代码失败；
-- 原始公式中的分钟级或事件数据条件，当前以日线技术替代实现。
-
-## 已提交的十大买讯回测结果
-
-配置：
-
-```text
-configs/ten_buy_signals/board_sample_20_each_300d/hold_1/*.yaml
-configs/ten_buy_signals/board_sample_20_each_300d/hold_5/*.yaml
-configs/ten_buy_signals/board_sample_20_each_300d/hold_20/*.yaml
-```
-
-结果：
-
-```text
-runs/ten_buy_signals/board_sample_20_each_300d/
-```
-
-核心文件：
-
-```text
-summary.csv
-summary.json
-summary_dashboard.html
-return_ranking.svg
-return_heatmap.svg
-run_metadata.json
-failures.json
-hold_*/buy_signal_*/*/report.html
-hold_*/buy_signal_*/*/metrics.json
-hold_*/buy_signal_*/*/orders.parquet
-hold_*/buy_signal_*/*/trades.parquet
-hold_*/buy_signal_*/*/equity_curve.parquet
-hold_*/buy_signal_*/*/positions.parquet
-```
-
-已验证：
-
-```text
-30 个 case
-30 个 report.html
-0 个失败
-100 支样本股
-30000 行日 K
-```
-
-新 runtime 聚合结果：
-
-```text
-runs/ten_buy_signals/new_runtime_native_20260510/
-```
-
-核心文件：
-
-```text
-summary.csv
-summary.json
-orders.csv
-trades.csv
-equity_curve.csv
-signals.csv
-targets.csv
-failures.json
-```
-
-查看动态可视化结果：
-
-```bash
-backtest chart serve-workbench \
-  --results-root runs/ten_buy_signals/new_runtime_native_20260510 \
-  --a-share-bars-root data/bars \
-  --bitget-bars-root data/crypto/bitget/bars \
-  --host 127.0.0.1 \
-  --port 8767
-```
-
-旧静态 dashboard：
-
-```text
-runs/ten_buy_signals/board_sample_20_each_300d/summary_dashboard.html
-```
-
-快速读取排名：
-
-```bash
-python - <<'PY'
-import pandas as pd
-
-summary = pd.read_csv("runs/ten_buy_signals/board_sample_20_each_300d/summary.csv")
-cols = [
-    "signal_id",
-    "signal_slug",
-    "holding_days",
-    "entry_signal_rows",
-    "trades",
-    "total_return",
-    "max_drawdown",
-    "sharpe_ratio",
-]
-print(summary.sort_values("total_return", ascending=False)[cols].head(10).to_string(index=False))
-PY
-```
+仓库已移除十大买讯 / 卖讯策略、对应 YAML 配置、回测产物与归因代码。
+新策略应通过 `SignalGenerator` / `StrategyPlanner` / `BacktestRunner` 接入；
+legacy `BacktestEngine` 路径仍存在，但不再附带买/卖讯示例。
 
 ## 当前常用工作流
 
@@ -958,9 +798,6 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 - `NativeSimulationBackend` 当前也按 A 股 `next_open` 语义实现，用于和 legacy backend 做 parity。
 - CLI run 的缓存行情加载还没接好。
 - 报告 HTML 总是写出，`report.html` 和 `report.charts` 开关还不完整。
-- 十大买讯部分条件是日线近似，尚无分钟级或事件数据。
-- 买讯 09 缺少真实板块成分数据。
-- 本轮 30 case 是 100 支随机样本和 300 日窗口的探索结果，不是全市场最终结论。
 - 通用交易架构已经有策略规划层和回测 runtime 双后端，但没有真实 API 适配器。
 - 尚未实现 live `ExecutionAdapter`、`ExecutionRouter`、`RiskGate`、实盘 runner、守护进程或 live CLI。
 - 多账户目前是模型和 ledger 层预留口子，还没有账户调度、跨账户汇总、权限隔离或账户级风控。
@@ -968,39 +805,9 @@ run_dir = BacktestEngine(config, config_path=config_path, bars_override=bars).ru
 
 ## 当前交接验证命令
 
-这组命令可以快速确认旧回测产物和通用交易合同仍可用：
+这组命令可以快速确认通用交易合同与新 runtime 仍可用：
 
 ```bash
-.venv/bin/python - <<'PY'
-from pathlib import Path
-import json
-import pandas as pd
-from backtest.config.loader import load_config
-
-root = Path.cwd()
-config_root = root / "configs/ten_buy_signals/board_sample_20_each_300d"
-configs = sorted(config_root.glob("hold_*/*.yaml"))
-assert len(configs) == 30, len(configs)
-for path in configs:
-    cfg = load_config(path)
-    assert cfg.data.stock_pool.symbols, path
-    assert cfg.signals.path.exists(), cfg.signals.path
-
-run_root = root / "runs/ten_buy_signals/board_sample_20_each_300d"
-summary = pd.read_csv(run_root / "summary.csv")
-failures = json.loads((run_root / "failures.json").read_text(encoding="utf-8"))
-reports = sorted(run_root.glob("hold_*/buy_signal_*/*/report.html"))
-assert len(summary) == 30, len(summary)
-assert len(failures) == 0, failures
-assert len(reports) == 30, len(reports)
-for filename in ["summary_dashboard.html", "return_ranking.svg", "return_heatmap.svg"]:
-    assert (run_root / filename).exists(), filename
-print("case_configs=30")
-print("summary_rows=30")
-print("reports=30")
-print("visualization=true")
-PY
-
 .venv/bin/python - <<'PY'
 from datetime import UTC, datetime
 from decimal import Decimal

@@ -27,7 +27,7 @@ StrategyPlanner -> StrategyPlan
 - 紧接着实现 `NativeSimulationBackend`，走新架构拆分后的订单规划、模拟执行和账户记账。
 - 两个 backend 输出同一个 `BacktestExecutionResult`。
 - 建立 parity tests，用同一组 bars、targets 和 execution config 对照 legacy backend 与 native backend 的结果。
-- 为十大买讯接入新架构准备默认路径：规则型 `SignalGenerator` 产生信号，默认 `PortfolioAllocator` 产生目标仓位，`BacktestRunner` 负责跑完整回测。
+- 为示例策略接入新架构准备默认路径：规则型 `SignalGenerator` 产生信号，默认 `PortfolioAllocator` 产生目标仓位，`BacktestRunner` 负责跑完整回测。
 
 ## 3. 非目标
 
@@ -37,7 +37,7 @@ StrategyPlanner -> StrategyPlan
 - Tick 级撮合。
 - 多账户、多策略并发运行。
 - 做空、杠杆、期货保证金、期权和永续合约账户模型。
-- 十大买讯规则本体重写。
+- 示例策略规则本体重写。
 - 实盘调度、监控、告警和对账。
 
 ## 4. 新增组件
@@ -185,9 +185,9 @@ BacktestRunner
 
 这条链路是目标架构。它逐步取代 `BrokerEngine` 在新架构中的中心地位。
 
-### 5.3 十大买讯接入路径
+### 5.3 示例策略接入路径
 
-十大买讯原始文档主要提供规则型买入触发，不提供完整仓位管理。新架构接入时应按以下方式补齐：
+示例策略原始文档主要提供规则型买入触发，不提供完整仓位管理。新架构接入时应按以下方式补齐：
 
 ```text
 TenBuySignalGenerator
@@ -210,7 +210,7 @@ total_target_weight = 1.0
 max_weight_per_instrument = 0.2
 ```
 
-退出策略不是十大买讯原文的完整组成部分。第一版可通过外接 `ExitPolicy` 或固定持有期 generator 补齐，后续再加入止损和均线跌破等规则。
+退出策略不是示例策略原文的完整组成部分。第一版可通过外接 `ExitPolicy` 或固定持有期 generator 补齐，后续再加入止损和均线跌破等规则。
 
 ## 6. 迁移原则
 
@@ -288,7 +288,7 @@ backtest/runtime/accounting.py
 - `NativeSimulationBackend` 能在核心 A 股场景上与 legacy backend 对齐。
 - parity tests 覆盖买入、卖出、同日 rebalance、现金不足、停牌、涨跌停和 T+1。
 - runtime 端到端测试能通过参数化 backend 跑同一用例。
-- 十大买讯后续只需要提供 `SignalGenerator` 和默认 allocator，就能进入 `BacktestRunner`。
+- 示例策略后续只需要提供 `SignalGenerator` 和默认 allocator，就能进入 `BacktestRunner`。
 
 ## 9. 设计自审
 
@@ -296,4 +296,4 @@ backtest/runtime/accounting.py
 - legacy backend 是迁移后端，不是新架构最终执行中心。
 - native backend 从一开始就有 parity tests，避免兼容层变成永久债务。
 - `PortfolioAllocator` 仍然只输出目标仓位；复利、成交和账户状态由 runtime/backend 处理。
-- 十大买讯缺失的仓位和退出能力通过默认 allocator 和外接 exit policy 补齐，不写回买讯规则本体。
+- 示例策略缺失的仓位和退出能力通过默认 allocator 和外接 exit policy 补齐，不写回规则本体。

@@ -8,11 +8,11 @@ from backtest.charts.strategy_results_catalog import (
 )
 
 
-def test_build_strategy_results_catalog_payload_groups_ten_buy_signal_cases():
+def test_build_strategy_results_catalog_payload_groups_signal_cases():
     summary = pd.DataFrame(
         [
             {
-                "case": "buy_signal_02_rising_price_pullback_hold_1",
+                "case": "strategy_02_rising_price_pullback_hold_1",
                 "signal_id": 2,
                 "signal_slug": "02_rising_price_pullback",
                 "holding_days": 1,
@@ -28,7 +28,7 @@ def test_build_strategy_results_catalog_payload_groups_ten_buy_signal_cases():
                 "rejected_orders": 0,
             },
             {
-                "case": "buy_signal_02_rising_price_pullback_hold_20",
+                "case": "strategy_02_rising_price_pullback_hold_20",
                 "signal_id": 2,
                 "signal_slug": "02_rising_price_pullback",
                 "holding_days": 20,
@@ -44,7 +44,7 @@ def test_build_strategy_results_catalog_payload_groups_ten_buy_signal_cases():
                 "rejected_orders": 43,
             },
             {
-                "case": "buy_signal_03_weekly_volume_contraction_hold_1",
+                "case": "strategy_03_weekly_volume_contraction_hold_1",
                 "signal_id": 3,
                 "signal_slug": "03_weekly_volume_contraction",
                 "holding_days": 1,
@@ -72,7 +72,7 @@ def test_build_strategy_results_catalog_payload_groups_ten_buy_signal_cases():
     assert signal_02["result_count"] == 2
     assert signal_02["best_total_return"] == 0.052
     assert [result["holding_days"] for result in signal_02["results"]] == [1, 20]
-    assert signal_02["results"][1]["result_id"] == "buy_signal_02_rising_price_pullback_hold_20"
+    assert signal_02["results"][1]["result_id"] == "strategy_02_rising_price_pullback_hold_20"
     assert signal_02["results"][1]["case_id"] == "signal_02_hold_20"
     assert signal_02["results"][1]["detail_href"] == "strategy_account_viewer_signal_02_hold_20.html"
 
@@ -86,15 +86,15 @@ def test_write_strategy_results_catalog_renders_strategy_and_result_links(tmp_pa
                 "strategy_id": "signal_02",
                 "name": "Rising Price Pullback",
                 "slug": "rising_price_pullback",
-                "source_type": "ten_buy_signal",
+                "source_type": "signal_case",
                 "implementation": "signal_slug:02_rising_price_pullback",
                 "result_count": 1,
                 "best_total_return": 0.052,
                 "latest_run_at": "",
                 "results": [
                     {
-                        "result_id": "buy_signal_02_rising_price_pullback_hold_20",
-                        "case_id": "buy_signal_02_rising_price_pullback_hold_20",
+                        "result_id": "strategy_02_rising_price_pullback_hold_20",
+                        "case_id": "strategy_02_rising_price_pullback_hold_20",
                         "strategy_id": "signal_02",
                         "run_group": "summary",
                         "holding_days": 20,
@@ -110,7 +110,7 @@ def test_write_strategy_results_catalog_renders_strategy_and_result_links(tmp_pa
                         "orders": 163,
                         "filled_orders": 120,
                         "rejected_orders": 43,
-                        "detail_href": "strategy_account_viewer_buy_signal_02_rising_price_pullback_hold_20.html",
+                        "detail_href": "strategy_account_viewer_strategy_02_rising_price_pullback_hold_20.html",
                         "legacy_report_href": "",
                     }
                 ],
@@ -128,7 +128,7 @@ def test_write_strategy_results_catalog_renders_strategy_and_result_links(tmp_pa
     assert "Strategy Results" in html
     assert "signal_02" in html
     assert "rising_price_pullback" in html
-    assert "strategy_account_viewer_buy_signal_02_rising_price_pullback_hold_20.html" in html
+    assert "strategy_account_viewer_strategy_02_rising_price_pullback_hold_20.html" in html
     assert "function renderStrategies" in html
     assert "function renderResults" in html
     assert "data-detail-href" in html

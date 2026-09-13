@@ -246,7 +246,7 @@ Expected: pass.
 
 - [ ] **Step 1: Load case data**
 
-Use `runs/ten_buy_signals/new_runtime_native_20260510/orders.csv` and `equity_curve.csv` for `case_id="signal_02_hold_20"`.
+Use `runs/strategy-results/orders.csv` and `equity_curve.csv` for `case_id="signal_02_hold_20"`.
 
 - [ ] **Step 2: Load bars**
 
